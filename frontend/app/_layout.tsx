@@ -25,6 +25,7 @@ import { attachNotificationListeners } from '../src/push';
 import { initSentry } from '../src/sentry';
 import { COLORS } from '../src/theme';
 import OfflineBanner from '../src/offline-banner';
+import { WebShell } from '../src/web-shell';
 
 // Initialise error monitoring once on cold start.
 initSentry();
@@ -94,39 +95,41 @@ function RootNav() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.bg } }}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="auth-callback" />
-        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="disease/[id]" />
-        <Stack.Screen name="blog/[id]" />
-        <Stack.Screen name="education/[id]" />
-        <Stack.Screen name="ipss" />
-        <Stack.Screen name="calculators/psa" />
-        <Stack.Screen name="calculators/egfr" />
-        <Stack.Screen name="calculators/bmi" />
-        <Stack.Screen name="calculators/iief5" />
-        <Stack.Screen name="calculators/prostate-volume" />
-        <Stack.Screen name="calculators/crcl" />
-        <Stack.Screen name="calculators/stone-risk" />
-        <Stack.Screen name="calculators/creatinine" />
-        <Stack.Screen name="calculators/bladder-diary" />
-        <Stack.Screen name="my-bookings" />
-        <Stack.Screen name="my-records" />
-        <Stack.Screen name="inbox" />
-        <Stack.Screen name="dashboard" />
-        <Stack.Screen name="admin/blog" />
-        <Stack.Screen name="about" />
-        <Stack.Screen name="blog" />
-        <Stack.Screen name="videos" />
-        <Stack.Screen name="education" />
-        <Stack.Screen name="prescriptions/index" />
-        <Stack.Screen name="prescriptions/new" />
-        <Stack.Screen name="help" />
-        <Stack.Screen name="privacy" />
-        <Stack.Screen name="terms" />
-      </Stack>
+      <WebShell>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.bg } }}>
+          <Stack.Screen name="login" />
+          <Stack.Screen name="auth-callback" />
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="disease/[id]" />
+          <Stack.Screen name="blog/[id]" />
+          <Stack.Screen name="education/[id]" />
+          <Stack.Screen name="ipss" />
+          <Stack.Screen name="calculators/psa" />
+          <Stack.Screen name="calculators/egfr" />
+          <Stack.Screen name="calculators/bmi" />
+          <Stack.Screen name="calculators/iief5" />
+          <Stack.Screen name="calculators/prostate-volume" />
+          <Stack.Screen name="calculators/crcl" />
+          <Stack.Screen name="calculators/stone-risk" />
+          <Stack.Screen name="calculators/creatinine" />
+          <Stack.Screen name="calculators/bladder-diary" />
+          <Stack.Screen name="my-bookings" />
+          <Stack.Screen name="my-records" />
+          <Stack.Screen name="inbox" />
+          <Stack.Screen name="dashboard" />
+          <Stack.Screen name="admin/blog" />
+          <Stack.Screen name="about" />
+          <Stack.Screen name="blog" />
+          <Stack.Screen name="videos" />
+          <Stack.Screen name="education" />
+          <Stack.Screen name="prescriptions/index" />
+          <Stack.Screen name="prescriptions/new" />
+          <Stack.Screen name="help" />
+          <Stack.Screen name="privacy" />
+          <Stack.Screen name="terms" />
+        </Stack>
+      </WebShell>
       <PhoneGate />
       <ConsentGate />
       <OfflineBanner />

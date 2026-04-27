@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/theme';
 import { useI18n } from '../../src/i18n';
 import { haptics } from '../../src/haptics';
+import { useResponsive } from '../../src/responsive';
 
 /**
  * ConsultUro — Premium custom bottom tab bar.
@@ -175,6 +176,11 @@ function FabItem({
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  // Hide the bottom tab bar on desktop web — the WebShell sidebar
+  // already provides navigation. The tabs would compete for space and
+  // look out-of-place on a wide desktop monitor.
+  const r = useResponsive();
+  if (r.isWebDesktop) return null;
   // Only iOS reserves bottom room for the home-indicator. On Android we
   // keep labels flush high — zero bottom padding as the user requested.
   // Respect the OS bottom safe-area inset on BOTH iOS AND Android so the

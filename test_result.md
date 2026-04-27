@@ -632,7 +632,8 @@ metadata:
 test_plan:
   current_focus:
     - "BUGFIX (Issue 1): Messaging permission unlock — Owner toggling can_send_personal_messages on a user must reflect in the affected user's session within ≤60s without re-login. NotificationProvider now also calls auth.refresh() each minute; Inbox screen calls auth.refresh() on focus."
-    - "BUGFIX (Issue 2): Personal message push notification tap — backend POST /api/messages/send now stamps both `type: 'personal'` and `kind: 'personal'` in the push data payload (was only sending `kind`). Frontend _layout.tsx tap handler routes `type === 'personal' || kind === 'personal'` → /inbox. Older clients that only check `kind` continue to work."
+    - "BUGFIX (Issue 2): Personal message push notification tap — backend POST /api/messages/send now stamps both `type: 'personal'` and `kind: 'personal'` in the push data payload (was only sending `kind`). Frontend _layout.tsx tap handler routes `type === 'personal' || kind === 'personal'` → /inbox. Older clients that only check `kind` continue to work. Also removed the implicit double-push from create_notification (passed push=False)."
+    - "FEATURE (Issue 3 — Phase A): Desktop web responsive shell. New /app/frontend/src/responsive.ts hook + /app/frontend/src/web-shell.tsx wrapper. On Platform.OS==='web' && width>=1024px: renders a left sidebar (gradient) with role-based nav (Home/Book/Inbox/Notifications/Diseases/Tools/Education/Blog/Videos + Dashboard/Notes/Reminders/Backups/Permissions for staff/owner), a top bar (lang switch + bell + inbox + profile), and a centered content pane (max-width 1180px). Bottom tabs auto-hide on desktop web. Mobile native + mobile web (<768px) unchanged."
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
