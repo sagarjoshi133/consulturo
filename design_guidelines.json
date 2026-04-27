@@ -1,0 +1,170 @@
+{
+  "app_name": "ConsultUro",
+  "theme_mode": "light",
+  "archetype": "Archetype 1: Organic & Earthy (Adapted for Modern Medical)",
+  "platform": "Expo React Native",
+  "color_palette": {
+    "primary": {
+      "base": "#0E7C8B",
+      "light": "#16A6B8",
+      "gradient": ["#0E7C8B", "#16A6B8"],
+      "description": "Used for main headers, active tab states, and primary CTAs."
+    },
+    "accent": {
+      "base": "#E53935",
+      "light": "#FFEBEE",
+      "description": "Used sparingly for urgent actions, notifications, and key icon highlights (e.g., kidney icons)."
+    },
+    "background": {
+      "default": "#FFFFFF",
+      "subtle": "#F4F9F9",
+      "card": "#FFFFFF",
+      "description": "Clean, breathable space. Use subtle #F4F9F9 for app background and #FFFFFF for cards."
+    },
+    "text": {
+      "primary": "#1A2E35",
+      "secondary": "#5E7C81",
+      "disabled": "#A0B5B8",
+      "inverse": "#FFFFFF"
+    },
+    "border": {
+      "default": "#E2ECEC",
+      "focus": "#16A6B8"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Manrope",
+      "body": "DM Sans",
+      "package": "@expo-google-fonts/manrope, @expo-google-fonts/dm-sans"
+    },
+    "scales": {
+      "h1": { "fontSize": 32, "lineHeight": 40, "fontWeight": "800", "fontFamily": "Manrope_800ExtraBold", "letterSpacing": -0.5 },
+      "h2": { "fontSize": 24, "lineHeight": 32, "fontWeight": "700", "fontFamily": "Manrope_700Bold", "letterSpacing": -0.3 },
+      "h3": { "fontSize": 20, "lineHeight": 28, "fontWeight": "600", "fontFamily": "Manrope_600SemiBold" },
+      "body_large": { "fontSize": 16, "lineHeight": 24, "fontWeight": "400", "fontFamily": "DMSans_400Regular" },
+      "body": { "fontSize": 14, "lineHeight": 20, "fontWeight": "400", "fontFamily": "DMSans_400Regular" },
+      "label": { "fontSize": 12, "lineHeight": 16, "fontWeight": "500", "fontFamily": "DMSans_500Medium", "textTransform": "uppercase", "letterSpacing": 0.5 }
+    }
+  },
+  "layout_and_spacing": {
+    "screen_padding": 24,
+    "card_padding": 16,
+    "border_radius": {
+      "small": 8,
+      "medium": 16,
+      "large": 24,
+      "pill": 9999
+    },
+    "shadows": {
+      "soft": {
+        "shadowColor": "#0E7C8B",
+        "shadowOffset": { "width": 0, "height": 4 },
+        "shadowOpacity": 0.08,
+        "shadowRadius": 12,
+        "elevation": 3
+      }
+    }
+  },
+  "navigation": {
+    "type": "bottom_tab_navigator",
+    "background_color": "#FFFFFF",
+    "active_tint": "#0E7C8B",
+    "inactive_tint": "#A0B5B8",
+    "tabs": [
+      { "name": "Home", "icon": "home-outline", "icon_family": "Ionicons" },
+      { "name": "Diseases", "icon": "medical-outline", "icon_family": "Ionicons" },
+      { "name": "Book", "icon": "calendar-outline", "icon_family": "Ionicons", "highlighted": true },
+      { "name": "Tools", "icon": "calculator-variant-outline", "icon_family": "MaterialCommunityIcons" },
+      { "name": "More", "icon": "grid-outline", "icon_family": "Ionicons" }
+    ]
+  },
+  "components": {
+    "primary_button": {
+      "background": "LinearGradient (#0E7C8B to #16A6B8)",
+      "border_radius": 9999,
+      "padding_vertical": 16,
+      "text_color": "#FFFFFF",
+      "font_weight": "700"
+    },
+    "secondary_button": {
+      "background": "#F4F9F9",
+      "border_width": 1,
+      "border_color": "#0E7C8B",
+      "border_radius": 9999,
+      "text_color": "#0E7C8B"
+    },
+    "card": {
+      "background": "#FFFFFF",
+      "border_radius": 24,
+      "padding": 20,
+      "shadow": "soft",
+      "border_width": 1,
+      "border_color": "#E2ECEC"
+    },
+    "disease_list_item": {
+      "layout": "row",
+      "icon_background": "#F4F9F9",
+      "icon_color": "#E53935",
+      "border_bottom_width": 1,
+      "border_bottom_color": "#E2ECEC"
+    },
+    "whatsapp_fab": {
+      "position": "absolute_bottom_right",
+      "background": "#25D366",
+      "icon": "logo-whatsapp",
+      "icon_family": "Ionicons",
+      "shadow": "soft"
+    }
+  },
+  "media": {
+    "logo": {
+      "url": "https://customer-assets.emergentagent.com/job_4d5b1ea9-c5df-4db3-9534-968cd0e87a5b/artifacts/h83dp788_IMG_20250303_112132.jpg",
+      "description": "ConsultUro Brand Logo"
+    },
+    "doctor_profile": {
+      "url": "https://images.prismic.io/sterlings-hospitals/ZmADZZm069VX1dvm_Dr.SagarJoshiA036_12220153_S115.jpg?auto=format%2Ccompress&rect=2079%2C191%2C1600%2C1600&w=500&h=500",
+      "description": "Dr. Sagar Joshi - Main Profile Photo for About Me and Home Hero"
+    },
+    "hero_backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1771013304369-eb3cf6bd5400?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMHRlYWwlMjBibHVlJTIwbWVkaWNhbCUyMHRleHR1cmV8ZW58MHx8fHwxNzc2NDkyNTM3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract pattern of turquoise waves. Use as a subtle header background with 10% opacity overlay."
+      }
+    ],
+    "content_images": [
+      {
+        "category": "consultation",
+        "url": "https://images.unsplash.com/photo-1758691462430-81160850496c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwzfHxwYXRpZW50JTIwY29uc3VsdGF0aW9uJTIwZG9jdG9yJTIwaG9zcGl0YWx8ZW58MHx8fHwxNzc2NDkyNTMzfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Doctor consults with patient. Use in 'Booking' or 'Online Consultation' section."
+      },
+      {
+        "category": "education",
+        "url": "https://images.unsplash.com/photo-1758691461990-03b49d969495?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwyfHxwYXRpZW50JTIwY29uc3VsdGF0aW9uJTIwZG9jdG9yJTIwaG9zcGl0YWx8ZW58MHx8fHwxNzc2NDkyNTMzfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Doctor writing on chart. Use for 'Prescription Generator' or 'Patient Education' cover."
+      }
+    ]
+  },
+  "testing_guidelines": {
+    "attribute": "testID",
+    "convention": "kebab-case",
+    "examples": [
+      "home-book-consultation-button",
+      "whatsapp-chat-fab",
+      "disease-list-item-kidney-stones",
+      "ipss-calculator-submit-button"
+    ],
+    "rules": "All interactive elements (TouchableOpacity, Pressable, TextInput) MUST include a testID attribute."
+  },
+  "instructions_to_main_agent": [
+    "This is an Expo React Native app. Do NOT use web-only HTML elements (div, span) or web-only Tailwind unless configured via NativeWind.",
+    "Use 'react-native-svg' and 'expo-linear-gradient' for complex backgrounds and buttons. The primary gradient is #0E7C8B to #16A6B8.",
+    "For icons, strictly use '@expo/vector-icons'. Prefer 'Ionicons' for general UI and 'MaterialCommunityIcons' for specific medical/tool icons.",
+    "Ensure 'testID' is applied to every touchable element.",
+    "For the 'WhatsApp Click-to-Chat', use 'Linking.openURL(`whatsapp://send?phone=+918155075669`)'.",
+    "Fonts 'Manrope' and 'DM Sans' must be loaded asynchronously using 'expo-font' in the root layout.",
+    "Generate PDFs for prescriptions using 'expo-print' and 'expo-sharing'.",
+    "Use a robust navigation structure (Expo Router is recommended) with a Bottom Tab layout as defined in the 'navigation' section.",
+    "The Hero section on the Home screen should have a soft gradient background or abstract teal wave image, featuring the Doctor's photo and immediate quick actions (Book Now, WhatsApp)."
+  ]
+}

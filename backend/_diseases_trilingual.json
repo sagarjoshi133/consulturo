@@ -1,0 +1,3382 @@
+[
+  {
+    "id": "kidney-stones",
+    "icon": "water",
+    "image": null,
+    "name": {
+      "en": "Kidney Stones",
+      "hi": "किडनी स्टोन (गुर्दे की पथरी)",
+      "gu": "કિડની સ્ટોન (પથરી)"
+    },
+    "tagline": {
+      "en": "Hard mineral deposits in kidneys causing severe pain.",
+      "hi": "गुर्दे में कठोर खनिज जमाव जो तीव्र दर्द का कारण बनता है।",
+      "gu": "કિડનીમાં કઠણ ખનિજ જમાવ જે તીવ્ર દુખાવો કરે છે।"
+    },
+    "overview": {
+      "en": "Kidney stones (renal calculi) are hard deposits of minerals and salts that form inside the kidneys. They can affect any part of the urinary tract — from kidneys to bladder — and often form when urine becomes concentrated, allowing minerals to crystallise and stick together.",
+      "hi": "किडनी स्टोन (गुर्दे की पथरी या वृक्क पथरी) खनिज और लवण के कठोर जमाव हैं जो गुर्दे के अंदर बनते हैं। ये मूत्र पथ के किसी भी हिस्से को प्रभावित कर सकते हैं — गुर्दे से मूत्राशय तक — और अक्सर तब बनते हैं जब मूत्र गाढ़ा हो जाता है, जिससे खनिज क्रिस्टलीकृत होकर आपस में चिपक जाते हैं।",
+      "gu": "કિડની સ્ટોન (પથરી અથવા વૃક્ક પથરી) ખનિજો અને ક્ષારના કઠણ જમાવ છે જે કિડનીની અંદર બને છે. આ મૂત્રમાર્ગના કોઈપણ ભાગને અસર કરી શકે છે — કિડનીથી મૂત્રાશય સુધી — અને ઘણીવાર ત્યારે બને છે જ્યારે પેશાબ ઘટ્ટ થઈ જાય છે, જે ખનિજોને સ્ફટિક બનીને એકબીજા સાથે ચોંટી જવાની મંજૂરી આપે છે।"
+    },
+    "when_to_see": {
+      "en": "Seek urgent care if you have severe pain, blood in urine, fever, inability to pass urine, or persistent vomiting.",
+      "hi": "यदि आपको तीव्र दर्द, मूत्र में रक्त, बुखार, पेशाब न आना या लगातार उल्टी हो तो तुरंत चिकित्सा सहायता लें।",
+      "gu": "જો તમને તીવ્ર દુખાવો, પેશાબમાં લોહી, તાવ, પેશાબ ન થવો અથવા સતત ઉલટી થાય તો તાત્કાલિક તબીબી મદદ લો."
+    },
+    "symptoms": {
+      "en": [
+        "Severe, sharp pain in the side and back, below the ribs",
+        "Pain radiating to the lower abdomen and groin",
+        "Pain during urination",
+        "Pink, red, or brown urine (blood in urine)",
+        "Cloudy or foul-smelling urine",
+        "Nausea and vomiting",
+        "Persistent need to urinate, urinating more often",
+        "Fever and chills if an infection is present"
+      ],
+      "hi": [
+        "पसली के नीचे पार्श्व और पीठ में तीव्र, तेज दर्द",
+        "निचले पेट और कमर तक फैलता दर्द",
+        "पेशाब के दौरान दर्द",
+        "गुलाबी, लाल या भूरा मूत्र (मूत्र में रक्त)",
+        "धुंधला या दुर्गंधयुक्त मूत्र",
+        "मतली और उल्टी",
+        "बार-बार पेशाब करने की आवश्यकता, सामान्य से अधिक बार पेशाब आना",
+        "संक्रमण होने पर बुखार और ठंड लगना"
+      ],
+      "gu": [
+        "પાંસળીની નીચે બાજુ અને પીઠમાં તીવ્ર, તીખો દુખાવો",
+        "નીચલા પેટ અને જંઘામૂળ સુધી ફેલાતો દુખાવો",
+        "પેશાબ દરમિયાન દુખાવો",
+        "ગુલાબી, લાલ અથવા ભૂરા રંગનો પેશાબ (પેશાબમાં લોહી)",
+        "ધૂંધળો અથવા દુર્ગંધયુક્ત પેશાબ",
+        "ઉબકા અને ઉલટી",
+        "વારંવાર પેશાબ કરવાની જરૂરિયાત, સામાન્ય કરતાં વધુ વાર પેશાબ થવો",
+        "ચેપ હોય તો તાવ અને ઠંડી લાગવી"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Dehydration / low water intake",
+        "High salt, sugar, or animal-protein diet",
+        "Obesity and metabolic syndrome",
+        "Family or personal history of stones",
+        "Certain medical conditions (hyperparathyroidism, gout, UTI)"
+      ],
+      "hi": [
+        "निर्जलीकरण / कम पानी का सेवन",
+        "उच्च नमक, चीनी या पशु-प्रोटीन युक्त आहार",
+        "मोटापा और मेटाबोलिक सिंड्रोम",
+        "पथरी का पारिवारिक या व्यक्तिगत इतिहास",
+        "कुछ चिकित्सीय स्थितियां (हाइपरपैराथायरायडिज्म, गाउट, UTI)"
+      ],
+      "gu": [
+        "ડિહાઇડ્રેશન / ઓછું પાણી પીવું",
+        "ઉચ્ચ મીઠું, ખાંડ અથવા પ્રાણી-પ્રોટીન યુક્ત આહાર",
+        "સ્થૂળતા અને મેટાબોલિક સિન્ડ્રોમ",
+        "પથરીનો પારિવારિક અથવા વ્યક્તિગત ઇતિહાસ",
+        "કેટલીક તબીબી સ્થિતિઓ (હાઇપરપેરાથાઇરોઇડિઝમ, ગાઉટ, UTI)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Hydration and medical expulsive therapy (for small stones)",
+        "Extracorporeal Shock Wave Lithotripsy (ESWL)",
+        "Ureteroscopy with laser lithotripsy (RIRS)",
+        "Percutaneous Nephrolithotomy (PCNL) for large stones"
+      ],
+      "hi": [
+        "हाइड्रेशन और चिकित्सीय निष्कासन थेरेपी (छोटे पथरी के लिए)",
+        "Extracorporeal Shock Wave Lithotripsy (ESWL)",
+        "लेजर लिथोट्रिप्सी के साथ Ureteroscopy (RIRS)",
+        "बड़े पथरी के लिए Percutaneous Nephrolithotomy (PCNL)"
+      ],
+      "gu": [
+        "હાઇડ્રેશન અને મેડિકલ એક્સપલ્સિવ થેરાપી (નાના પથરી માટે)",
+        "Extracorporeal Shock Wave Lithotripsy (ESWL)",
+        "લેઝર લિથોટ્રિપ્સી સાથે Ureteroscopy (RIRS)",
+        "મોટા પથરી માટે Percutaneous Nephrolithotomy (PCNL)"
+      ]
+    }
+  },
+  {
+    "id": "bph-prostate",
+    "icon": "human-male-height",
+    "image": null,
+    "name": {
+      "en": "Enlarged Prostate (BPH)",
+      "hi": "बढ़ा हुआ प्रोस्टेट (BPH)",
+      "gu": "વધેલું પ્રોસ્ટેટ (BPH)"
+    },
+    "tagline": {
+      "en": "Non-cancerous prostate enlargement causing urinary symptoms.",
+      "hi": "गैर-कैंसरयुक्त प्रोस्टेट वृद्धि जो मूत्र संबंधी लक्षण पैदा करती है।",
+      "gu": "બિન-કેન્સરયુક્ત પ્રોસ્ટેટ વૃદ્ધિ જે પેશાબ સંબંધી લક્ષણો ઊભા કરે છે."
+    },
+    "overview": {
+      "en": "Benign Prostatic Hyperplasia (BPH) is a common condition in men over 50 where the prostate gland enlarges and blocks urine flow, causing bothersome urinary symptoms.",
+      "hi": "Benign Prostatic Hyperplasia (BPH) 50 वर्ष से अधिक आयु के पुरुषों में एक आम स्थिति है जिसमें प्रोस्टेट ग्रंथि बढ़ जाती है और मूत्र प्रवाह को अवरुद्ध कर देती है, जिससे परेशान करने वाले मूत्र लक्षण उत्पन्न होते हैं।",
+      "gu": "Benign Prostatic Hyperplasia (BPH) એ 50 વર્ષથી વધુ ઉંમરના પુરુષોમાં સામાન્ય સ્થિતિ છે જેમાં પ્રોસ્ટેટ ગ્રંથિ મોટી થાય છે અને પેશાબના પ્રવાહને અવરોધે છે, જેથી પરેશાન કરતા પેશાબના લક્ષણો ઊભા થાય છે."
+    },
+    "when_to_see": {
+      "en": "Take the IPSS score in the app — a score of 8+ warrants a urology consultation.",
+      "hi": "ऐप में IPSS स्कोर लें — 8+ का स्कोर यूरोलॉजी परामर्श की आवश्यकता दर्शाता है।",
+      "gu": "એપમાં IPSS સ્કોર લો — 8+ નો સ્કોર યુરોલોજી પરામર્શની જરૂરિયાત દર્શાવે છે."
+    },
+    "symptoms": {
+      "en": [
+        "Weak or slow urinary stream",
+        "Difficulty starting urination",
+        "Frequent urination, especially at night (nocturia)",
+        "Sudden urge to urinate",
+        "Intermittent stream",
+        "Incomplete bladder emptying",
+        "Straining to urinate"
+      ],
+      "hi": [
+        "कमजोर या धीमी मूत्र धारा",
+        "पेशाब शुरू करने में कठिनाई",
+        "बार-बार पेशाब आना, विशेषकर रात में (nocturia)",
+        "अचानक पेशाब करने की तीव्र इच्छा",
+        "रुक-रुक कर पेशाब आना",
+        "मूत्राशय का अधूरा खाली होना",
+        "पेशाब करने के लिए जोर लगाना"
+      ],
+      "gu": [
+        "નબળો અથવા ધીમો પેશાબનો પ્રવાહ",
+        "પેશાબ શરૂ કરવામાં મુશ્કેલી",
+        "વારંવાર પેશાબ આવવો, ખાસ કરીને રાત્રે (nocturia)",
+        "અચાનક પેશાબ કરવાની તીવ્ર ઇચ્છા",
+        "અટકતો-ચાલતો પેશાબ",
+        "મૂત્રાશય અધૂરો ખાલી થવો",
+        "પેશાબ કરવા માટે દબાણ કરવું"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Ageing and hormonal changes",
+        "Family history of prostate problems",
+        "Obesity, diabetes, heart disease"
+      ],
+      "hi": [
+        "उम्र बढ़ना और हार्मोनल परिवर्तन",
+        "प्रोस्टेट समस्याओं का पारिवारिक इतिहास",
+        "मोटापा, मधुमेह, हृदय रोग"
+      ],
+      "gu": [
+        "વય વધવું અને હોર્મોનલ ફેરફારો",
+        "પ્રોસ્ટેટ સમસ્યાઓનો પારિવારિક ઇતિહાસ",
+        "સ્થૂળતા, ડાયાબિટીસ, હૃદય રોગ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Lifestyle & fluid management",
+        "Alpha-blockers and 5-alpha-reductase inhibitors",
+        "HoLEP (Holmium Laser Enucleation of Prostate)",
+        "TURP (Transurethral Resection of Prostate)",
+        "Prostatic Urethral Lift (UroLift)"
+      ],
+      "hi": [
+        "जीवनशैली और तरल पदार्थ प्रबंधन",
+        "Alpha-blockers और 5-alpha-reductase inhibitors",
+        "HoLEP (Holmium Laser Enucleation of Prostate)",
+        "TURP (Transurethral Resection of Prostate)",
+        "Prostatic Urethral Lift (UroLift)"
+      ],
+      "gu": [
+        "જીવનશૈલી અને પ્રવાહી વ્યવસ્થાપન",
+        "Alpha-blockers અને 5-alpha-reductase inhibitors",
+        "HoLEP (Holmium Laser Enucleation of Prostate)",
+        "TURP (Transurethral Resection of Prostate)",
+        "Prostatic Urethral Lift (UroLift)"
+      ]
+    }
+  },
+  {
+    "id": "prostate-cancer",
+    "icon": "alert-decagram",
+    "image": null,
+    "name": {
+      "en": "Prostate Cancer",
+      "hi": "Prostate Cancer",
+      "gu": "Prostate Cancer"
+    },
+    "tagline": {
+      "en": "Most common cancer in men — early detection saves lives.",
+      "hi": "Most common cancer in men — early detection saves lives.",
+      "gu": "Most common cancer in men — early detection saves lives."
+    },
+    "overview": {
+      "en": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE).",
+      "hi": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE).",
+      "gu": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE)."
+    },
+    "when_to_see": {
+      "en": "All men above 50 (or 45 with family history) should get a yearly PSA screening.",
+      "hi": "All men above 50 (or 45 with family history) should get a yearly PSA screening.",
+      "gu": "All men above 50 (or 45 with family history) should get a yearly PSA screening."
+    },
+    "symptoms": {
+      "en": [
+        "Trouble urinating",
+        "Decreased force in the stream of urine",
+        "Blood in urine or semen",
+        "Bone pain (advanced stage)",
+        "Unexplained weight loss",
+        "Erectile dysfunction"
+      ],
+      "hi": [
+        "Trouble urinating",
+        "Decreased force in the stream of urine",
+        "Blood in urine or semen",
+        "Bone pain (advanced stage)",
+        "Unexplained weight loss",
+        "Erectile dysfunction"
+      ],
+      "gu": [
+        "Trouble urinating",
+        "Decreased force in the stream of urine",
+        "Blood in urine or semen",
+        "Bone pain (advanced stage)",
+        "Unexplained weight loss",
+        "Erectile dysfunction"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Age above 50",
+        "Family history / genetic factors (BRCA1/2)",
+        "Obesity"
+      ],
+      "hi": [
+        "Age above 50",
+        "Family history / genetic factors (BRCA1/2)",
+        "Obesity"
+      ],
+      "gu": [
+        "Age above 50",
+        "Family history / genetic factors (BRCA1/2)",
+        "Obesity"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Active surveillance (low-risk cases)",
+        "Robotic radical prostatectomy",
+        "Radiation therapy",
+        "Hormone therapy and chemotherapy"
+      ],
+      "hi": [
+        "Active surveillance (low-risk cases)",
+        "Robotic radical prostatectomy",
+        "Radiation therapy",
+        "Hormone therapy and chemotherapy"
+      ],
+      "gu": [
+        "Active surveillance (low-risk cases)",
+        "Robotic radical prostatectomy",
+        "Radiation therapy",
+        "Hormone therapy and chemotherapy"
+      ]
+    }
+  },
+  {
+    "id": "uti",
+    "icon": "bacteria",
+    "image": null,
+    "name": {
+      "en": "Urinary Tract Infection (UTI)",
+      "hi": "Urinary Tract Infection (UTI)",
+      "gu": "Urinary Tract Infection (UTI)"
+    },
+    "tagline": {
+      "en": "Bacterial infection of the urinary system.",
+      "hi": "Bacterial infection of the urinary system.",
+      "gu": "Bacterial infection of the urinary system."
+    },
+    "overview": {
+      "en": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women.",
+      "hi": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women.",
+      "gu": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women."
+    },
+    "when_to_see": {
+      "en": "Consult immediately if you have fever, back pain, vomiting, or blood in urine.",
+      "hi": "Consult immediately if you have fever, back pain, vomiting, or blood in urine.",
+      "gu": "Consult immediately if you have fever, back pain, vomiting, or blood in urine."
+    },
+    "symptoms": {
+      "en": [
+        "Burning sensation on urination",
+        "Frequent urge to urinate with little urine passed",
+        "Cloudy, red, or strong-smelling urine",
+        "Pelvic pain (women) or rectal pain (men)",
+        "Fever, chills, back pain (kidney involvement)"
+      ],
+      "hi": [
+        "Burning sensation on urination",
+        "Frequent urge to urinate with little urine passed",
+        "Cloudy, red, or strong-smelling urine",
+        "Pelvic pain (women) or rectal pain (men)",
+        "Fever, chills, back pain (kidney involvement)"
+      ],
+      "gu": [
+        "Burning sensation on urination",
+        "Frequent urge to urinate with little urine passed",
+        "Cloudy, red, or strong-smelling urine",
+        "Pelvic pain (women) or rectal pain (men)",
+        "Fever, chills, back pain (kidney involvement)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "E. coli from the gastrointestinal tract",
+        "Inadequate hydration",
+        "Urinary retention",
+        "Catheter use",
+        "Diabetes"
+      ],
+      "hi": [
+        "E. coli from the gastrointestinal tract",
+        "Inadequate hydration",
+        "Urinary retention",
+        "Catheter use",
+        "Diabetes"
+      ],
+      "gu": [
+        "E. coli from the gastrointestinal tract",
+        "Inadequate hydration",
+        "Urinary retention",
+        "Catheter use",
+        "Diabetes"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Targeted antibiotics based on urine culture",
+        "Hydration and urinary alkalisers",
+        "Prophylactic antibiotics for recurrent UTIs",
+        "Treatment of underlying cause"
+      ],
+      "hi": [
+        "Targeted antibiotics based on urine culture",
+        "Hydration and urinary alkalisers",
+        "Prophylactic antibiotics for recurrent UTIs",
+        "Treatment of underlying cause"
+      ],
+      "gu": [
+        "Targeted antibiotics based on urine culture",
+        "Hydration and urinary alkalisers",
+        "Prophylactic antibiotics for recurrent UTIs",
+        "Treatment of underlying cause"
+      ]
+    }
+  },
+  {
+    "id": "incontinence",
+    "icon": "water-off",
+    "image": null,
+    "name": {
+      "en": "Urinary Incontinence",
+      "hi": "मूत्र असंयम",
+      "gu": "મૂત્ર અસંયમ"
+    },
+    "tagline": {
+      "en": "Involuntary leakage of urine — treatable at any age.",
+      "hi": "मूत्र का अनैच्छिक रिसाव — किसी भी उम्र में उपचार संभव।",
+      "gu": "પેશાબનો અનૈચ્છિક લિકેજ — કોઈપણ ઉંમરે સારવાર શક્ય।"
+    },
+    "overview": {
+      "en": "Urinary incontinence is the loss of bladder control. It ranges from occasional leakage when coughing or sneezing to an urgent need to urinate that prevents reaching a toilet in time.",
+      "hi": "मूत्र असंयम का मतलब है मूत्राशय पर नियंत्रण का न रहना। यह खांसने या छींकने पर कभी-कभार होने वाले रिसाव से लेकर अचानक तेज़ पेशाब की इच्छा होना जिसमें शौचालय तक समय पर नहीं पहुंचा जा सके, तक हो सकता है।",
+      "gu": "મૂત્ર અસંયમ એટલે મૂત્રાશય પર નિયંત્રણ ગુમાવવું. આ ઉધરસ કે છીંક આવે ત્યારે ક્યારેક-ક્યારેક થતા લિકેજથી માંડીને અચાનક તીવ્ર પેશાબની ઇચ્છા થવી જેમાં શૌચાલય સુધી સમયસર પહોંચી ન શકાય, સુધીનું હોઈ શકે છે।"
+    },
+    "when_to_see": {
+      "en": "See a urologist if leakage affects your daily activities or quality of life.",
+      "hi": "यदि रिसाव आपकी दैनिक गतिविधियों या जीवन की गुणवत्ता को प्रभावित करे तो मूत्र रोग विशेषज्ञ से मिलें।",
+      "gu": "જો લિકેજ તમારી દૈનિક પ્રવૃત્તિઓ અથવા જીવનની ગુણવત્તાને અસર કરે તો મૂત્રરોગ વિશેષજ્ઞને મળો।"
+    },
+    "symptoms": {
+      "en": [
+        "Leakage on coughing/sneezing (stress type)",
+        "Sudden intense urge followed by leakage (urge type)",
+        "Frequent dribbling (overflow type)",
+        "Constant leakage (total incontinence)"
+      ],
+      "hi": [
+        "खांसने/छींकने पर रिसाव (तनाव प्रकार)",
+        "अचानक तीव्र इच्छा के बाद रिसाव (आग्रह प्रकार)",
+        "बार-बार टपकना (अतिप्रवाह प्रकार)",
+        "लगातार रिसाव (पूर्ण असंयम)"
+      ],
+      "gu": [
+        "ઉધરસ/છીંક પર લિકેજ (તણાવ પ્રકાર)",
+        "અચાનક તીવ્ર ઇચ્છા પછી લિકેજ (આગ્રહ પ્રકાર)",
+        "વારંવાર ટપકવું (ઓવરફ્લો પ્રકાર)",
+        "સતત લિકેજ (સંપૂર્ણ અસંયમ)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Weak pelvic floor (post-childbirth, menopause)",
+        "Enlarged prostate / post-prostate-surgery",
+        "Neurological disorders",
+        "UTIs and constipation"
+      ],
+      "hi": [
+        "कमज़ोर श्रोणि तल (प्रसव के बाद, रजोनिवृत्ति)",
+        "बढ़ी हुई प्रोस्टेट / प्रोस्टेट सर्जरी के बाद",
+        "तंत्रिका संबंधी विकार",
+        "UTI और कब्ज"
+      ],
+      "gu": [
+        "નબળા પેલ્વિક ફ્લોર (પ્રસવ પછી, રજોનિવૃત્તિ)",
+        "વધેલી પ્રોસ્ટેટ / પ્રોસ્ટેટ સર્જરી પછી",
+        "ન્યુરોલોજિકલ વિકૃતિઓ",
+        "UTI અને કબજિયાત"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Pelvic floor (Kegel) exercises — see Education section",
+        "Bladder training",
+        "Medications (anticholinergics, beta-3 agonists)",
+        "Sling procedures / bulking agents",
+        "Sacral neuromodulation"
+      ],
+      "hi": [
+        "श्रोणि तल (Kegel) व्यायाम — शिक्षा अनुभाग देखें",
+        "मूत्राशय प्रशिक्षण",
+        "दवाएं (anticholinergics, beta-3 agonists)",
+        "स्लिंग प्रक्रियाएं / बल्किंग एजेंट",
+        "Sacral neuromodulation"
+      ],
+      "gu": [
+        "પેલ્વિક ફ્લોર (Kegel) કસરતો — શિક્ષણ વિભાગ જુઓ",
+        "મૂત્રાશય તાલીમ",
+        "દવાઓ (anticholinergics, beta-3 agonists)",
+        "સ્લિંગ પ્રક્રિયાઓ / બલ્કિંગ એજન્ટ્સ",
+        "Sacral neuromodulation"
+      ]
+    }
+  },
+  {
+    "id": "erectile-dysfunction",
+    "icon": "heart-broken",
+    "image": null,
+    "name": {
+      "en": "Erectile Dysfunction",
+      "hi": "इरेक्टाइल डिसफंक्शन (स्तंभन दोष)",
+      "gu": "ઇરેક્ટાઇલ ડિસફંક્શન (શિશ્ન ઉત્થાન વિકાર)"
+    },
+    "tagline": {
+      "en": "Common, treatable — often a warning sign of heart disease.",
+      "hi": "सामान्य, उपचार योग्य — अक्सर हृदय रोग की चेतावनी संकेत।",
+      "gu": "સામાન્ય, સારવાર યોગ્ય — ઘણીવાર હૃદય રોગની ચેતવણી સંકેત."
+    },
+    "overview": {
+      "en": "Erectile dysfunction (ED) is the inability to get or keep an erection firm enough for sexual intercourse. It can signal underlying vascular or metabolic disease.",
+      "hi": "इरेक्टाइल डिसफंक्शन (ED) यौन संबंध के लिए पर्याप्त रूप से दृढ़ इरेक्शन प्राप्त करने या बनाए रखने में असमर्थता है। यह अंतर्निहित संवहनी या चयापचय रोग का संकेत हो सकता है।",
+      "gu": "ઇરેક્ટાઇલ ડિસફંક્શન (ED) એ લૈંગિક સંભોગ માટે પૂરતા મજબૂત ઇરેક્શન મેળવવામાં અથવા જાળવી રાખવામાં અસમર્થતા છે. તે અંતર્ગત વેસ્ક્યુલર અથવા મેટાબોલિક રોગનો સંકેત હોઈ શકે છે."
+    },
+    "when_to_see": {
+      "en": "If ED persists for more than a few weeks, get evaluated — it can be the first sign of heart disease.",
+      "hi": "यदि ED कुछ हफ्तों से अधिक समय तक बना रहता है, तो जांच करवाएं — यह हृदय रोग का पहला संकेत हो सकता है।",
+      "gu": "જો ED થોડા અઠવાડિયાથી વધુ ચાલુ રહે, તો તપાસ કરાવો — તે હૃદય રોગનું પ્રથમ સંકેત હોઈ શકે છે."
+    },
+    "symptoms": {
+      "en": [
+        "Trouble getting an erection",
+        "Trouble keeping an erection",
+        "Reduced sexual desire"
+      ],
+      "hi": [
+        "इरेक्शन प्राप्त करने में कठिनाई",
+        "इरेक्शन बनाए रखने में कठिनाई",
+        "यौन इच्छा में कमी"
+      ],
+      "gu": [
+        "ઇરેક્શન મેળવવામાં મુશ્કેલી",
+        "ઇરેક્શન જાળવી રાખવામાં મુશ્કેલી",
+        "લૈંગિક ઇચ્છામાં ઘટાડો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Diabetes, hypertension, high cholesterol",
+        "Obesity and sedentary lifestyle",
+        "Smoking, alcohol, and drug use",
+        "Psychological (stress, anxiety, depression)",
+        "Low testosterone, thyroid disorders"
+      ],
+      "hi": [
+        "मधुमेह, उच्च रक्तचाप, उच्च कोलेस्ट्रॉल",
+        "मोटापा और निष्क्रिय जीवनशैली",
+        "धूम्रपान, शराब और नशीली दवाओं का उपयोग",
+        "मनोवैज्ञानिक (तनाव, चिंता, अवसाद)",
+        "कम टेस्टोस्टेरोन, थायराइड विकार"
+      ],
+      "gu": [
+        "ડાયાબિટીસ, હાયપરટેન્શન, ઉચ્ચ કોલેસ્ટ્રોલ",
+        "સ્થૂળતા અને બેઠાડુ જીવનશૈલી",
+        "ધૂમ્રપાન, આલ્કોહોલ અને ડ્રગ ઉપયોગ",
+        "માનસિક (તણાવ, ચિંતા, ડિપ્રેશન)",
+        "ઓછું ટેસ્ટોસ્ટેરોન, થાઇરોઇડ વિકાર"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Lifestyle modification, exercise, weight loss",
+        "Oral medications (PDE5 inhibitors)",
+        "Injections / vacuum devices",
+        "Hormonal therapy if deficient",
+        "Penile implant surgery (refractory cases)"
+      ],
+      "hi": [
+        "जीवनशैली में संशोधन, व्यायाम, वजन घटाना",
+        "मौखिक दवाएं (PDE5 अवरोधक)",
+        "इंजेक्शन / वैक्यूम उपकरण",
+        "हार्मोनल थेरेपी (यदि कमी हो)",
+        "पेनाइल इम्प्लांट सर्जरी (कठिन मामलों में)"
+      ],
+      "gu": [
+        "જીવનશૈલી સુધારણા, વ્યાયામ, વજન ઘટાડો",
+        "મૌખિક દવાઓ (PDE5 અવરોધકો)",
+        "ઇન્જેક્શન / વેક્યુમ ઉપકરણો",
+        "હોર્મોનલ થેરાપી (જો ઉણપ હોય)",
+        "પેનાઇલ ઇમ્પ્લાન્ટ સર્જરી (મુશ્કેલ કેસોમાં)"
+      ]
+    }
+  },
+  {
+    "id": "kidney-transplant",
+    "icon": "medical-bag",
+    "image": null,
+    "name": {
+      "en": "Kidney Transplant",
+      "hi": "किडनी प्रत्यारोपण",
+      "gu": "કિડની ટ્રાન્સપ્લાન્ટ"
+    },
+    "tagline": {
+      "en": "Life-changing treatment for end-stage kidney disease.",
+      "hi": "अंतिम चरण की किडनी बीमारी के लिए जीवन बदलने वाला उपचार।",
+      "gu": "અંતિમ તબક્કાના કિડની રોગ માટે જીવન બદલનારી સારવાર।"
+    },
+    "overview": {
+      "en": "A kidney transplant is surgery to place a healthy kidney from a living or deceased donor into a person whose kidneys no longer function properly. It offers better quality of life and survival than long-term dialysis.",
+      "hi": "किडनी प्रत्यारोपण एक सर्जरी है जिसमें जीवित या मृत दाता की स्वस्थ किडनी को उस व्यक्ति में लगाया जाता है जिसकी किडनी ठीक से काम नहीं कर रही। यह लंबे समय तक डायलिसिस की तुलना में बेहतर जीवन गुणवत्ता और जीवनकाल प्रदान करता है।",
+      "gu": "કિડની ટ્રાન્સપ્લાન્ટ એ એક શસ્ત્રક્રિયા છે જેમાં જીવિત અથવા મૃત દાતાની તંદુરસ્ત કિડનીને તે વ્યક્તિમાં મૂકવામાં આવે છે જેની કિડની યોગ્ય રીતે કામ કરતી નથી. તે લાંબા ગાળાના ડાયાલિસિસ કરતાં વધુ સારી જીવન ગુણવત્તા અને જીવનકાળ પ્રદાન કરે છે।"
+    },
+    "when_to_see": {
+      "en": "Discuss transplant options once your kidney function falls below 20% — earlier is better.",
+      "hi": "जब आपकी किडनी की कार्यक्षमता 20% से नीचे आ जाए तो प्रत्यारोपण विकल्पों पर चर्चा करें — जितनी जल्दी उतना बेहतर।",
+      "gu": "જ્યારે તમારી કિડનીની કાર્યક્ષમતા 20% થી નીચે આવે ત્યારે ટ્રાન્સપ્લાન્ટ વિકલ્પો અંગે ચર્ચા કરો — જેટલું વહેલું એટલું સારું।"
+    },
+    "symptoms": {
+      "en": [
+        "Considered for patients with CKD Stage 5 / on dialysis",
+        "eGFR < 15 ml/min/1.73m²",
+        "Uncontrolled complications of uraemia"
+      ],
+      "hi": [
+        "CKD Stage 5 / डायलिसिस पर मरीजों के लिए विचार किया जाता है",
+        "eGFR < 15 ml/min/1.73m²",
+        "यूरीमिया की अनियंत्रित जटिलताएं"
+      ],
+      "gu": [
+        "CKD Stage 5 / ડાયાલિસિસ પરના દર્દીઓ માટે વિચારણા કરવામાં આવે છે",
+        "eGFR < 15 ml/min/1.73m²",
+        "યુરેમિયાની અનિયંત્રિત ગૂંચવણો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Diabetes mellitus",
+        "Hypertension",
+        "Chronic glomerulonephritis",
+        "Polycystic kidney disease"
+      ],
+      "hi": [
+        "मधुमेह (डायबिटीज मेलिटस)",
+        "उच्च रक्तचाप (हाइपरटेंशन)",
+        "क्रोनिक ग्लोमेरुलोनेफ्राइटिस",
+        "पॉलीसिस्टिक किडनी रोग"
+      ],
+      "gu": [
+        "ડાયાબિટીઝ મેલિટસ",
+        "હાયપરટેન્શન (ઉચ્ચ રક્તચાપ)",
+        "ક્રોનિક ગ્લોમેરુલોનેફ્રાઇટિસ",
+        "પોલિસિસ્ટિક કિડની રોગ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Pre-transplant work-up (HLA, crossmatch, virology)",
+        "Living-donor transplant (preferred)",
+        "Deceased-donor transplant",
+        "Life-long immunosuppression"
+      ],
+      "hi": [
+        "प्रत्यारोपण पूर्व जांच (HLA, क्रॉसमैच, वायरोलॉजी)",
+        "जीवित-दाता प्रत्यारोपण (प्राथमिकता)",
+        "मृत-दाता प्रत्यारोपण",
+        "आजीवन इम्यूनोसप्रेशन"
+      ],
+      "gu": [
+        "ટ્રાન્સપ્લાન્ટ પૂર્વે તપાસ (HLA, ક્રોસમેચ, વાયરોલોજી)",
+        "જીવિત-દાતા ટ્રાન્સપ્લાન્ટ (પ્રાધાન્ય)",
+        "મૃત-દાતા ટ્રાન્સપ્લાન્ટ",
+        "આજીવન ઇમ્યુનોસપ્રેશન"
+      ]
+    }
+  },
+  {
+    "id": "bladder-cancer",
+    "icon": "alert-octagon",
+    "image": null,
+    "name": {
+      "en": "Bladder Cancer",
+      "hi": "मूत्राशय कैंसर (Bladder Cancer)",
+      "gu": "મૂત્રાશય કેન્સર (Bladder Cancer)"
+    },
+    "tagline": {
+      "en": "Painless blood in urine is the commonest warning sign.",
+      "hi": "पेशाब में बिना दर्द के खून आना सबसे आम चेतावनी संकेत है।",
+      "gu": "પેશાબમાં દર્દ વિના લોહી આવવું એ સૌથી સામાન્ય ચેતવણી સંકેત છે।"
+    },
+    "overview": {
+      "en": "Bladder cancer begins most often in the cells that line the inside of the bladder. It is more common in smokers and older adults.",
+      "hi": "मूत्राशय कैंसर अक्सर मूत्राशय की अंदरूनी परत की कोशिकाओं में शुरू होता है। यह धूम्रपान करने वालों और बुजुर्गों में अधिक आम है।",
+      "gu": "મૂત્રાશય કેન્સર મોટાભાગે મૂત્રાશયની અંદરની પરતના કોષોમાં શરૂ થાય છે। તે ધૂમ્રપાન કરનારાઓ અને વૃદ્ધ લોકોમાં વધુ સામાન્ય છે।"
+    },
+    "when_to_see": {
+      "en": "Painless blood in the urine — even a single episode — needs urgent urology review.",
+      "hi": "पेशाब में बिना दर्द के खून आना — भले ही एक बार — तुरंत यूरोलॉजी जाँच की आवश्यकता है।",
+      "gu": "પેશાબમાં દર્દ વિના લોહી આવવું — એક વખત પણ — તાત્કાલિક યુરોલોજી તપાસની જરૂર છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Blood in urine (haematuria) — often painless",
+        "Frequent urination",
+        "Burning on urination",
+        "Pelvic pain",
+        "Back pain"
+      ],
+      "hi": [
+        "पेशाब में खून (haematuria) — अक्सर बिना दर्द के",
+        "बार-बार पेशाब आना",
+        "पेशाब करते समय जलन",
+        "श्रोणि (पेल्विक) में दर्द",
+        "पीठ दर्द"
+      ],
+      "gu": [
+        "પેશાબમાં લોહી (haematuria) — મોટાભાગે દર્દ વિના",
+        "વારંવાર પેશાબ આવવો",
+        "પેશાબ કરતી વખતે બળતરા",
+        "પેલ્વિક (શ્રોણિ) પ્રદેશમાં દુખાવો",
+        "પીઠમાં દુખાવો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Smoking (biggest risk factor)",
+        "Exposure to industrial chemicals / dyes",
+        "Chronic bladder inflammation",
+        "Family history"
+      ],
+      "hi": [
+        "धूम्रपान (सबसे बड़ा जोखिम कारक)",
+        "औद्योगिक रसायनों / रंगों के संपर्क में आना",
+        "लंबे समय से मूत्राशय में सूजन",
+        "पारिवारिक इतिहास"
+      ],
+      "gu": [
+        "ધૂમ્રપાન (સૌથી મોટું જોખમ પરિબળ)",
+        "ઔદ્યોગિક રસાયણો / રંગોના સંપર્કમાં આવવું",
+        "લાંબા સમયથી મૂત્રાશયમાં બળતરા",
+        "કૌટુંબિક ઇતિહાસ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "TURBT (transurethral resection of bladder tumour)",
+        "Intravesical BCG therapy",
+        "Radical cystectomy with neobladder",
+        "Chemotherapy / immunotherapy"
+      ],
+      "hi": [
+        "TURBT (transurethral resection of bladder tumour - मूत्रमार्ग द्वारा मूत्राशय ट्यूमर निकालना)",
+        "Intravesical BCG थेरेपी (मूत्राशय में BCG दवा)",
+        "Radical cystectomy के साथ neobladder (पूर्ण मूत्राशय निकालना और नया बनाना)",
+        "Chemotherapy / immunotherapy (कीमोथेरेपी / इम्यूनोथेरेपी)"
+      ],
+      "gu": [
+        "TURBT (transurethral resection of bladder tumour - મૂત્રમાર્ગ દ્વારા મૂત્રાશય ટ્યુમર કાઢવું)",
+        "Intravesical BCG થેરેપી (મૂત્રાશયમાં BCG દવા)",
+        "Radical cystectomy સાથે neobladder (સંપૂર્ણ મૂત્રાશય કાઢીને નવો બનાવવો)",
+        "Chemotherapy / immunotherapy (કીમોથેરેપી / ઇમ્યુનોથેરેપી)"
+      ]
+    }
+  },
+  {
+    "id": "male-infertility",
+    "icon": "dna",
+    "image": null,
+    "name": {
+      "en": "Male Infertility",
+      "hi": "पुरुष बांझपन",
+      "gu": "પુરુષ વંધ્યત્વ"
+    },
+    "tagline": {
+      "en": "Affects ~50% of infertility cases — mostly treatable.",
+      "hi": "बांझपन के ~50% मामलों को प्रभावित करता है — अधिकतर उपचार योग्य।",
+      "gu": "વંધ્યત્વના ~50% કેસોને અસર કરે છે — મોટાભાગે સારવાર યોગ્ય."
+    },
+    "overview": {
+      "en": "Male infertility is any health issue in a man that lowers the chances of his female partner getting pregnant. It contributes to roughly half of all infertility cases.",
+      "hi": "पुरुष बांझपन पुरुष में कोई भी स्वास्थ्य समस्या है जो उसकी महिला साथी के गर्भवती होने की संभावना को कम करती है। यह सभी बांझपन मामलों में से लगभग आधे में योगदान देता है।",
+      "gu": "પુરુષ વંધ્યત્વ એ પુરુષમાં કોઈપણ સ્વાસ્થ્ય સમસ્યા છે જે તેની સ્ત્રી સાથીદારના ગર્ભવતી થવાની શક્યતાઓ ઘટાડે છે. તે તમામ વંધ્યત્વ કેસોમાંથી લગભગ અડધામાં યોગદાન આપે છે."
+    },
+    "when_to_see": {
+      "en": "Couples should see a specialist if they have been trying for 12 months (6 months if the woman is over 35).",
+      "hi": "यदि जोड़े 12 महीने (यदि महिला 35 वर्ष से अधिक उम्र की है तो 6 महीने) से कोशिश कर रहे हैं, तो उन्हें विशेषज्ञ से मिलना चाहिए।",
+      "gu": "જો દંપતી 12 મહિના (જો સ્ત્રી 35 વર્ષથી વધુ ઉંમરની હોય તો 6 મહિના) થી પ્રયત્ન કરી રહ્યા હોય, તો તેઓએ નિષ્ણાતને મળવું જોઈએ."
+    },
+    "symptoms": {
+      "en": [
+        "Inability to conceive after 1 year of trying",
+        "Low libido / erectile problems",
+        "Pain or swelling in the testicle area",
+        "Recurrent respiratory infections (rare)"
+      ],
+      "hi": [
+        "1 वर्ष की कोशिश के बाद भी गर्भधारण न हो पाना",
+        "कम कामेच्छा / स्तंभन दोष की समस्याएं",
+        "अंडकोष क्षेत्र में दर्द या सूजन",
+        "बार-बार श्वसन संक्रमण (दुर्लभ)"
+      ],
+      "gu": [
+        "1 વર્ષના પ્રયત્ન પછી પણ ગર્ભધારણ ન થવું",
+        "ઓછી કામવાસના / ઇરેક્ટાઇલ સમસ્યાઓ",
+        "અંડકોષ વિસ્તારમાં દુખાવો અથવા સોજો",
+        "વારંવાર શ્વસન ચેપ (દુર્લભ)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Varicocele",
+        "Infections / STDs",
+        "Hormonal imbalance",
+        "Obstruction (post-vasectomy, congenital)",
+        "Lifestyle factors – heat, smoking, alcohol"
+      ],
+      "hi": [
+        "Varicocele (वैरिकोसील)",
+        "संक्रमण / STDs (यौन संचारित रोग)",
+        "हार्मोनल असंतुलन",
+        "रुकावट (vasectomy के बाद, जन्मजात)",
+        "जीवनशैली कारक – गर्मी, धूम्रपान, शराब"
+      ],
+      "gu": [
+        "Varicocele (વેરીકોસીલ)",
+        "ચેપ / STDs (જાતીય સંક્રમિત રોગો)",
+        "હોર્મોનલ અસંતુલન",
+        "અવરોધ (vasectomy પછી, જન્મજાત)",
+        "જીવનશૈલી પરિબળો – ગરમી, ધૂમ્રપાન, દારૂ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Varicocelectomy",
+        "Hormonal therapy",
+        "Surgical sperm retrieval (PESA/TESE)",
+        "Assisted reproduction (IUI / IVF / ICSI)"
+      ],
+      "hi": [
+        "Varicocelectomy",
+        "हार्मोनल थेरेपी",
+        "सर्जिकल शुक्राणु पुनर्प्राप्ति (PESA/TESE)",
+        "सहायक प्रजनन (IUI / IVF / ICSI)"
+      ],
+      "gu": [
+        "Varicocelectomy",
+        "હોર્મોનલ થેરાપી",
+        "સર્જિકલ શુક્રાણુ પુનઃપ્રાપ્તિ (PESA/TESE)",
+        "સહાયક પ્રજનન (IUI / IVF / ICSI)"
+      ]
+    }
+  },
+  {
+    "id": "kidney-cancer",
+    "icon": "kidney",
+    "image": null,
+    "name": {
+      "en": "Kidney Cancer (RCC)",
+      "hi": "किडनी कैंसर (RCC)",
+      "gu": "કિડની કેન્સર (RCC)"
+    },
+    "tagline": {
+      "en": "Often found incidentally on ultrasound or CT scan.",
+      "hi": "अक्सर अल्ट्रासाउंड या CT स्कैन में अचानक मिल जाता है।",
+      "gu": "ઘણીવાર અલ્ટ્રાસાઉન્ડ અથવા CT સ્કેનમાં આકસ્મિક રીતે મળે છે।"
+    },
+    "overview": {
+      "en": "Renal cell carcinoma (RCC) is the commonest kidney cancer in adults. Early tumours have no symptoms and are usually found on scans done for another reason.",
+      "hi": "रीनल सेल कार्सिनोमा (RCC) वयस्कों में सबसे आम किडनी कैंसर है। शुरुआती ट्यूमर में कोई लक्षण नहीं होते और आमतौर पर किसी अन्य कारण से किए गए स्कैन में मिल जाते हैं।",
+      "gu": "રેનલ સેલ કાર્સિનોમા (RCC) પુખ્ત વયના લોકોમાં સૌથી સામાન્ય કિડની કેન્સર છે। પ્રારંભિક ગાંઠોમાં કોઈ લક્ષણો હોતા નથી અને સામાન્ય રીતે બીજા કારણસર કરવામાં આવેલા સ્કેનમાં મળે છે।"
+    },
+    "when_to_see": {
+      "en": "Any solid kidney mass on ultrasound needs urology review — most are curable when small.",
+      "hi": "अल्ट्रासाउंड में दिखने वाले किसी भी ठोस किडनी मास की यूरोलॉजी समीक्षा जरूरी है — छोटे होने पर अधिकतर ठीक हो सकते हैं।",
+      "gu": "અલ્ટ્રાસાઉન્ડ પર કોઈપણ ઘન કિડની માસની યુરોલોજી સમીક્ષા જરૂરી છે — નાના હોય ત્યારે મોટાભાગના સાધ્ય હોય છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Blood in urine",
+        "Flank pain or a lump in the side",
+        "Unexplained weight loss, fever, fatigue",
+        "High blood pressure (sometimes)"
+      ],
+      "hi": [
+        "पेशाब में खून",
+        "बाजू में दर्द या गांठ",
+        "बिना कारण वजन कम होना, बुखार, थकान",
+        "उच्च रक्तचाप (कभी-कभी)"
+      ],
+      "gu": [
+        "પેશાબમાં લોહી",
+        "બાજુમાં દુખાવો અથવા ગઠ્ઠો",
+        "અકારણ વજન ઘટવું, તાવ, થાક",
+        "હાઈ બ્લડ પ્રેશર (ક્યારેક)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Smoking",
+        "Obesity, hypertension",
+        "Long-term dialysis",
+        "Family syndromes (VHL, tuberous sclerosis)"
+      ],
+      "hi": [
+        "धूम्रपान",
+        "मोटापा, उच्च रक्तचाप",
+        "लंबे समय तक डायलिसिस",
+        "पारिवारिक सिंड्रोम (VHL, ट्यूबरस स्क्लेरोसिस)"
+      ],
+      "gu": [
+        "ધૂમ્રપાન",
+        "સ્થૂળતા, હાયપરટેન્શન",
+        "લાંબા ગાળાની ડાયાલિસિસ",
+        "પારિવારિક સિન્ડ્રોમ્સ (VHL, ટ્યુબરસ સ્ક્લેરોસિસ)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Partial nephrectomy (small tumours)",
+        "Radical nephrectomy (laparoscopic / robotic)",
+        "Ablation (RFA, cryotherapy) for small tumours",
+        "Targeted therapy / immunotherapy for advanced RCC"
+      ],
+      "hi": [
+        "पार्शियल नेफ्रेक्टोमी (छोटे ट्यूमर)",
+        "रेडिकल नेफ्रेक्टोमी (लैप्रोस्कोपिक / रोबोटिक)",
+        "एब्लेशन (RFA, क्रायोथेरेपी) छोटे ट्यूमर के लिए",
+        "टार्गेटेड थेरेपी / इम्यूनोथेरेपी एडवांस्ड RCC के लिए"
+      ],
+      "gu": [
+        "પાર્શિયલ નેફ્રેક્ટોમી (નાના ગાંઠો)",
+        "રેડિકલ નેફ્રેક્ટોમી (લેપ્રોસ્કોપિક / રોબોટિક)",
+        "એબ્લેશન (RFA, ક્રાયોથેરાપી) નાના ગાંઠો માટે",
+        "ટાર્ગેટેડ થેરાપી / ઇમ્યુનોથેરાપી એડવાન્સ્ડ RCC માટે"
+      ]
+    }
+  },
+  {
+    "id": "testicular-cancer",
+    "icon": "gender-male",
+    "image": null,
+    "name": {
+      "en": "Testicular Cancer",
+      "hi": "वृषण कैंसर (Testicular Cancer)",
+      "gu": "વૃષણ કેન્સર (Testicular Cancer)"
+    },
+    "tagline": {
+      "en": "Young men's cancer — highly curable when caught early.",
+      "hi": "युवा पुरुषों का कैंसर — जल्दी पकड़ में आने पर अत्यधिक इलाज योग्य।",
+      "gu": "યુવાન પુરુષોનો કેન્સર — વહેલો પકડાય તો અત્યંત સારવાર યોગ્ય."
+    },
+    "overview": {
+      "en": "Testicular cancer is the most common cancer in men aged 15–35. Almost all stages are highly curable.",
+      "hi": "वृषण कैंसर 15–35 वर्ष की आयु के पुरुषों में सबसे आम कैंसर है। लगभग सभी चरण अत्यधिक इलाज योग्य होते हैं।",
+      "gu": "વૃષણ કેન્સર એ 15–35 વર્ષની ઉંમરના પુરુષોમાં સૌથી સામાન્ય કેન્સર છે. લગભગ તમામ તબક્કાઓ અત્યંત સારવાર યોગ્ય છે."
+    },
+    "when_to_see": {
+      "en": "Any hard, painless lump in a testicle — see a urologist the same week.",
+      "hi": "अंडकोष में कोई भी सख्त, दर्द रहित गांठ — उसी सप्ताह मूत्र रोग विशेषज्ञ से मिलें।",
+      "gu": "અંડકોષમાં કોઈપણ સખત, પીડા રહિત ગઠ્ઠો — તે જ અઠવાડિયે મૂત્રવિજ્ઞાન નિષ્ણાતને મળો."
+    },
+    "symptoms": {
+      "en": [
+        "Painless lump or swelling in a testicle",
+        "Heaviness in the scrotum",
+        "Dull ache in the abdomen or groin",
+        "Sudden collection of fluid in the scrotum"
+      ],
+      "hi": [
+        "अंडकोष में दर्द रहित गांठ या सूजन",
+        "अंडकोश में भारीपन",
+        "पेट या कमर में हल्का दर्द",
+        "अंडकोश में अचानक तरल पदार्थ जमा होना"
+      ],
+      "gu": [
+        "અંડકોષમાં પીડા રહિત ગઠ્ઠો અથવા સોજો",
+        "અંડકોશમાં ભારેપણું",
+        "પેટ અથવા જંઘામાં હલકો દુખાવો",
+        "અંડકોશમાં અચાનક પ્રવાહી ભરાવો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Undescended testis (cryptorchidism)",
+        "Family history",
+        "HIV infection",
+        "Klinefelter syndrome"
+      ],
+      "hi": [
+        "अविकसित अंडकोष (cryptorchidism)",
+        "पारिवारिक इतिहास",
+        "HIV संक्रमण",
+        "Klinefelter syndrome"
+      ],
+      "gu": [
+        "અવિકસિત અંડકોષ (cryptorchidism)",
+        "પારિવારિક ઇતિહાસ",
+        "HIV ચેપ",
+        "Klinefelter syndrome"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Radical inguinal orchiectomy",
+        "Retroperitoneal lymph-node dissection",
+        "Chemotherapy (BEP regimen)",
+        "Surveillance for stage I disease"
+      ],
+      "hi": [
+        "Radical inguinal orchiectomy (पूर्ण वृषण निकालना)",
+        "Retroperitoneal lymph-node dissection (पश्च पेरिटोनियल लिम्फ नोड निष्कासन)",
+        "Chemotherapy (BEP regimen)",
+        "Stage I रोग के लिए निगरानी"
+      ],
+      "gu": [
+        "Radical inguinal orchiectomy (સંપૂર્ણ વૃષણ કાઢવું)",
+        "Retroperitoneal lymph-node dissection (પશ્ચ પેરિટોનિયલ લસિકા ગાંઠ નિકાલ)",
+        "Chemotherapy (BEP regimen)",
+        "Stage I રોગ માટે દેખરેખ"
+      ]
+    }
+  },
+  {
+    "id": "phimosis",
+    "icon": "circle-slice-1",
+    "image": null,
+    "name": {
+      "en": "Phimosis",
+      "hi": "फिमोसिस",
+      "gu": "ફિમોસિસ"
+    },
+    "tagline": {
+      "en": "Tight foreskin that won't retract — simple surgery fixes it.",
+      "hi": "तंग चमड़ी जो पीछे नहीं खिसकती — सरल सर्जरी से ठीक हो जाती है।",
+      "gu": "ચુસ્ત ચામડી જે પાછળ સરકતી નથી — સરળ સર્જરીથી ઠીક થાય છે।"
+    },
+    "overview": {
+      "en": "Phimosis is a condition where the foreskin of the penis cannot be retracted over the glans. It can be physiological (in children) or pathological (due to scarring, BXO).",
+      "hi": "फिमोसिस एक ऐसी स्थिति है जिसमें लिंग की चमड़ी (फोरस्किन) को ग्लान्स के ऊपर से पीछे नहीं खींचा जा सकता। यह शारीरिक (बच्चों में) या रोगजन्य (निशान, BXO के कारण) हो सकती है।",
+      "gu": "ફિમોસિસ એ એવી સ્થિતિ છે જેમાં શિશ્નની ચામડી (ફોરસ્કિન) ગ્લાન્સ ઉપરથી પાછળ ખેંચી શકાતી નથી. આ શારીરિક (બાળકોમાં) અથવા રોગજન્ય (ડાઘ, BXO ના કારણે) હોઈ શકે છે."
+    },
+    "when_to_see": {
+      "en": "If the foreskin is splitting, bleeding or causing painful intercourse — book a consultation.",
+      "hi": "यदि चमड़ी फट रही है, खून आ रहा है या संभोग के दौरान दर्द हो रहा है — तो परामर्श बुक करें।",
+      "gu": "જો ચામડી ફાટી રહી હોય, લોહી આવતું હોય અથવા સંભોગ દરમિયાન દુખાવો થતો હોય — તો સલાહ બુક કરો।"
+    },
+    "symptoms": {
+      "en": [
+        "Difficulty pulling back the foreskin",
+        "Ballooning of foreskin during urination",
+        "Pain during erection or intercourse",
+        "Recurrent balanitis (infection)"
+      ],
+      "hi": [
+        "चमड़ी को पीछे खींचने में कठिनाई",
+        "पेशाब के दौरान चमड़ी का फूलना",
+        "इरेक्शन या संभोग के दौरान दर्द",
+        "बार-बार बैलेनाइटिस (संक्रमण) होना"
+      ],
+      "gu": [
+        "ચામડીને પાછળ ખેંચવામાં મુશ્કેલી",
+        "પેશાબ દરમિયાન ચામડીનું ફૂલવું",
+        "ઇરેક્શન અથવા સંભોગ દરમિયાન દુખાવો",
+        "વારંવાર બેલેનાઇટિસ (ચેપ) થવો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "BXO / lichen sclerosus",
+        "Recurrent infections",
+        "Poor hygiene",
+        "Diabetes"
+      ],
+      "hi": [
+        "BXO / लाइकेन स्क्लेरोसस",
+        "बार-बार संक्रमण",
+        "खराब स्वच्छता",
+        "डायबिटीज़"
+      ],
+      "gu": [
+        "BXO / લાઈકેન સ્ક્લેરોસસ",
+        "વારંવાર ચેપ",
+        "નબળી સ્વચ્છતા",
+        "ડાયાબિટીસ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Topical steroid cream (0.05% betamethasone)",
+        "Circumcision (open or stapler)",
+        "Preputioplasty (for mild cases)"
+      ],
+      "hi": [
+        "टॉपिकल स्टेरॉयड क्रीम (0.05% बीटामेथासोन)",
+        "सरकमसिशन (ओपन या स्टेपलर)",
+        "प्रीप्यूशियोप्लास्टी (हल्के मामलों के लिए)"
+      ],
+      "gu": [
+        "ટોપિકલ સ્ટેરોઇડ ક્રીમ (0.05% બીટામેથાસોન)",
+        "સર્કમસિઝન (ઓપન અથવા સ્ટેપલર)",
+        "પ્રીપ્યુશિયોપ્લાસ્ટી (હળવા કેસો માટે)"
+      ]
+    }
+  },
+  {
+    "id": "hydrocele",
+    "icon": "water-circle",
+    "image": null,
+    "name": {
+      "en": "Hydrocele",
+      "hi": "हाइड्रोसील",
+      "gu": "હાઈડ્રોસીલ"
+    },
+    "tagline": {
+      "en": "Painless fluid collection around the testicle.",
+      "hi": "अंडकोष के चारों ओर दर्द रहित द्रव संग्रह।",
+      "gu": "અંડકોશની આસપાસ પીડારહિત પ્રવાહી સંગ્રહ."
+    },
+    "overview": {
+      "en": "A hydrocele is a painless build-up of fluid around a testicle. It is common in newborns and also in men over 40.",
+      "hi": "हाइड्रोसील अंडकोष के चारों ओर द्रव का दर्द रहित जमाव है। यह नवजात शिशुओं में और 40 वर्ष से अधिक उम्र के पुरुषों में आम है।",
+      "gu": "હાઈડ્રોસીલ એ અંડકોશની આસપાસ પ્રવાહીનો પીડારહિત સંચય છે. તે નવજાત શિશુઓમાં અને 40 વર્ષથી વધુ ઉંમરના પુરુષોમાં સામાન્ય છે."
+    },
+    "when_to_see": {
+      "en": "Any new scrotal swelling should be scanned to exclude tumour or hernia.",
+      "hi": "किसी भी नई अंडकोश की सूजन की जांच ट्यूमर या हर्निया को बाहर करने के लिए स्कैन द्वारा करनी चाहिए।",
+      "gu": "કોઈપણ નવા અંડકોશની સોજોને ટ્યુમર અથવા હર્નિયાને નકારવા માટે સ્કેન કરાવવું જોઈએ."
+    },
+    "symptoms": {
+      "en": [
+        "Painless scrotal swelling, larger in the evening",
+        "Feeling of heaviness or drag",
+        "Bluish translucent swelling on torch test"
+      ],
+      "hi": [
+        "दर्द रहित अंडकोश की सूजन, जो शाम को अधिक होती है",
+        "भारीपन या खिंचाव की अनुभूति",
+        "टॉर्च टेस्ट पर नीली पारदर्शी सूजन"
+      ],
+      "gu": [
+        "પીડારહિત અંડકોશની સોજો, જે સાંજે વધુ હોય છે",
+        "ભારેપણું અથવા ખેંચાણની લાગણી",
+        "ટોર્ચ ટેસ્ટમાં વાદળી પારદર્શક સોજો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Idiopathic (most adults)",
+        "After infection / trauma / surgery",
+        "Filariasis (in endemic regions)",
+        "Malignancy (rare)"
+      ],
+      "hi": [
+        "अज्ञातहेतुक (अधिकांश वयस्क)",
+        "संक्रमण / चोट / सर्जरी के बाद",
+        "फाइलेरिया (स्थानिक क्षेत्रों में)",
+        "घातक ट्यूमर (दुर्लभ)"
+      ],
+      "gu": [
+        "અજ્ઞાત કારણ (મોટાભાગના પુખ્ત વયના)",
+        "ચેપ / ઇજા / શસ્ત્રક્રિયા પછી",
+        "ફાઇલેરિયા (સ્થાનિક પ્રદેશોમાં)",
+        "જીવલેણ ગાંઠ (દુર્લભ)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation for small, asymptomatic hydroceles",
+        "Open hydrocelectomy (Jaboulay / Lord's procedure)",
+        "Aspiration + sclerotherapy (frail patients)"
+      ],
+      "hi": [
+        "छोटे, लक्षण रहित हाइड्रोसील के लिए अवलोकन",
+        "ओपन हाइड्रोसेलेक्टॉमी (Jaboulay / Lord's प्रक्रिया)",
+        "एस्पिरेशन + स्क्लेरोथेरेपी (कमज़ोर रोगियों के लिए)"
+      ],
+      "gu": [
+        "નાના, લક્ષણ વિનાના હાઈડ્રોસીલ માટે અવલોકન",
+        "ઓપન હાઈડ્રોસીલેક્ટોમી (Jaboulay / Lord's પ્રક્રિયા)",
+        "એસ્પિરેશન + સ્ક્લેરોથેરાપી (નબળા દર્દીઓ માટે)"
+      ]
+    }
+  },
+  {
+    "id": "varicocele",
+    "icon": "chart-tree",
+    "image": null,
+    "name": {
+      "en": "Varicocele",
+      "hi": "Varicocele",
+      "gu": "Varicocele"
+    },
+    "tagline": {
+      "en": "Varicose veins of the scrotum — commonest reversible cause of male infertility.",
+      "hi": "अंडकोश की वैरिकोज़ नसें — पुरुष बांझपन का सबसे आम उलट सकने वाला कारण।",
+      "gu": "અંડકોશની વેરિકોઝ નસો — પુરુષ વંધ્યત્વનું સૌથી સામાન્ય ઉલટાવી શકાય તેવું કારણ।"
+    },
+    "overview": {
+      "en": "A varicocele is an enlargement of the pampiniform plexus of veins inside the scrotum, most often on the left. It can cause reduced sperm count and testicular atrophy.",
+      "hi": "Varicocele अंडकोश के अंदर पैम्पिनिफॉर्म प्लेक्सस नसों का बढ़ना है, जो अक्सर बाईं ओर होता है। इससे शुक्राणुओं की संख्या कम हो सकती है और अंडकोष सिकुड़ सकता है।",
+      "gu": "Varicocele એ અંડકોશની અંદર પેમ્પિનિફોર્મ પ્લેક્સસ નસોનું વિસ્તરણ છે, જે મોટાભાગે ડાબી બાજુએ થાય છે। આનાથી શુક્રાણુઓની સંખ્યા ઘટી શકે છે અને અંડકોષ સંકોચાઈ શકે છે।"
+    },
+    "when_to_see": {
+      "en": "If you have scrotal ache, testicular shrinkage or subfertility — get a Doppler ultrasound.",
+      "hi": "यदि आपको अंडकोश में दर्द, अंडकोष का छोटा होना या बांझपन की समस्या है — तो Doppler अल्ट्रासाउंड कराएं।",
+      "gu": "જો તમને અંડકોશમાં દુખાવો, અંડકોષ નાનો થવો અથવા વંધ્યત્વની સમસ્યા હોય — તો Doppler અલ્ટ્રાસાઉન્ડ કરાવો।"
+    },
+    "symptoms": {
+      "en": [
+        "'Bag of worms' feel in the scrotum",
+        "Dull ache worse on standing, relieved on lying",
+        "Reduced testicular size",
+        "Infertility"
+      ],
+      "hi": [
+        "अंडकोश में 'कीड़ों की थैली' जैसा महसूस होना",
+        "खड़े होने पर बढ़ने वाला और लेटने पर कम होने वाला हल्का दर्द",
+        "अंडकोष के आकार में कमी",
+        "बांझपन"
+      ],
+      "gu": [
+        "અંડકોશમાં 'કીડાઓની થેલી' જેવો અનુભવ",
+        "ઊભા રહેવાથી વધતો અને સૂતાં ઘટતો હળવો દુખાવો",
+        "અંડકોષના કદમાં ઘટાડો",
+        "વંધ્યત્વ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Incompetent valves in testicular veins",
+        "Longer left testicular vein drainage into left renal vein"
+      ],
+      "hi": [
+        "अंडकोष की नसों में दोषपूर्ण वाल्व",
+        "बायीं ओर की अंडकोष नस का लंबा होना और बाएं गुर्दे की नस में जाना"
+      ],
+      "gu": [
+        "અંડકોષની નસોમાં ખામીયુક્ત વાલ્વ",
+        "ડાબી અંડકોષની નસનું લાંબું હોવું અને ડાબી કિડનીની નસમાં જવું"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Sub-inguinal microsurgical varicocelectomy",
+        "Laparoscopic varicocelectomy",
+        "Percutaneous embolisation"
+      ],
+      "hi": [
+        "Sub-inguinal माइक्रोसर्जिकल varicocelectomy",
+        "Laparoscopic varicocelectomy",
+        "Percutaneous embolisation"
+      ],
+      "gu": [
+        "Sub-inguinal માઇક્રોસર્જિકલ varicocelectomy",
+        "Laparoscopic varicocelectomy",
+        "Percutaneous embolisation"
+      ]
+    }
+  },
+  {
+    "id": "undescended-testis",
+    "icon": "arrow-up-down",
+    "image": null,
+    "name": {
+      "en": "Undescended Testis",
+      "hi": "अवरोही वृषण (Undescended Testis)",
+      "gu": "અવરોહી અંડકોષ (Undescended Testis)"
+    },
+    "tagline": {
+      "en": "If not corrected by age 1, increases cancer risk.",
+      "hi": "यदि 1 वर्ष की आयु तक सुधार नहीं किया जाए, तो कैंसर का खतरा बढ़ जाता है।",
+      "gu": "જો 1 વર્ષની ઉંમર સુધી સુધારો ન થાય, તો કેન્સરનું જોખમ વધે છે।"
+    },
+    "overview": {
+      "en": "Cryptorchidism is a condition where one or both testicles have not descended into the scrotum by birth. Early correction prevents infertility and lowers cancer risk.",
+      "hi": "क्रिप्टोर्किडिज़्म एक ऐसी स्थिति है जिसमें जन्म के समय तक एक या दोनों वृषण अंडकोश में नहीं उतरे होते हैं। प्रारंभिक सुधार बांझपन को रोकता है और कैंसर के जोखिम को कम करता है।",
+      "gu": "ક્રિપ્ટોર્કિડિઝમ એ એવી સ્થિતિ છે જેમાં જન્મ સમયે એક અથવા બંને અંડકોષ અંડકોશમાં ઉતર્યા નથી. વહેલો સુધારો વંધ્યત્વ અટકાવે છે અને કેન્સરનું જોખમ ઘટાડે છે।"
+    },
+    "when_to_see": {
+      "en": "Any boy with one or both testes not in the scrotum by 6 months needs paediatric urology review.",
+      "hi": "किसी भी लड़के में यदि 6 महीने की आयु तक एक या दोनों वृषण अंडकोश में नहीं हैं, तो बाल रोग मूत्र रोग विशेषज्ञ से परामर्श आवश्यक है।",
+      "gu": "કોઈ પણ છોકરામાં જો 6 મહિનાની ઉંમર સુધી એક અથવા બંને અંડકોષ અંડકોશમાં ન હોય, તો બાળ મૂત્રપિંડ રોગ નિષ્ણાતની સલાહ જરૂરી છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Empty scrotum on one or both sides",
+        "Palpable testis in the groin",
+        "Asymmetric scrotum"
+      ],
+      "hi": [
+        "एक या दोनों तरफ खाली अंडकोश",
+        "कमर में स्पर्श करने योग्य वृषण",
+        "असममित अंडकोश"
+      ],
+      "gu": [
+        "એક અથવા બંને બાજુએ ખાલી અંડકોશ",
+        "જંઘામૂળમાં સ્પર્શ થઈ શકે તેવો અંડકોષ",
+        "અસમમિત અંડકોશ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Prematurity",
+        "Low birth weight",
+        "Family history",
+        "Hormonal factors"
+      ],
+      "hi": [
+        "समय से पूर्व जन्म",
+        "कम जन्म वजन",
+        "पारिवारिक इतिहास",
+        "हार्मोनल कारक"
+      ],
+      "gu": [
+        "સમય પહેલાં જન્મ",
+        "ઓછું જન્મ વજન",
+        "પારિવારિક ઇતિહાસ",
+        "હોર્મોનલ પરિબળો"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation up to 6 months",
+        "Orchidopexy (surgery) between 6–18 months of age",
+        "Laparoscopy for non-palpable testis"
+      ],
+      "hi": [
+        "6 महीने तक अवलोकन",
+        "ऑर्किडोपेक्सी (शल्य चिकित्सा) 6-18 महीने की आयु के बीच",
+        "स्पर्श न होने वाले वृषण के लिए Laparoscopy"
+      ],
+      "gu": [
+        "6 મહિના સુધી નિરીક્ષણ",
+        "ઓર્કિડોપેક્સી (શસ્ત્રક્રિયા) 6-18 મહિનાની ઉંમરની વચ્ચે",
+        "સ્પર્શ ન થતા અંડકોષ માટે Laparoscopy"
+      ]
+    }
+  },
+  {
+    "id": "ureteric-stricture",
+    "icon": "pipe",
+    "image": null,
+    "name": {
+      "en": "Ureteric Stricture",
+      "hi": "मूत्रवाहिनी संकुचन (Ureteric Stricture)",
+      "gu": "મૂત્રવાહિની સંકોચન (Ureteric Stricture)"
+    },
+    "tagline": {
+      "en": "Narrowing of the ureter that blocks urine flow.",
+      "hi": "मूत्रवाहिनी का सिकुड़ना जो मूत्र प्रवाह को अवरुद्ध करता है।",
+      "gu": "મૂત્રવાહિનીનું સંકુચિત થવું જે મૂત્ર પ્રવાહને અવરોધે છે।"
+    },
+    "overview": {
+      "en": "A ureteric stricture is a narrow segment of the ureter that obstructs urine drainage from the kidney, risking permanent damage if untreated.",
+      "hi": "मूत्रवाहिनी संकुचन मूत्रवाहिनी का एक संकरा भाग है जो गुर्दे से मूत्र निकासी में रुकावट डालता है, और यदि अनुपचारित छोड़ दिया जाए तो स्थायी क्षति का खतरा होता है।",
+      "gu": "મૂત્રવાહિની સંકોચન એ મૂત્રવાહિનીનો એક સાંકડો ભાગ છે જે કિડનીમાંથી મૂત્ર નિકાસમાં અવરોધ ઊભો કરે છે, અને સારવાર ન કરવામાં આવે તો કાયમી નુકસાનનું જોખમ રહે છે।"
+    },
+    "when_to_see": {
+      "en": "Persistent hydronephrosis on scan without a stone needs urology assessment.",
+      "hi": "स्कैन पर बिना पथरी के लगातार हाइड्रोनेफ्रोसिस दिखने पर मूत्र रोग विशेषज्ञ से परामर्श आवश्यक है।",
+      "gu": "સ્કેનમાં પથ્થર વિના સતત હાઈડ્રોનેફ્રોસિસ દેખાય તો યુરોલોજી મૂલ્યાંકન જરૂરી છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Flank pain",
+        "Recurrent UTIs",
+        "Silent loss of kidney function (detected on scans)",
+        "Blood in urine"
+      ],
+      "hi": [
+        "कमर में दर्द",
+        "बार-बार UTI होना",
+        "गुर्दे की कार्यक्षमता में चुपचाप कमी (स्कैन में पता चलती है)",
+        "मूत्र में रक्त"
+      ],
+      "gu": [
+        "કમરમાં દુખાવો",
+        "વારંવાર UTI થવી",
+        "કિડનીની કાર્યક્ષમતામાં શાંતિથી ઘટાડો (સ્કેનમાં શોધાય છે)",
+        "મૂત્રમાં લોહી"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Post-surgical (pelvic / gynaec surgery)",
+        "Stone or stent-related injury",
+        "Radiotherapy",
+        "TB, schistosomiasis"
+      ],
+      "hi": [
+        "शल्य-चिकित्सा के बाद (श्रोणि / स्त्री रोग सर्जरी)",
+        "पथरी या स्टेंट से संबंधित चोट",
+        "रेडियोथेरेपी",
+        "TB, स्किस्टोसोमियासिस"
+      ],
+      "gu": [
+        "શસ્ત્રક્રિયા પછી (પેલ્વિક / સ્ત્રીરોગ શસ્ત્રક્રિયા)",
+        "પથ્થર અથવા સ્ટેન્ટ સંબંધિત ઈજા",
+        "રેડિયોથેરેપી",
+        "TB, સ્કિસ્ટોસોમિયાસિસ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Endoscopic dilatation / laser incision",
+        "Ureteric re-implantation (Boari flap / psoas hitch)",
+        "Ileal ureter for long strictures"
+      ],
+      "hi": [
+        "एंडोस्कोपिक फैलाव / लेज़र चीरा",
+        "मूत्रवाहिनी पुनः प्रत्यारोपण (Boari flap / psoas hitch)",
+        "लंबे संकुचन के लिए इलियल मूत्रवाहिनी"
+      ],
+      "gu": [
+        "એન્ડોસ્કોપિક વિસ્તરણ / લેઝર ચીરો",
+        "મૂત્રવાહિની પુનઃ પ્રત્યારોપણ (Boari flap / psoas hitch)",
+        "લાંબા સંકોચન માટે ઇલિયલ મૂત્રવાહિની"
+      ]
+    }
+  },
+  {
+    "id": "hematuria",
+    "icon": "water-alert",
+    "image": null,
+    "name": {
+      "en": "Blood in Urine (Haematuria)",
+      "hi": "मूत्र में रक्त (हेमट्यूरिया)",
+      "gu": "પેશાબમાં લોહી (હેમેટ્યુરિયા)"
+    },
+    "tagline": {
+      "en": "Never ignore — may be the earliest sign of cancer.",
+      "hi": "कभी अनदेखा न करें — कैंसर का सबसे पहला संकेत हो सकता है।",
+      "gu": "ક્યારેય અવગણો નહીં — કેન્સરનું સૌથી પ્રારંભિક સંકેત હોઈ શકે છે।"
+    },
+    "overview": {
+      "en": "Haematuria is the presence of red blood cells in urine — visible (gross) or found on testing (microscopic). Every episode deserves evaluation.",
+      "hi": "हेमट्यूरिया मूत्र में लाल रक्त कोशिकाओं की उपस्थिति है — दिखाई देने वाला (सकल) या जांच में पाया गया (सूक्ष्म)। हर एपिसोड की जांच जरूरी है।",
+      "gu": "હેમેટ્યુરિયા એટલે પેશાબમાં લાલ રક્ત કોશિકાઓની હાજરી — દેખાતી (સ્થૂળ) અથવા પરીક્ષણમાં મળતી (સૂક્ષ્મ)। દરેક એપિસોડનું મૂલ્યાંકન જરૂરી છે।"
+    },
+    "when_to_see": {
+      "en": "Even a single episode of painless blood in urine warrants urology review — especially if you are over 40 or a smoker.",
+      "hi": "मूत्र में बिना दर्द के रक्त का एक भी एपिसोड यूरोलॉजी परामर्श की मांग करता है — विशेषकर यदि आप 40 वर्ष से अधिक हैं या धूम्रपान करते हैं।",
+      "gu": "પેશાબમાં દર્દ વગરના લોહીનો એક પણ એપિસોડ યુરોલોજી સમીક્ષાની માંગ કરે છે — ખાસ કરીને જો તમારી ઉંમર 40 વર્ષથી વધુ હોય અથવા ધૂમ્રપાન કરતા હોવ।"
+    },
+    "symptoms": {
+      "en": [
+        "Red/pink/tea-coloured urine",
+        "Clots in urine",
+        "May be painless (urothelial cancer) or painful (stones / infection)"
+      ],
+      "hi": [
+        "लाल/गुलाबी/चाय के रंग का मूत्र",
+        "मूत्र में थक्के",
+        "बिना दर्द (यूरोथेलियल कैंसर) या दर्द के साथ (पथरी / संक्रमण) हो सकता है"
+      ],
+      "gu": [
+        "લાલ/ગુલાબી/ચાના રંગનું પેશાબ",
+        "પેશાબમાં ગંઠાઈ ગયેલું લોહી",
+        "દર્દ વગર (યુરોથેલિયલ કેન્સર) અથવા દર્દ સાથે (પથરી / ચેપ) હોઈ શકે"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Urinary tract infection",
+        "Stones",
+        "Bladder / kidney / prostate cancer",
+        "BPH",
+        "Glomerular disease"
+      ],
+      "hi": [
+        "मूत्र मार्ग संक्रमण (UTI)",
+        "पथरी",
+        "मूत्राशय / गुर्दे / प्रोस्टेट कैंसर",
+        "BPH",
+        "ग्लोमेरुलर रोग"
+      ],
+      "gu": [
+        "પેશાબની નળીનો ચેપ (UTI)",
+        "પથરી",
+        "મૂત્રાશય / કિડની / પ્રોસ્ટેટ કેન્સર",
+        "BPH",
+        "ગ્લોમેરુલર રોગ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Urine culture, cytology, CT-urogram",
+        "Cystoscopy (flexible, OPD)",
+        "Treat the underlying cause"
+      ],
+      "hi": [
+        "मूत्र कल्चर, साइटोलॉजी, CT-यूरोग्राम",
+        "सिस्टोस्कोपी (फ्लेक्सिबल, OPD)",
+        "अंतर्निहित कारण का उपचार"
+      ],
+      "gu": [
+        "પેશાબ કલ્ચર, સાયટોલોજી, CT-યુરોગ્રામ",
+        "સિસ્ટોસ્કોપી (ફ્લેક્સિબલ, OPD)",
+        "અંતર્નિહિત કારણની સારવાર"
+      ]
+    }
+  },
+  {
+    "id": "overactive-bladder",
+    "icon": "water-pump",
+    "image": null,
+    "name": {
+      "en": "Overactive Bladder (OAB)",
+      "hi": "अतिसक्रिय मूत्राशय (OAB)",
+      "gu": "અતિસક્રિય મૂત્રાશય (OAB)"
+    },
+    "tagline": {
+      "en": "Sudden urges, frequent trips — very treatable.",
+      "hi": "अचानक तीव्र इच्छा, बार-बार जाना — पूरी तरह उपचार योग्य।",
+      "gu": "અચાનક તીવ્ર ઇચ્છા, વારંવાર જવું — સંપૂર્ણ સારવાર શક્ય."
+    },
+    "overview": {
+      "en": "OAB is a syndrome of urinary urgency, frequency, nocturia and urge-incontinence. It affects 1 in 6 adults and responds well to training plus medication.",
+      "hi": "OAB एक सिंड्रोम है जिसमें मूत्र की तीव्र इच्छा, बार-बार पेशाब आना, रात में उठना और अचानक असंयम होता है। यह 6 में से 1 वयस्क को प्रभावित करता है और प्रशिक्षण व दवा से अच्छी प्रतिक्रिया देता है।",
+      "gu": "OAB એક સિન્ડ્રોમ છે જેમાં પેશાબની તીવ્ર ઇચ્છા, વારંવાર પેશાબ, રાત્રે ઊઠવું અને અચાનક અસંયમ થાય છે. તે 6 માંથી 1 પુખ્ત વયના લોકોને અસર કરે છે અને તાલીમ તથા દવાથી સારો પ્રતિસાદ આપે છે."
+    },
+    "when_to_see": {
+      "en": "If the urgency disrupts work, sleep or social life — book a consultation.",
+      "hi": "यदि यह तीव्र इच्छा काम, नींद या सामाजिक जीवन में बाधा डाले — परामर्श बुक करें।",
+      "gu": "જો આ તીવ્ર ઇચ્છા કામ, ઊંઘ અથવા સામાજિક જીવનમાં અવરોધ લાવે — પરામર્શ બુક કરો."
+    },
+    "symptoms": {
+      "en": [
+        "Sudden, compelling urge to urinate",
+        "Urinary frequency (>8 times a day)",
+        "Waking at night to urinate (>2 times)",
+        "Urge incontinence"
+      ],
+      "hi": [
+        "अचानक, बाध्यकारी पेशाब की इच्छा",
+        "बार-बार पेशाब आना (दिन में >8 बार)",
+        "रात में पेशाब के लिए उठना (>2 बार)",
+        "अचानक असंयम (मूत्र रोक न पाना)"
+      ],
+      "gu": [
+        "અચાનક, બંધનકર્તા પેશાબની ઇચ્છા",
+        "વારંવાર પેશાબ (દિવસમાં >8 વખત)",
+        "રાત્રે પેશાબ માટે જાગવું (>2 વખત)",
+        "અચાનક અસંયમ (પેશાબ રોકી ન શકવું)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Detrusor overactivity",
+        "Ageing, weak pelvic floor",
+        "Bladder stones / tumours / stones",
+        "Neurological (Parkinson's, stroke, MS)"
+      ],
+      "hi": [
+        "डिट्रूसर मांसपेशी की अतिसक्रियता",
+        "बढ़ती उम्र, कमजोर पेल्विक फ्लोर",
+        "मूत्राशय में पथरी / ट्यूमर",
+        "तंत्रिका संबंधी (पार्किंसंस, स्ट्रोक, MS)"
+      ],
+      "gu": [
+        "ડિટ્રુઝર સ્નાયુની અતિસક્રિયતા",
+        "વૃદ્ધાવસ્થા, નબળા પેલ્વિક ફ્લોર",
+        "મૂત્રાશયમાં પથરી / ગાંઠ",
+        "ચેતાતંત્ર સંબંધિત (પાર્કિન્સન્સ, સ્ટ્રોક, MS)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Bladder training + Kegel exercises",
+        "Reduce caffeine / alcohol",
+        "Anti-muscarinics (solifenacin, tolterodine)",
+        "Beta-3 agonist (mirabegron)",
+        "Sacral neuromodulation / Botox injections"
+      ],
+      "hi": [
+        "मूत्राशय प्रशिक्षण + केगल व्यायाम",
+        "कैफीन / शराब कम करें",
+        "एंटी-मस्कैरिनिक दवाएं (solifenacin, tolterodine)",
+        "Beta-3 agonist (mirabegron)",
+        "Sacral neuromodulation / Botox इंजेक्शन"
+      ],
+      "gu": [
+        "મૂત્રાશય તાલીમ + કેગલ કસરતો",
+        "કેફીન / દારૂ ઘટાડો",
+        "એન્ટિ-મસ્કેરિનિક દવાઓ (solifenacin, tolterodine)",
+        "Beta-3 agonist (mirabegron)",
+        "Sacral neuromodulation / Botox ઇન્જેક્શન"
+      ]
+    }
+  },
+  {
+    "id": "ckd",
+    "icon": "kidney",
+    "image": null,
+    "name": {
+      "en": "Chronic Kidney Disease (CKD)",
+      "hi": "क्रोनिक किडनी डिजीज (CKD)",
+      "gu": "ક્રોનિક કિડની ડિસીઝ (CKD)"
+    },
+    "tagline": {
+      "en": "Silent disease — early detection prevents dialysis.",
+      "hi": "मूक रोग — शीघ्र पहचान डायलिसिस से बचाती है।",
+      "gu": "મૂક રોગ — વહેલી શોધ ડાયલિસિસ અટકાવે છે."
+    },
+    "overview": {
+      "en": "CKD is a gradual loss of kidney function over months to years, staged by eGFR. Many patients have no symptoms until very late stages.",
+      "hi": "CKD महीनों से वर्षों में किडनी की कार्यक्षमता में धीरे-धीरे कमी है, जिसे eGFR द्वारा चरणों में बांटा जाता है। अधिकांश रोगियों में बहुत देर तक कोई लक्षण नहीं होते।",
+      "gu": "CKD એ મહિનાઓથી વર્ષોમાં કિડનીના કાર્યમાં ધીમે ધીમે ઘટાડો છે, જેને eGFR દ્વારા તબક્કાઓમાં વહેંચવામાં આવે છે. ઘણા દર્દીઓમાં ખૂબ મોડા તબક્કા સુધી કોઈ લક્ષણો હોતા નથી."
+    },
+    "when_to_see": {
+      "en": "Annual kidney profile (creatinine, eGFR, urine ACR) is mandatory if you have diabetes or hypertension.",
+      "hi": "यदि आपको मधुमेह या उच्च रक्तचाप है, तो वार्षिक किडनी प्रोफाइल (क्रिएटिनिन, eGFR, मूत्र ACR) अनिवार्य है।",
+      "gu": "જો તમને ડાયાબિટીસ અથવા હાઈ બ્લડ પ્રેશર હોય, તો વાર્ષિક કિડની પ્રોફાઈલ (ક્રિએટિનિન, eGFR, યુરિન ACR) ફરજિયાત છે."
+    },
+    "symptoms": {
+      "en": [
+        "Fatigue, swelling in feet/face",
+        "Reduced urine output",
+        "Itching, poor appetite",
+        "Hypertension",
+        "Anaemia"
+      ],
+      "hi": [
+        "थकान, पैरों/चेहरे पर सूजन",
+        "मूत्र की मात्रा में कमी",
+        "खुजली, भूख न लगना",
+        "उच्च रक्तचाप",
+        "रक्ताल्पता (एनीमिया)"
+      ],
+      "gu": [
+        "થાક, પગ/ચહેરા પર સોજો",
+        "પેશાબનું પ્રમાણ ઘટવું",
+        "ખંજવાળ, ભૂખ ઓછી લાગવી",
+        "હાઈ બ્લડ પ્રેશર",
+        "એનિમિયા (લોહીની ઉણપ)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Diabetes mellitus",
+        "Hypertension",
+        "Chronic glomerulonephritis",
+        "Polycystic kidneys, obstructive uropathy"
+      ],
+      "hi": [
+        "मधुमेह (डायबिटीज मेलिटस)",
+        "उच्च रक्तचाप (हाइपरटेंशन)",
+        "क्रोनिक ग्लोमेरुलोनेफ्राइटिस",
+        "पॉलीसिस्टिक किडनी, अवरोधक यूरोपैथी"
+      ],
+      "gu": [
+        "ડાયાબિટીસ મેલિટસ",
+        "હાઈ બ્લડ પ્રેશર",
+        "ક્રોનિક ગ્લોમેરુલોનેફ્રાઈટિસ",
+        "પોલિસિસ્ટિક કિડની, અવરોધક યુરોપેથી"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Tight BP and sugar control, SGLT2 inhibitors",
+        "Protein-restricted diet, avoid NSAIDs",
+        "Treat anaemia, bone‑mineral disease",
+        "Plan for dialysis / transplant when eGFR <20"
+      ],
+      "hi": [
+        "रक्तचाप और शुगर का सख्त नियंत्रण, SGLT2 इनहिबिटर्स",
+        "प्रोटीन-प्रतिबंधित आहार, NSAIDs से बचें",
+        "एनीमिया, अस्थि-खनिज रोग का उपचार",
+        "eGFR <20 होने पर डायलिसिस/प्रत्यारोपण की योजना"
+      ],
+      "gu": [
+        "BP અને સુગરનું કડક નિયંત્રણ, SGLT2 ઇન્હિબિટર્સ",
+        "પ્રોટીન-પ્રતિબંધિત આહાર, NSAIDs ટાળો",
+        "એનિમિયા, હાડકા-ખનિજ રોગની સારવાર",
+        "eGFR <20 હોય ત્યારે ડાયલિસિસ/પ્રત્યારોપણની યોજના"
+      ]
+    }
+  },
+  {
+    "id": "aki",
+    "icon": "alert",
+    "image": null,
+    "name": {
+      "en": "Acute Kidney Injury (AKI)",
+      "hi": "तीव्र गुर्दे की चोट (AKI)",
+      "gu": "તીવ્ર કિડની ઇજા (AKI)"
+    },
+    "tagline": {
+      "en": "Rapid loss of kidney function — often reversible if treated early.",
+      "hi": "गुर्दों के कार्य में तेज़ी से कमी — शीघ्र उपचार से अक्सर ठीक हो सकता है।",
+      "gu": "કિડનીની કામગીરીમાં ઝડપી ઘટાડો — જલદી સારવાર કરવામાં આવે તો ઘણીવાર ઉલટાવી શકાય છે।"
+    },
+    "overview": {
+      "en": "AKI is a sudden drop in kidney function over hours to days, commonly seen after dehydration, sepsis, contrast scans or nephrotoxic drugs.",
+      "hi": "AKI गुर्दों के कार्य में कुछ घंटों से कुछ दिनों में अचानक गिरावट है, जो आमतौर पर निर्जलीकरण, सेप्सिस, कंट्रास्ट स्कैन या नेफ्रोटॉक्सिक दवाओं के बाद देखी जाती है।",
+      "gu": "AKI એ કિડનીની કામગીરીમાં કલાકોથી દિવસોમાં અચાનક ઘટાડો છે, જે સામાન્ય રીતે નિર્જલીકરણ, સેપ્સિસ, કોન્ટ્રાસ્ટ સ્કેન અથવા નેફ્રોટોક્સિક દવાઓ પછી જોવા મળે છે।"
+    },
+    "when_to_see": {
+      "en": "Sudden drop in urine output + swelling — go to an emergency room.",
+      "hi": "पेशाब की मात्रा में अचानक कमी + सूजन — तुरंत आपातकालीन कक्ष में जाएं।",
+      "gu": "પેશાબની માત્રામાં અચાનક ઘટાડો + સોજો — તાત્કાલિક ઇમરજન્સી રૂમમાં જાઓ।"
+    },
+    "symptoms": {
+      "en": [
+        "Reduced urine output",
+        "Swelling, breathlessness",
+        "Confusion, drowsiness",
+        "Nausea, vomiting"
+      ],
+      "hi": [
+        "पेशाब की मात्रा में कमी",
+        "सूजन, सांस लेने में तकलीफ",
+        "भ्रम, उनींदापन",
+        "जी मिचलाना, उल्टी"
+      ],
+      "gu": [
+        "પેશાબની માત્રામાં ઘટાડો",
+        "સોજો, શ્વાસ લેવામાં તકલીફ",
+        "મૂંઝવણ, નિદ્રાળુતા",
+        "ઉબકા, ઉલટી"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Dehydration, sepsis, shock (pre‑renal)",
+        "Drugs — NSAIDs, aminoglycosides, contrast",
+        "Obstruction (stones, BPH, tumour)"
+      ],
+      "hi": [
+        "निर्जलीकरण, सेप्सिस, शॉक (प्री-रीनल)",
+        "दवाएं — NSAIDs, एमिनोग्लाइकोसाइड्स, कंट्रास्ट",
+        "अवरोध (पथरी, BPH, ट्यूमर)"
+      ],
+      "gu": [
+        "નિર્જલીકરણ, સેપ્સિસ, આઘાત (પ્રી-રેનલ)",
+        "દવાઓ — NSAIDs, એમિનોગ્લાયકોસાઇડ્સ, કોન્ટ્રાસ્ટ",
+        "અવરોધ (પથરી, BPH, ગાંઠ)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Fluid resuscitation, stop offending drugs",
+        "Relieve obstruction — DJ stent / PCN",
+        "Temporary dialysis if severe"
+      ],
+      "hi": [
+        "द्रव पुनर्जीवन, हानिकारक दवाएं बंद करें",
+        "अवरोध दूर करें — DJ स्टेंट / PCN",
+        "गंभीर स्थिति में अस्थायी डायलिसिस"
+      ],
+      "gu": [
+        "પ્રવાહી પુનરુત્થાન, હાનિકારક દવાઓ બંધ કરો",
+        "અવરોધ દૂર કરો — DJ સ્ટેન્ટ / PCN",
+        "ગંભીર હોય તો અસ્થાયી ડાયાલિસિસ"
+      ]
+    }
+  },
+  {
+    "id": "pcos-kidney",
+    "icon": "circle-multiple",
+    "image": null,
+    "name": {
+      "en": "Polycystic Kidney Disease (PKD)",
+      "hi": "पॉलीसिस्टिक किडनी रोग (PKD)",
+      "gu": "પોલીસિસ્ટિક કિડની રોગ (PKD)"
+    },
+    "tagline": {
+      "en": "Inherited kidney cysts that enlarge over decades.",
+      "hi": "वंशानुगत गुर्दे की सिस्ट जो दशकों में बढ़ती हैं।",
+      "gu": "વંશપરંપરાગત કિડનીની ગાંઠો જે દશકોમાં વધે છે."
+    },
+    "overview": {
+      "en": "Autosomal Dominant PKD is an inherited condition where multiple fluid-filled cysts grow in both kidneys, eventually causing kidney failure.",
+      "hi": "ऑटोसोमल डॉमिनेंट PKD एक वंशानुगत स्थिति है जिसमें दोनों गुर्दों में कई द्रव से भरी सिस्ट बढ़ती हैं, जो अंततः गुर्दे की विफलता का कारण बनती हैं।",
+      "gu": "ઓટોસોમલ ડોમિનન્ટ PKD એક વંશપરંપરાગત સ્થિતિ છે જેમાં બંને કિડનીમાં અનેક પ્રવાહીથી ભરેલી ગાંઠો વધે છે, જે અંતે કિડની નિષ્ફળતાનું કારણ બને છે."
+    },
+    "when_to_see": {
+      "en": "Screen all first-degree relatives of a PKD patient with an ultrasound.",
+      "hi": "PKD रोगी के सभी प्रथम-श्रेणी के संबंधियों की अल्ट्रासाउंड से जांच करें।",
+      "gu": "PKD દર્દીના તમામ પ્રથમ-ડિગ્રી સંબંધીઓની અલ્ટ્રાસાઉન્ડથી તપાસ કરો."
+    },
+    "symptoms": {
+      "en": [
+        "Flank pain",
+        "Blood in urine",
+        "Hypertension from young age",
+        "Recurrent UTIs / cyst infection"
+      ],
+      "hi": [
+        "कमर दर्द",
+        "मूत्र में रक्त",
+        "कम उम्र से उच्च रक्तचाप",
+        "बार-बार UTI / सिस्ट संक्रमण"
+      ],
+      "gu": [
+        "કમરમાં દુખાવો",
+        "પેશાબમાં લોહી",
+        "નાની ઉંમરથી હાયપરટેન્શન",
+        "વારંવાર UTI / ગાંઠનો ચેપ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "PKD1 / PKD2 gene mutations (dominant inheritance)"
+      ],
+      "hi": [
+        "PKD1 / PKD2 जीन उत्परिवर्तन (प्रमुख वंशानुक्रम)"
+      ],
+      "gu": [
+        "PKD1 / PKD2 જીન પરિવર્તન (પ્રભાવી વારસો)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Tight BP control, tolvaptan for rapidly progressing disease",
+        "Cyst deroofing if painful",
+        "Dialysis / transplant at end-stage"
+      ],
+      "hi": [
+        "कड़ा BP नियंत्रण, तेजी से बढ़ने वाली बीमारी के लिए टॉल्वैप्टन",
+        "दर्दनाक होने पर सिस्ट डिरूफिंग",
+        "अंतिम चरण में डायलिसिस / प्रत्यारोपण"
+      ],
+      "gu": [
+        "કડક BP નિયંત્રણ, ઝડપથી વધતા રોગ માટે ટોલવેપ્ટન",
+        "દુખાવાવાળી હોય તો ગાંઠ ડીરૂફિંગ",
+        "અંતિમ તબક્કે ડાયાલિસિસ / પ્રત્યારોપણ"
+      ]
+    }
+  },
+  {
+    "id": "hydronephrosis",
+    "icon": "water",
+    "image": null,
+    "name": {
+      "en": "Hydronephrosis",
+      "hi": "हाइड्रोनेफ्रोसिस",
+      "gu": "હાઇડ્રોનેફ્રોસિસ"
+    },
+    "tagline": {
+      "en": "Swelling of the kidney due to urine build-up.",
+      "hi": "मूत्र जमा होने से गुर्दे में सूजन।",
+      "gu": "પેશાબ જમા થવાથી કિડનીમાં સોજો."
+    },
+    "overview": {
+      "en": "Hydronephrosis refers to dilatation of the kidney drainage system caused by obstruction to urine flow — from stones, PUJ obstruction, tumours or BPH.",
+      "hi": "हाइड्रोनेफ्रोसिस गुर्दे की निकासी प्रणाली का फैलाव है जो मूत्र प्रवाह में रुकावट के कारण होता है — पथरी, PUJ अवरोध, ट्यूमर या BPH से।",
+      "gu": "હાઇડ્રોનેફ્રોસિસ એટલે કિડનીની ડ્રેનેજ સિસ્ટમનું વિસ્તરણ જે પેશાબના પ્રવાહમાં અવરોધને કારણે થાય છે — પથરી, PUJ અવરોધ, ગાંઠો અથવા BPH થી."
+    },
+    "when_to_see": {
+      "en": "Any newly diagnosed hydronephrosis on scan needs urology review within 2 weeks.",
+      "hi": "स्कैन पर नया पाया गया कोई भी हाइड्रोनेफ्रोसिस 2 सप्ताह के भीतर यूरोलॉजी जांच की आवश्यकता है।",
+      "gu": "સ્કેન પર નવો શોધાયેલ કોઈપણ હાઇડ્રોનેફ્રોસિસને 2 અઠવાડિયામાં યુરોલોજી તપાસની જરૂર છે."
+    },
+    "symptoms": {
+      "en": [
+        "Flank pain or dull ache",
+        "Often silent (found incidentally)",
+        "Nausea / vomiting",
+        "UTIs"
+      ],
+      "hi": [
+        "कमर में दर्द या सुस्त पीड़ा",
+        "अक्सर मौन (संयोग से पाया जाता है)",
+        "मतली / उल्टी",
+        "UTI संक्रमण"
+      ],
+      "gu": [
+        "કમરમાં દુખાવો અથવા નીરસ પીડા",
+        "ઘણીવાર શાંત (આકસ્મિક રીતે મળી આવે)",
+        "ઉબકા / ઉલટી",
+        "UTI ચેપ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Ureteric stones",
+        "PUJ obstruction (congenital)",
+        "Retroperitoneal fibrosis, tumours",
+        "BPH with chronic retention"
+      ],
+      "hi": [
+        "मूत्रवाहिनी में पथरी",
+        "PUJ अवरोध (जन्मजात)",
+        "रेट्रोपेरिटोनियल फाइब्रोसिस, ट्यूमर",
+        "BPH के साथ क्रोनिक मूत्र रुकावट"
+      ],
+      "gu": [
+        "મૂત્રનલિકામાં પથરી",
+        "PUJ અવરોધ (જન્મજાત)",
+        "રેટ્રોપેરિટોનિયલ ફાઇબ્રોસિસ, ગાંઠો",
+        "BPH સાથે ક્રોનિક પેશાબ અટકાવ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Treat the cause (URS, PCN, DJ stent, pyeloplasty)",
+        "Percutaneous nephrostomy if sepsis / AKI"
+      ],
+      "hi": [
+        "कारण का उपचार करें (URS, PCN, DJ स्टेंट, पाइलोप्लास्टी)",
+        "सेप्सिस / AKI होने पर पर्क्यूटेनियस नेफ्रोस्टॉमी"
+      ],
+      "gu": [
+        "કારણની સારવાર કરો (URS, PCN, DJ સ્ટેન્ટ, પાયલોપ્લાસ્ટી)",
+        "સેપ્સિસ / AKI હોય તો પર્ક્યુટેનિયસ નેફ્રોસ્ટોમી"
+      ]
+    }
+  },
+  {
+    "id": "puj-obstruction",
+    "icon": "pipe-disconnected",
+    "image": null,
+    "name": {
+      "en": "PUJ Obstruction",
+      "hi": "PUJ अवरोध",
+      "gu": "PUJ અવરોધ"
+    },
+    "tagline": {
+      "en": "Congenital narrowing where kidney joins the ureter.",
+      "hi": "जन्मजात संकुचन जहाँ गुर्दा मूत्रवाहिनी से जुड़ता है।",
+      "gu": "જન્મજાત સંકોચન જ્યાં કિડની મૂત્રનળી સાથે જોડાય છે."
+    },
+    "overview": {
+      "en": "Pelvi-ureteric junction obstruction is usually a congenital narrowing or aberrant vessel causing intermittent flank pain and hydronephrosis.",
+      "hi": "पेल्वि-यूरेटेरिक जंक्शन अवरोध आमतौर पर एक जन्मजात संकुचन या असामान्य रक्त वाहिका है जो रुक-रुक कर पार्श्व दर्द और हाइड्रोनेफ्रोसिस का कारण बनती है।",
+      "gu": "પેલ્વિ-યુરેટરિક જંક્શન અવરોધ સામાન્ય રીતે જન્મજાત સંકોચન અથવા અસામાન્ય રુધિરવાહિની છે જે તૂટક તૂટક બાજુનો દુખાવો અને હાઇડ્રોનેફ્રોસિસનું કારણ બને છે."
+    },
+    "when_to_see": {
+      "en": "Recurrent flank pain with hydronephrosis — ask for a renogram (DTPA / MAG3).",
+      "hi": "बार-बार होने वाला पार्श्व दर्द जिसमें हाइड्रोनेफ्रोसिस हो — रेनोग्राम (DTPA / MAG3) के लिए पूछें।",
+      "gu": "હાઇડ્રોનેફ્રોસિસ સાથે વારંવાર બાજુનો દુખાવો — રેનોગ્રામ (DTPA / MAG3) માટે પૂછો."
+    },
+    "symptoms": {
+      "en": [
+        "Intermittent flank pain (Dietl's crisis)",
+        "Pain after drinking fluids or alcohol",
+        "Recurrent UTI",
+        "Haematuria"
+      ],
+      "hi": [
+        "रुक-रुक कर पार्श्व दर्द (Dietl's crisis)",
+        "तरल पदार्थ या शराब पीने के बाद दर्द",
+        "बार-बार UTI होना",
+        "रक्तमेह (हेमेच्युरिया)"
+      ],
+      "gu": [
+        "તૂટક તૂટક બાજુનો દુખાવો (Dietl's crisis)",
+        "પ્રવાહી અથવા દારૂ પીધા પછી દુખાવો",
+        "વારંવાર UTI થવું",
+        "હેમેચ્યુરિયા (લોહીયુક્ત પેશાબ)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Intrinsic narrowing",
+        "Crossing vessel",
+        "Ureteric polyps (rare)"
+      ],
+      "hi": [
+        "आंतरिक संकुचन",
+        "क्रॉसिंग रक्त वाहिका",
+        "मूत्रवाहिनी पॉलिप्स (दुर्लभ)"
+      ],
+      "gu": [
+        "આંતરિક સંકોચન",
+        "ક્રોસિંગ રુધિરવાહિની",
+        "મૂત્રનળીના પોલિપ્સ (દુર્લભ)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation if function preserved",
+        "Laparoscopic pyeloplasty (gold standard)",
+        "Endopyelotomy for select cases"
+      ],
+      "hi": [
+        "यदि कार्यक्षमता संरक्षित है तो अवलोकन",
+        "लैप्रोस्कोपिक पायलोप्लास्टी (स्वर्ण मानक)",
+        "चुनिंदा मामलों के लिए एंडोपायलोटॉमी"
+      ],
+      "gu": [
+        "જો કાર્યક્ષમતા જાળવવામાં આવી હોય તો અવલોકન",
+        "લેપ્રોસ્કોપિક પાયલોપ્લાસ્ટી (ગોલ્ડ સ્ટાન્ડર્ડ)",
+        "પસંદગીના કેસો માટે એન્ડોપાયલોટોમી"
+      ]
+    }
+  },
+  {
+    "id": "urethral-stricture",
+    "icon": "pipe",
+    "image": null,
+    "name": {
+      "en": "Urethral Stricture",
+      "hi": "मूत्रमार्ग संकीर्णता (Urethral Stricture)",
+      "gu": "મૂત્રમાર્ગ સંકોચન (Urethral Stricture)"
+    },
+    "tagline": {
+      "en": "Narrow urethra causing weak stream and straining.",
+      "hi": "संकुचित मूत्रमार्ग जिससे कमजोर धारा और दबाव की समस्या होती है।",
+      "gu": "સાંકડો મૂત્રમાર્ગ જેથી નબળો પ્રવાહ અને દબાણની સમસ્યા થાય છે।"
+    },
+    "overview": {
+      "en": "Urethral stricture is scarring that narrows the urethra, most common in men after trauma, infection or catheterisation.",
+      "hi": "मूत्रमार्ग संकीर्णता एक ऐसी स्थिति है जिसमें निशान ऊतक के कारण मूत्रमार्ग संकरा हो जाता है। यह आमतौर पर पुरुषों में चोट, संक्रमण या कैथेटर लगाने के बाद होता है।",
+      "gu": "મૂત્રમાર્ગ સંકોચન એ એક એવી સ્થિતિ છે જેમાં ડાઘ પેશીને કારણે મૂત્રમાર્ગ સાંકડો થઈ જાય છે। આ સામાન્ય રીતે પુરુષોમાં ઈજા, ચેપ અથવા કેથેટર લગાવ્યા પછી થાય છે।"
+    },
+    "when_to_see": {
+      "en": "If uroflow is <10 ml/s or the stream splits and sprays — get a urethral evaluation.",
+      "hi": "यदि uroflow 10 ml/s से कम है या पेशाब की धारा फैलती और छिटकती है — तो मूत्रमार्ग की जांच करवाएं।",
+      "gu": "જો uroflow 10 ml/s કરતાં ઓછો હોય અથવા પેશાબનો પ્રવાહ વિભાજિત થાય અને છંટકાય — તો મૂત્રમાર્ગની તપાસ કરાવો।"
+    },
+    "symptoms": {
+      "en": [
+        "Weak or splitting urinary stream",
+        "Straining, hesitancy, incomplete emptying",
+        "Recurrent UTIs",
+        "Blood in urine or semen"
+      ],
+      "hi": [
+        "कमजोर या विभाजित पेशाब की धारा",
+        "दबाव लगाना, रुकावट, अधूरा खाली होना",
+        "बार-बार UTI होना",
+        "पेशाब या वीर्य में खून आना"
+      ],
+      "gu": [
+        "નબળો અથવા વિભાજિત પેશાબનો પ્રવાહ",
+        "દબાણ લગાવવું, અટકવું, અપૂર્ણ ખાલી થવું",
+        "વારંવાર UTI થવું",
+        "પેશાબ અથવા વીર્યમાં લોહી આવવું"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Trauma (straddle injury, catheterisation)",
+        "Infection (STI, prostatitis)",
+        "Previous urethral surgery",
+        "Lichen sclerosus"
+      ],
+      "hi": [
+        "चोट (घुड़सवारी चोट, कैथेटर लगाना)",
+        "संक्रमण (STI, प्रोस्टेटाइटिस)",
+        "पूर्व में हुई मूत्रमार्ग की सर्जरी",
+        "Lichen sclerosus"
+      ],
+      "gu": [
+        "ઈજા (ઘોડેસવારી ઈજા, કેથેટર લગાવવું)",
+        "ચેપ (STI, પ્રોસ્ટેટાઇટિસ)",
+        "અગાઉની મૂત્રમાર્ગની શસ્ત્રક્રિયા",
+        "Lichen sclerosus"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Dilatation or optical internal urethrotomy (short strictures)",
+        "Urethroplasty (buccal mucosa graft)"
+      ],
+      "hi": [
+        "विस्तारण (Dilatation) या optical internal urethrotomy (छोटी संकीर्णता के लिए)",
+        "Urethroplasty (buccal mucosa graft के साथ)"
+      ],
+      "gu": [
+        "વિસ્તરણ (Dilatation) અથવા optical internal urethrotomy (નાના સંકોચન માટે)",
+        "Urethroplasty (buccal mucosa graft સાથે)"
+      ]
+    }
+  },
+  {
+    "id": "neurogenic-bladder",
+    "icon": "brain",
+    "image": null,
+    "name": {
+      "en": "Neurogenic Bladder",
+      "hi": "न्यूरोजेनिक ब्लैडर",
+      "gu": "ન્યુરોજેનિક બ્લેડર"
+    },
+    "tagline": {
+      "en": "Bladder issues from nerve injury or disease.",
+      "hi": "तंत्रिका क्षति या रोग से मूत्राशय की समस्याएं।",
+      "gu": "ચેતા ઇજા અથવા રોગથી મૂત્રાશયની સમસ્યાઓ।"
+    },
+    "overview": {
+      "en": "The bladder and its outlet rely on an intact nervous system. Spinal cord injury, MS, Parkinson’s or spina bifida can cause a neurogenic bladder.",
+      "hi": "मूत्राशय और इसके निकास के लिए एक सुदृढ़ तंत्रिका तंत्र आवश्यक है। रीढ़ की हड्डी में चोट, MS, पार्किंसंस या स्पाइना बिफिडा न्यूरोजेनिक ब्लैडर का कारण बन सकते हैं।",
+      "gu": "મૂત્રાશય અને તેના આઉટલેટ માટે અખંડ ચેતાતંત્ર જરૂરી છે. કરોડરજ્જુની ઇજા, MS, પાર્કિન્સન્સ અથવા સ્પાઇના બિફિડા ન્યુરોજેનિક બ્લેડરનું કારણ બની શકે છે।"
+    },
+    "when_to_see": {
+      "en": "Any neurological disease with new bladder symptoms — see a urologist within a month.",
+      "hi": "किसी भी न्यूरोलॉजिकल बीमारी के साथ नए मूत्राशय के लक्षण — एक महीने के भीतर मूत्र रोग विशेषज्ञ से मिलें।",
+      "gu": "કોઈપણ ન્યુરોલોજિકલ રોગ સાથે નવા મૂત્રાશયના લક્ષણો — એક મહિનાની અંદર યુરોલોજિસ્ટને મળો।"
+    },
+    "symptoms": {
+      "en": [
+        "Inability to fully empty the bladder",
+        "Urinary retention / overflow",
+        "Sudden urge incontinence",
+        "Recurrent UTIs, stones"
+      ],
+      "hi": [
+        "मूत्राशय को पूरी तरह खाली न कर पाना",
+        "मूत्र प्रतिधारण / ओवरफ्लो",
+        "अचानक तीव्र असंयम",
+        "बार-बार UTI, पथरी"
+      ],
+      "gu": [
+        "મૂત્રાશયને સંપૂર્ણ ખાલી કરવામાં અસમર્થતા",
+        "મૂત્ર પ્રતિધારણ / ઓવરફ્લો",
+        "અચાનક તીવ્ર અસંયમ",
+        "વારંવાર UTI, પથરી"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Spinal cord injury / tumour",
+        "Multiple sclerosis, Parkinson's",
+        "Diabetic neuropathy",
+        "Spina bifida"
+      ],
+      "hi": [
+        "रीढ़ की हड्डी में चोट / ट्यूमर",
+        "Multiple sclerosis, पार्किंसंस",
+        "डायबिटिक न्यूरोपैथी",
+        "स्पाइना बिफिडा"
+      ],
+      "gu": [
+        "કરોડરજ્જુની ઇજા / ગાંઠ",
+        "Multiple sclerosis, પાર્કિન્સન્સ",
+        "ડાયાબેટિક ન્યુરોપેથી",
+        "સ્પાઇના બિફિડા"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Clean intermittent self-catheterisation (CISC)",
+        "Anti-muscarinics / beta-3 agonists",
+        "Botox detrusor injection",
+        "Augmentation cystoplasty, sacral neuromodulation"
+      ],
+      "hi": [
+        "स्वच्छ आंतरायिक स्व-कैथीटेराइजेशन (CISC)",
+        "एंटी-मस्कैरिनिक्स / बीटा-3 एगोनिस्ट",
+        "Botox डिट्रसर इंजेक्शन",
+        "ऑगमेंटेशन सिस्टोप्लास्टी, सेक्रल न्यूरोमॉड्यूलेशन"
+      ],
+      "gu": [
+        "ક્લીન ઇન્ટરમિટન્ટ સેલ્ફ-કેથેટેરાઇઝેશન (CISC)",
+        "એન્ટી-મસ્કેરિનિક્સ / બીટા-3 એગોનિસ્ટ્સ",
+        "Botox ડિટ્રુઝર ઇન્જેક્શન",
+        "ઓગમેન્ટેશન સિસ્ટોપ્લાસ્ટી, સેક્રલ ન્યુરોમોડ્યુલેશન"
+      ]
+    }
+  },
+  {
+    "id": "nocturnal-enuresis",
+    "icon": "weather-night",
+    "image": null,
+    "name": {
+      "en": "Bedwetting (Enuresis)",
+      "hi": "बिस्तर गीला करना (एन्यूरेसिस)",
+      "gu": "પથારીમાં પેશાબ કરવો (એન્યુરેસિસ)"
+    },
+    "tagline": {
+      "en": "Night-time wetting in children and adults — treatable.",
+      "hi": "बच्चों और वयस्कों में रात को बिस्तर गीला होना — उपचार संभव है।",
+      "gu": "બાળકો અને પુખ્ત વયના લોકોમાં રાત્રે પથારી ભીની થવી — સારવાર શક્ય છે।"
+    },
+    "overview": {
+      "en": "Nocturnal enuresis is involuntary urination during sleep, common until age 6. Persisting beyond 7 years deserves evaluation.",
+      "hi": "निशाचर एन्यूरेसिस नींद के दौरान अनैच्छिक पेशाब है, जो 6 वर्ष की आयु तक सामान्य है। 7 वर्ष से अधिक आयु में जारी रहने पर जांच आवश्यक है।",
+      "gu": "નિશાચર એન્યુરેસિસ એટલે ઊંઘ દરમિયાન અનૈચ્છિક પેશાબ થવો, જે 6 વર્ષની ઉંમર સુધી સામાન્ય છે. 7 વર્ષ પછી ચાલુ રહે તો તપાસ જરૂરી છે."
+    },
+    "when_to_see": {
+      "en": "Daily bedwetting beyond age 7, or any adult new-onset bedwetting.",
+      "hi": "7 वर्ष की आयु के बाद रोज़ाना बिस्तर गीला होना, या किसी भी वयस्क में नए सिरे से बिस्तर गीला होना।",
+      "gu": "7 વર્ષની ઉંમર પછી દરરોજ પથારી ભીની થવી, અથવા કોઈપણ પુખ્ત વયના વ્યક્તિમાં નવેસરથી પથારી ભીની થવી."
+    },
+    "symptoms": {
+      "en": [
+        "Wetting during sleep, multiple nights per week",
+        "Large-volume wetting",
+        "Family history common"
+      ],
+      "hi": [
+        "नींद के दौरान गीला होना, सप्ताह में कई रातें",
+        "बड़ी मात्रा में गीला होना",
+        "पारिवारिक इतिहास सामान्य"
+      ],
+      "gu": [
+        "ઊંઘ દરમિયાન ભીનું થવું, અઠવાડિયામાં ઘણી રાત્રે",
+        "મોટી માત્રામાં ભીનું થવું",
+        "કૌટુંબિક ઇતિહાસ સામાન્ય"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Reduced nocturnal ADH",
+        "Small bladder capacity",
+        "Deep sleep pattern",
+        "UTI, constipation, OSA"
+      ],
+      "hi": [
+        "रात्रिकालीन ADH में कमी",
+        "मूत्राशय की क्षमता कम होना",
+        "गहरी नींद का पैटर्न",
+        "UTI, कब्ज़, OSA"
+      ],
+      "gu": [
+        "રાત્રિકાલીન ADH ઓછું થવું",
+        "મૂત્રાશયની ક્ષમતા ઓછી હોવી",
+        "ઊંડી ઊંઘનો પેટર્ન",
+        "UTI, કબજિયાત, OSA"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Bedtime fluid control, bladder training",
+        "Enuresis alarm",
+        "Desmopressin tablets",
+        "Treat constipation / OSA"
+      ],
+      "hi": [
+        "सोते समय तरल पदार्थ नियंत्रण, मूत्राशय प्रशिक्षण",
+        "एन्यूरेसिस अलार्म",
+        "डेस्मोप्रेसिन गोलियाँ",
+        "कब्ज़ / OSA का उपचार"
+      ],
+      "gu": [
+        "સૂતી વખતે પ્રવાહી નિયંત્રણ, મૂત્રાશય તાલીમ",
+        "એન્યુરેસિસ અલાર્મ",
+        "ડેસ્મોપ્રેસિન ગોળીઓ",
+        "કબજિયાત / OSA ની સારવાર"
+      ]
+    }
+  },
+  {
+    "id": "stress-incontinence",
+    "icon": "run",
+    "image": null,
+    "name": {
+      "en": "Stress Incontinence",
+      "hi": "स्ट्रेस इनकॉन्टिनेंस",
+      "gu": "સ્ટ્રેસ ઇનકૉન્ટિનન્સ"
+    },
+    "tagline": {
+      "en": "Leak on cough / sneeze — common after childbirth.",
+      "hi": "खांसी / छींक पर मूत्र रिसाव — प्रसव के बाद आम।",
+      "gu": "ઉધરસ / છીંક પર પેશાબનો રિસાવ — પ્રસૂતિ પછી સામાન્ય।"
+    },
+    "overview": {
+      "en": "Stress urinary incontinence is leakage of urine during physical activity — coughing, sneezing, laughing, running — due to weak pelvic-floor support.",
+      "hi": "स्ट्रेस यूरिनरी इनकॉन्टिनेंस शारीरिक गतिविधि — खांसने, छींकने, हंसने, दौड़ने — के दौरान मूत्र का रिसाव है जो कमज़ोर पेल्विक-फ्लोर सपोर्ट के कारण होता है।",
+      "gu": "સ્ટ્રેસ યુરિનરી ઇનકૉન્ટિનન્સ એટલે શારીરિક પ્રવૃત્તિ — ઉધરસ, છીંક, હસવું, દોડવું — દરમિયાન પેશાબનો રિસાવ જે નબળા પેલ્વિક-ફ્લોર સપોર્ટને કારણે થાય છે।"
+    },
+    "when_to_see": {
+      "en": "If leakage affects exercise, intimacy or daily activities.",
+      "hi": "यदि रिसाव व्यायाम, अंतरंगता या दैनिक गतिविधियों को प्रभावित करता है।",
+      "gu": "જો રિસાવ વ્યાયામ, આત્મીયતા અથવા દૈનિક પ્રવૃત્તિઓને અસર કરે છે."
+    },
+    "symptoms": {
+      "en": [
+        "Leak on coughing/sneezing/laughing",
+        "Leak on exercise or lifting",
+        "No urgency sensation"
+      ],
+      "hi": [
+        "खांसने/छींकने/हंसने पर रिसाव",
+        "व्यायाम या भारी सामान उठाने पर रिसाव",
+        "तात्कालिकता की अनुभूति नहीं"
+      ],
+      "gu": [
+        "ઉધરસ/છીંક/હસવા પર રિસાવ",
+        "કસરત અથવા ભારે સામાન ઉપાડવા પર રિસાવ",
+        "તાત્કાલિકતાની લાગણી નહીં"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Childbirth / multiparity",
+        "Menopause",
+        "Obesity",
+        "Chronic cough / constipation"
+      ],
+      "hi": [
+        "प्रसव / बार-बार प्रसव",
+        "रजोनिवृत्ति",
+        "मोटापा",
+        "लंबे समय से खांसी / कब्ज़"
+      ],
+      "gu": [
+        "પ્રસૂતિ / વારંવાર પ્રસૂતિ",
+        "મેનોપોઝ",
+        "સ્થૂળતા",
+        "લાંબા સમયથી ઉધરસ / કબજિયાત"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Supervised pelvic-floor physiotherapy",
+        "Weight loss, stop smoking",
+        "Mid-urethral sling (TVT/TOT)",
+        "Urethral bulking agents"
+      ],
+      "hi": [
+        "निगरानी में पेल्विक-फ्लोर फिज़ियोथेरेपी",
+        "वज़न कम करना, धूम्रपान बंद करना",
+        "मिड-यूरेथ्रल स्लिंग (TVT/TOT)",
+        "यूरेथ्रल बल्किंग एजेंट"
+      ],
+      "gu": [
+        "દેખરેખ હેઠળ પેલ્વિક-ફ્લોર ફિઝિયોથેરાપી",
+        "વજન ઘટાડવું, ધૂમ્રપાન બંધ કરવું",
+        "મિડ-યુરેથ્રલ સ્લિંગ (TVT/TOT)",
+        "યુરેથ્રલ બલ્કિંગ એજન્ટ"
+      ]
+    }
+  },
+  {
+    "id": "interstitial-cystitis",
+    "icon": "emoticon-sad",
+    "image": null,
+    "name": {
+      "en": "Interstitial Cystitis / BPS",
+      "hi": "इंटरस्टीशियल सिस्टाइटिस / BPS",
+      "gu": "ઇન્ટરસ્ટિશિયલ સિસ્ટાઇટિસ / BPS"
+    },
+    "tagline": {
+      "en": "Chronic bladder pain with urgency — no infection.",
+      "hi": "पुराना मूत्राशय दर्द जिसमें बार-बार पेशाब आता है — संक्रमण नहीं।",
+      "gu": "જુનો મૂત્રાશય દુખાવો જેમાં વારંવાર પેશાબ આવે — ચેપ નહીં।"
+    },
+    "overview": {
+      "en": "IC/Bladder Pain Syndrome is a chronic condition of bladder pain, pressure and urinary frequency without infection, affecting quality of life.",
+      "hi": "IC/ब्लैडर पेन सिंड्रोम मूत्राशय में दर्द, दबाव और बार-बार पेशाब आने की एक दीर्घकालिक स्थिति है जो बिना किसी संक्रमण के होती है और जीवन की गुणवत्ता को प्रभावित करती है।",
+      "gu": "IC/બ્લેડર પેઇન સિન્ડ્રોમ મૂત્રાશયમાં દુખાવો, દબાણ અને વારંવાર પેશાબ આવવાની એક લાંબા ગાળાની સ્થિતિ છે જે કોઈ ચેપ વગર થાય છે અને જીવનની ગુણવત્તાને અસર કરે છે।"
+    },
+    "when_to_see": {
+      "en": "Persistent bladder pain >6 weeks with negative urine cultures.",
+      "hi": "6 सप्ताह से अधिक समय तक मूत्राशय में लगातार दर्द जब मूत्र कल्चर नेगेटिव हो।",
+      "gu": "6 અઠવાડિયાથી વધુ સમય સુધી મૂત્રાશયમાં સતત દુખાવો જ્યારે યુરિન કલ્ચર નેગેટિવ હોય।"
+    },
+    "symptoms": {
+      "en": [
+        "Pelvic / suprapubic pain, worse as bladder fills",
+        "Urgency and frequency (>10 times/day)",
+        "Pain with intercourse",
+        "Flares after coffee, citrus, stress"
+      ],
+      "hi": [
+        "पेल्विक / सुप्राप्यूबिक दर्द, जो मूत्राशय भरने पर बढ़ता है",
+        "बार-बार और तुरंत पेशाब आना (दिन में 10 बार से अधिक)",
+        "संभोग के दौरान दर्द",
+        "कॉफी, खट्टे फल, तनाव के बाद लक्षणों का बढ़ना"
+      ],
+      "gu": [
+        "પેલ્વિક / સુપ્રાપ્યુબિક દુખાવો, જે મૂત્રાશય ભરાય ત્યારે વધે",
+        "વારંવાર અને તાત્કાલિક પેશાબ આવવો (દિવસમાં 10 વખતથી વધુ)",
+        "સંભોગ દરમિયાન દુખાવો",
+        "કૉફી, લીંબુ જાતીય ફળો, તણાવ પછી લક્ષણોમાં વધારો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Damaged GAG layer of bladder",
+        "Auto-immune or neurogenic factors"
+      ],
+      "hi": [
+        "मूत्राशय की GAG परत का क्षतिग्रस्त होना",
+        "ऑटो-इम्यून या न्यूरोजेनिक कारक"
+      ],
+      "gu": [
+        "મૂત્રાશયના GAG સ્તરને નુકસાન",
+        "ઓટો-ઇમ્યુન અથવા ન્યુરોજેનિક પરિબળો"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Diet modification (avoid triggers)",
+        "Amitriptyline, pentosan polysulfate",
+        "Intravesical DMSO / heparin instillations",
+        "Hydrodistension, Botox, sacral neuromodulation"
+      ],
+      "hi": [
+        "आहार में बदलाव (ट्रिगर से बचें)",
+        "एमिट्रिप्टिलाइन, पेंटोसान पॉलीसल्फेट",
+        "इंट्रावेसिकल DMSO / हेपरिन इंस्टिलेशन",
+        "हाइड्रोडिस्टेंशन, Botox, सेक्रल न्यूरोमॉड्यूलेशन"
+      ],
+      "gu": [
+        "આહારમાં ફેરફાર (ટ્રિગરથી બચો)",
+        "એમિટ્રિપ્ટીલાઇન, પેન્ટોસન પોલિસલ્ફેટ",
+        "ઇન્ટ્રાવેસિકલ DMSO / હેપરિન ઇન્સ્ટિલેશન્સ",
+        "હાઇડ્રોડિસ્ટેન્શન, Botox, સેક્રલ ન્યુરોમોડ્યુલેશન"
+      ]
+    }
+  },
+  {
+    "id": "peyronies",
+    "icon": "alpha-c",
+    "image": null,
+    "name": {
+      "en": "Peyronie's Disease",
+      "hi": "पेरोनी रोग",
+      "gu": "પેરોની રોગ"
+    },
+    "tagline": {
+      "en": "Penile curvature due to scar plaque.",
+      "hi": "निशान ऊतक के कारण लिंग में टेढ़ापन।",
+      "gu": "ડાઘના પેશીને કારણે શિશ્નમાં વક્રતા।"
+    },
+    "overview": {
+      "en": "Peyronie's is the development of fibrous scar (plaque) in the penis, causing curvature, pain and sometimes erectile dysfunction.",
+      "hi": "पेरोनी रोग में लिंग के भीतर रेशेदार निशान ऊतक (प्लाक) बन जाता है, जिससे टेढ़ापन, दर्द और कभी-कभी स्तंभन दोष (erectile dysfunction) हो सकता है।",
+      "gu": "પેરોની રોગમાં શિશ્નની અંદર તંતુમય ડાઘ પેશી (પ્લાક) વિકસે છે, જેના કારણે વક્રતા, દુખાવો અને ક્યારેક erectile dysfunction થઈ શકે છે।"
+    },
+    "when_to_see": {
+      "en": "Any new curvature, painful erections or palpable penile lump.",
+      "hi": "कोई भी नया टेढ़ापन, दर्दनाक स्तंभन या लिंग में छूने पर गांठ महसूस होने पर।",
+      "gu": "કોઈપણ નવી વક્રતા, દુખાવાદાયક ઉત્થાન અથવા શિશ્નમાં સ્પર્શથી ગાંઠ અનુભવાતી હોય ત્યારે।"
+    },
+    "symptoms": {
+      "en": [
+        "Painful erections (early phase)",
+        "New penile curvature",
+        "Palpable plaque",
+        "Difficulty with penetration"
+      ],
+      "hi": [
+        "दर्दनाक स्तंभन (प्रारंभिक चरण में)",
+        "लिंग में नया टेढ़ापन",
+        "छूने पर प्लाक (गांठ) महसूस होना",
+        "संभोग में प्रवेश करने में कठिनाई"
+      ],
+      "gu": [
+        "દુખાવાદાયક ઉત્થાન (પ્રારંભિક તબક્કામાં)",
+        "શિશ્નમાં નવી વક્રતા",
+        "સ્પર્શથી પ્લાક (ગાંઠ) અનુભવાવી",
+        "સંભોગમાં પ્રવેશ કરવામાં મુશ્કેલી"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Micro-trauma during intercourse",
+        "Genetic factors",
+        "Diabetes / smoking"
+      ],
+      "hi": [
+        "संभोग के दौरान सूक्ष्म चोट",
+        "आनुवंशिक कारक",
+        "मधुमेह / धूम्रपान"
+      ],
+      "gu": [
+        "સંભોગ દરમિયાન સૂક્ષ્મ ઈજા",
+        "આનુવંશિક પરિબળો",
+        "ડાયાબિટીસ / ધૂમ્રપાન"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation in early phase",
+        "Oral pentoxifylline, tadalafil",
+        "Collagenase (Xiaflex) injections",
+        "Penile traction devices",
+        "Penile plication / grafting surgery"
+      ],
+      "hi": [
+        "प्रारंभिक चरण में अवलोकन",
+        "मौखिक pentoxifylline, tadalafil",
+        "Collagenase (Xiaflex) इंजेक्शन",
+        "लिंग खिंचाव यंत्र (penile traction devices)",
+        "लिंग प्लिकेशन / ग्राफ्टिंग सर्जरी"
+      ],
+      "gu": [
+        "પ્રારંભિક તબક્કામાં અવલોકન",
+        "મૌખિક pentoxifylline, tadalafil",
+        "Collagenase (Xiaflex) ઈન્જેક્શન",
+        "શિશ્ન ખેંચાણ ઉપકરણો (penile traction devices)",
+        "શિશ્ન પ્લિકેશન / ગ્રાફ્ટિંગ સર્જરી"
+      ]
+    }
+  },
+  {
+    "id": "priapism",
+    "icon": "alarm-light",
+    "image": null,
+    "name": {
+      "en": "Priapism",
+      "hi": "प्रायपिज़्म",
+      "gu": "પ્રાયપિઝમ"
+    },
+    "tagline": {
+      "en": "Prolonged erection — urological emergency!",
+      "hi": "लंबे समय तक इरेक्शन — मूत्र-विज्ञान आपातकाल!",
+      "gu": "લાંબા સમય સુધી ઇરેક્શન — યુરોલોજિકલ કટોકટી!"
+    },
+    "overview": {
+      "en": "Priapism is a painful erection lasting over 4 hours, unrelated to sexual stimulation. Low-flow (ischaemic) priapism needs emergency decompression to prevent permanent ED.",
+      "hi": "प्रायपिज़्म 4 घंटे से अधिक समय तक रहने वाला दर्दनाक इरेक्शन है, जो यौन उत्तेजना से असंबंधित होता है। लो-फ्लो (इस्कीमिक) प्रायपिज़्म में स्थायी ED से बचने के लिए आपातकालीन डीकंप्रेशन आवश्यक है।",
+      "gu": "પ્રાયપિઝમ એ 4 કલાકથી વધુ સમય સુધી રહેતું પીડાદાયક ઇરેક્શન છે, જે લૈંગિક ઉત્તેજનાથી અસંબંધિત હોય છે. લો-ફ્લો (ઇસ્કેમિક) પ્રાયપિઝમમાં કાયમી ED અટકાવવા માટે કટોકટી ડીકમ્પ્રેશન જરૂરી છે."
+    },
+    "when_to_see": {
+      "en": "Any erection lasting over 4 hours — go to a 24-hour emergency immediately.",
+      "hi": "4 घंटे से अधिक समय तक रहने वाला कोई भी इरेक्शन — तुरंत 24 घंटे की आपातकालीन सेवा में जाएं।",
+      "gu": "4 કલાકથી વધુ સમય સુધી રહેતું કોઈપણ ઇરેક્શન — તાત્કાલિક 24 કલાકની કટોકટી સેવામાં જાઓ."
+    },
+    "symptoms": {
+      "en": [
+        "Erection lasting > 4 hours",
+        "Penile pain (ischaemic type)",
+        "Rigid shaft with soft glans"
+      ],
+      "hi": [
+        "4 घंटे से अधिक समय तक इरेक्शन",
+        "लिंग में दर्द (इस्कीमिक प्रकार)",
+        "कठोर शाफ्ट के साथ नरम ग्लान्स"
+      ],
+      "gu": [
+        "4 કલાકથી વધુ સમય સુધી ઇરેક્શન",
+        "શિશ્નમાં દુખાવો (ઇસ્કેમિક પ્રકાર)",
+        "નરમ ગ્લાન્સ સાથે કઠોર શાફ્ટ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Sickle cell disease",
+        "Intra-cavernosal injections",
+        "Medications (trazodone, cocaine)",
+        "Trauma, leukaemia"
+      ],
+      "hi": [
+        "सिकल सेल रोग",
+        "इंट्रा-कैवर्नोसल इंजेक्शन",
+        "दवाएं (ट्रैज़ोडोन, कोकीन)",
+        "आघात, ल्यूकेमिया"
+      ],
+      "gu": [
+        "સિકલ સેલ રોગ",
+        "ઇન્ટ્રા-કેવર્નોસલ ઇન્જેક્શન",
+        "દવાઓ (ટ્રાઝોડોન, કોકેઇન)",
+        "આઘાત, લ્યુકેમિયા"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Aspiration + phenylephrine injection (first-line)",
+        "Surgical shunt (T-shunt, Al-Ghorab)",
+        "Penile prosthesis in refractory cases"
+      ],
+      "hi": [
+        "एस्पिरेशन + फेनिलेफ्रीन इंजेक्शन (प्रथम-पंक्ति)",
+        "शल्य शंट (T-शंट, अल-घोराब)",
+        "दुर्दम्य मामलों में पेनाइल प्रोस्थेसिस"
+      ],
+      "gu": [
+        "એસ્પિરેશન + ફિનાઇલેફ્રિન ઇન્જેક્શન (પ્રથમ-લાઇન)",
+        "સર્જિકલ શન્ટ (T-શન્ટ, અલ-ઘોરાબ)",
+        "પ્રતિરોધક કેસોમાં પેનાઇલ પ્રોસ્થેસિસ"
+      ]
+    }
+  },
+  {
+    "id": "prostatitis",
+    "icon": "thermometer-high",
+    "image": null,
+    "name": {
+      "en": "Prostatitis",
+      "hi": "प्रोस्टेटाइटिस",
+      "gu": "પ્રોસ્ટેટાઇટિસ"
+    },
+    "tagline": {
+      "en": "Prostate inflammation — acute or chronic.",
+      "hi": "प्रोस्टेट ग्रंथि की सूजन — तीव्र या दीर्घकालिक।",
+      "gu": "પ્રોસ્ટેટ ગ્રંથિની બળતરા — તીવ્ર અથવા દીર્ઘકાલીન।"
+    },
+    "overview": {
+      "en": "Prostatitis is inflammation of the prostate gland. It can be acute bacterial, chronic bacterial, or chronic pelvic pain syndrome.",
+      "hi": "प्रोस्टेटाइटिस प्रोस्टेट ग्रंथि की सूजन है। यह तीव्र बैक्टीरियल, दीर्घकालिक बैक्टीरियल, या दीर्घकालिक पेल्विक दर्द सिंड्रोम (CPPS) हो सकता है।",
+      "gu": "પ્રોસ્ટેટાઇટિસ એ પ્રોસ્ટેટ ગ્રંથિની બળતરા છે। આ તીવ્ર બેક્ટેરિયલ, દીર્ઘકાલીન બેક્ટેરિયલ, અથવા દીર્ઘકાલીન પેલ્વિક પેઇન સિન્ડ્રોમ (CPPS) હોઈ શકે છે।"
+    },
+    "when_to_see": {
+      "en": "Fever with severe perineal pain and difficulty urinating — same-day consultation.",
+      "hi": "पेरिनियल क्षेत्र में गंभीर दर्द और पेशाब में कठिनाई के साथ बुखार — उसी दिन डॉक्टर से परामर्श लें।",
+      "gu": "પેરિનિયલ વિસ્તારમાં ગંભીર દુખાવો અને પેશાબમાં તકલીફ સાથે તાવ — તે જ દિવસે ડૉક્ટરની સલાહ લો।"
+    },
+    "symptoms": {
+      "en": [
+        "Pelvic / perineal pain, lower back pain",
+        "Pain on urination / ejaculation",
+        "Fever, chills (acute bacterial)",
+        "Urinary frequency / urgency"
+      ],
+      "hi": [
+        "पेल्विक / पेरिनियल दर्द, कमर दर्द",
+        "पेशाब या स्खलन के दौरान दर्द",
+        "बुखार, ठंड लगना (तीव्र बैक्टीरियल)",
+        "बार-बार पेशाब आना / तुरंत पेशाब की इच्छा"
+      ],
+      "gu": [
+        "પેલ્વિક / પેરિનિયલ દુખાવો, કમરનો દુખાવો",
+        "પેશાબ અથવા સ્ખલન દરમિયાન દુખાવો",
+        "તાવ, ઠંડી લાગવી (તીવ્ર બેક્ટેરિયલ)",
+        "વારંવાર પેશાબ આવવો / તાત્કાલિક પેશાબની ઇચ્છા"
+      ]
+    },
+    "causes": {
+      "en": [
+        "E. coli and other bacteria (acute/chronic)",
+        "Unknown cause (CPPS)",
+        "Pelvic floor dysfunction"
+      ],
+      "hi": [
+        "E. coli और अन्य बैक्टीरिया (तीव्र/दीर्घकालिक)",
+        "अज्ञात कारण (CPPS)",
+        "पेल्विक फ्लोर की कार्यप्रणाली में समस्या"
+      ],
+      "gu": [
+        "E. coli અને અન્ય બેક્ટેરિયા (તીવ્ર/દીર્ઘકાલીન)",
+        "અજ્ઞાત કારણ (CPPS)",
+        "પેલ્વિક ફ્લોરની કામગીરીમાં સમસ્યા"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "4-week course of fluoroquinolones (bacterial)",
+        "Alpha-blockers to relax prostate",
+        "Pelvic-floor physiotherapy (CPPS)",
+        "Warm sitz baths, avoid bike saddle"
+      ],
+      "hi": [
+        "4-सप्ताह का फ्लोरोक्विनोलोन कोर्स (बैक्टीरियल)",
+        "प्रोस्टेट को आराम देने के लिए अल्फा-ब्लॉकर्स",
+        "पेल्विक-फ्लोर फिजियोथेरेपी (CPPS)",
+        "गुनगुने पानी से सिट्ज़ बाथ, साइकिल की सीट से बचें"
+      ],
+      "gu": [
+        "4-અઠવાડિયાનો ફ્લોરોક્વિનોલોન કોર્સ (બેક્ટેરિયલ)",
+        "પ્રોસ્ટેટને આરામ આપવા માટે આલ્ફા-બ્લોકર્સ",
+        "પેલ્વિક-ફ્લોર ફિઝિયોથેરાપી (CPPS)",
+        "ગરમ પાણીથી સિટ્ઝ બાથ, સાયકલની સીટ ટાળો"
+      ]
+    }
+  },
+  {
+    "id": "pmph",
+    "icon": "timer-sand",
+    "image": null,
+    "name": {
+      "en": "Premature Ejaculation",
+      "hi": "शीघ्रपतन (Premature Ejaculation)",
+      "gu": "શીઘ્રસ્ખલન (Premature Ejaculation)"
+    },
+    "tagline": {
+      "en": "The commonest male sexual dysfunction — very treatable.",
+      "hi": "पुरुषों में सबसे आम यौन समस्या — पूरी तरह उपचार योग्य।",
+      "gu": "પુરુષોમાં સૌથી સામાન્ય યૌન સમસ્યા — સંપૂર્ણ સારવાર શક્ય."
+    },
+    "overview": {
+      "en": "PE is uncontrolled ejaculation within 1 minute of penetration, causing distress. Affects 20–30% of men at some point.",
+      "hi": "PE यानी संभोग के 1 मिनट के भीतर अनियंत्रित स्खलन, जो मानसिक परेशानी का कारण बनता है। किसी न किसी समय 20–30% पुरुषों को प्रभावित करता है।",
+      "gu": "PE એટલે સંભોગના 1 મિનિટમાં અનિયંત્રિત સ્ખલન, જે માનસિક તકલીફ આપે છે. કોઈ ને કોઈ સમયે 20–30% પુરુષોને અસર કરે છે."
+    },
+    "when_to_see": {
+      "en": "If PE affects relationships or self-esteem — a single consult can help.",
+      "hi": "यदि PE आपके रिश्तों या आत्मविश्वास को प्रभावित करे — एक परामर्श से मदद मिल सकती है।",
+      "gu": "જો PE તમારા સંબંધો કે આત્મવિશ્વાસને અસર કરે — એક પરામર્શ મદદરૂપ થઈ શકે."
+    },
+    "symptoms": {
+      "en": [
+        "Ejaculation before or shortly after penetration",
+        "Unable to delay ejaculation on all/nearly all occasions",
+        "Distress or avoidance of intimacy"
+      ],
+      "hi": [
+        "प्रवेश से पहले या तुरंत बाद स्खलन हो जाना",
+        "लगभग हर बार स्खलन को रोक पाने में असमर्थता",
+        "मानसिक तनाव या अंतरंगता से बचना"
+      ],
+      "gu": [
+        "પ્રવેશ પહેલાં અથવા તરત પછી સ્ખલન થવું",
+        "લગભગ દરેક વખતે સ્ખલન રોકી શકવામાં અસમર્થતા",
+        "માનસિક તણાવ અથવા નિકટતાથી દૂર રહેવું"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Psychological (anxiety, early experiences)",
+        "Hypersensitive glans",
+        "Hormonal (low prolactin, thyroid)",
+        "Prostatitis / ED"
+      ],
+      "hi": [
+        "मनोवैज्ञानिक (चिंता, शुरुआती अनुभव)",
+        "अति-संवेदनशील शिश्न मुंड (glans)",
+        "हार्मोनल (कम prolactin, थायरॉइड)",
+        "प्रोस्टेटाइटिस / ED"
+      ],
+      "gu": [
+        "મનોવૈજ્ઞાનિક (ચિંતા, શરૂઆતના અનુભવો)",
+        "અતિસંવેદનશીલ શિશ્ન મુંડ (glans)",
+        "હોર્મોનલ (ઓછું prolactin, થાઇરોઇડ)",
+        "પ્રોસ્ટેટાઇટિસ / ED"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Behavioural therapy (squeeze / stop-start technique)",
+        "Topical lidocaine / prilocaine sprays",
+        "Dapoxetine / daily SSRIs",
+        "Tadalafil combination"
+      ],
+      "hi": [
+        "व्यवहार चिकित्सा (squeeze / stop-start तकनीक)",
+        "सतही lidocaine / prilocaine स्प्रे",
+        "Dapoxetine / रोज़ाना SSRIs",
+        "Tadalafil संयोजन"
+      ],
+      "gu": [
+        "વર્તન ચિકિત્સા (squeeze / stop-start તકનીક)",
+        "સ્થાનિક lidocaine / prilocaine સ્પ્રે",
+        "Dapoxetine / દરરોજ SSRIs",
+        "Tadalafil સંયોજન"
+      ]
+    }
+  },
+  {
+    "id": "neobladder",
+    "icon": "water-pump",
+    "image": null,
+    "name": {
+      "en": "Neobladder & Urinary Diversion",
+      "hi": "नियोब्लैडर और मूत्र विचलन",
+      "gu": "નિયોબ્લેડર અને મૂત્ર વિચલન"
+    },
+    "tagline": {
+      "en": "Life after bladder removal — options and rehabilitation.",
+      "hi": "मूत्राशय हटाने के बाद जीवन — विकल्प और पुनर्वास।",
+      "gu": "મૂત્રાશય દૂર કર્યા પછીનું જીવન — વિકલ્પો અને પુનર્વસન."
+    },
+    "overview": {
+      "en": "After radical cystectomy for bladder cancer, urine can be diverted through an ileal conduit, continent reservoir or orthotopic neobladder built from intestine.",
+      "hi": "मूत्राशय कैंसर के लिए रेडिकल सिस्टेक्टॉमी के बाद, आंत से बने इलियल कंड्यूट, कॉन्टिनेंट रिज़र्वॉयर या ऑर्थोटोपिक नियोब्लैडर के माध्यम से मूत्र को मोड़ा जा सकता है।",
+      "gu": "મૂત્રાશય કેન્સર માટે રેડિકલ સિસ્ટેક્ટોમી પછી, આંતરડામાંથી બનાવેલા ઇલિયલ કન્ડ્યુટ, કોન્ટિનેન્ટ રિઝર્વોયર અથવા ઓર્થોટોપિક નિયોબ્લેડર દ્વારા પેશાબને વાળી શકાય છે."
+    },
+    "when_to_see": {
+      "en": "Discuss diversion options with your urologist before bladder cancer surgery.",
+      "hi": "मूत्राशय कैंसर की सर्जरी से पहले अपने यूरोलॉजिस्ट से विचलन विकल्पों पर चर्चा करें।",
+      "gu": "મૂત્રાશય કેન્સર સર્જરી પહેલાં તમારા યુરોલોજિસ્ટ સાથે વિચલન વિકલ્પો અંગે ચર્ચા કરો."
+    },
+    "symptoms": {
+      "en": [
+        "N/A — post-surgical living guide"
+      ],
+      "hi": [
+        "लागू नहीं — सर्जरी के बाद जीवन यापन मार्गदर्शिका"
+      ],
+      "gu": [
+        "લાગુ નથી — સર્જરી પછી જીવન માર્ગદર્શિકા"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Muscle-invasive bladder cancer",
+        "Neurogenic bladder with poor function",
+        "Radiation damage"
+      ],
+      "hi": [
+        "मांसपेशी-आक्रामक मूत्राशय कैंसर",
+        "न्यूरोजेनिक मूत्राशय खराब कार्य के साथ",
+        "विकिरण क्षति"
+      ],
+      "gu": [
+        "સ્નાયુ-આક્રમક મૂત્રાશય કેન્સર",
+        "ન્યુરોજેનિક મૂત્રાશય નબળી કામગીરી સાથે",
+        "રેડિએશન નુકસાન"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Ileal conduit with stoma",
+        "Indiana pouch (continent)",
+        "Orthotopic neobladder (Studer, T-pouch)"
+      ],
+      "hi": [
+        "स्टोमा के साथ इलियल कंड्यूट",
+        "इंडियाना पाउच (कॉन्टिनेंट)",
+        "ऑर्थोटोपिक नियोब्लैडर (Studer, T-pouch)"
+      ],
+      "gu": [
+        "સ્ટોમા સાથે ઇલિયલ કન્ડ્યુટ",
+        "ઇન્ડિયાના પાઉચ (કોન્ટિનેન્ટ)",
+        "ઓર્થોટોપિક નિયોબ્લેડર (Studer, T-pouch)"
+      ]
+    }
+  },
+  {
+    "id": "female-urology",
+    "icon": "gender-female",
+    "image": null,
+    "name": {
+      "en": "Female Urology",
+      "hi": "महिला मूत्र रोग विज्ञान",
+      "gu": "સ્ત્રી મૂત્રવિજ્ઞાન"
+    },
+    "tagline": {
+      "en": "UTI, incontinence, prolapse — sensitive comprehensive care.",
+      "hi": "UTI, असंयम, प्रोलैप्स — संवेदनशील व्यापक देखभाल।",
+      "gu": "UTI, અસંયમ, પ્રોલેપ્સ — સંવેદનશીલ વ્યાપક સંભાળ।"
+    },
+    "overview": {
+      "en": "Female urology covers UTIs, stress / urge incontinence, pelvic-organ prolapse, bladder pain and urethral diverticula — often under-discussed but very treatable.",
+      "hi": "महिला मूत्र रोग विज्ञान में UTI, तनाव / अत्यावश्यकता असंयम, पेल्विक-अंग प्रोलैप्स, मूत्राशय दर्द और मूत्रमार्ग डाइवर्टीकुला शामिल हैं — जिन पर अक्सर चर्चा नहीं होती लेकिन ये बहुत उपचार योग्य हैं।",
+      "gu": "સ્ત્રી મૂત્રવિજ્ઞાનમાં UTI, તણાવ / તાત્કાલિકતા અસંયમ, પેલ્વિક-અંગ પ્રોલેપ્સ, મૂત્રાશય દુખાવો અને મૂત્રમાર્ગ ડાયવર્ટિક્યુલા સામેલ છે — જેની ઘણીવાર ચર્ચા થતી નથી પરંતુ ખૂબ સારવાર યોગ્ય છે।"
+    },
+    "when_to_see": {
+      "en": "Any urinary symptom bothering you for more than 2 weeks — female urology is a confidential consultation.",
+      "hi": "कोई भी मूत्र संबंधी लक्षण जो 2 सप्ताह से अधिक समय से परेशान कर रहा हो — महिला मूत्र रोग परामर्श गोपनीय है।",
+      "gu": "કોઈપણ મૂત્ર લક્ષણ જે 2 અઠવાડિયાથી વધુ સમયથી પરેશાન કરી રહ્યું હોય — સ્ત્રી મૂત્રવિજ્ઞાન ગોપનીય પરામર્શ છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Recurrent UTI (3+ episodes/year)",
+        "Leakage on cough / sneeze / exercise",
+        "Pelvic heaviness or bulge",
+        "Painful intercourse",
+        "Urgency / frequency"
+      ],
+      "hi": [
+        "बार-बार UTI (वर्ष में 3+ बार)",
+        "खांसी / छींक / व्यायाम पर मूत्र रिसाव",
+        "पेल्विक भारीपन या उभार",
+        "संभोग में दर्द",
+        "तीव्रता / बार-बार पेशाब आना"
+      ],
+      "gu": [
+        "વારંવાર UTI (વર્ષમાં 3+ વખત)",
+        "ઉધરસ / છીંક / વ્યાયામ દરમિયાન લિકેજ",
+        "પેલ્વિક ભારેપણું અથવા ઉભરાવ",
+        "સંભોગમાં દુખાવો",
+        "તાત્કાલિકતા / વારંવાર પેશાબ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Pregnancy & delivery trauma",
+        "Menopausal hormonal changes",
+        "Pelvic-floor weakness",
+        "Chronic constipation, obesity"
+      ],
+      "hi": [
+        "गर्भावस्था और प्रसव आघात",
+        "रजोनिवृत्ति हार्मोनल परिवर्तन",
+        "पेल्विक-फ्लोर कमजोरी",
+        "पुरानी कब्ज, मोटापा"
+      ],
+      "gu": [
+        "ગર્ભાવસ્થા અને પ્રસૂતિ આઘાત",
+        "મેનોપોઝલ હોર્મોનલ ફેરફારો",
+        "પેલ્વિક-ફ્લોર નબળાઈ",
+        "ક્રોનિક કબજિયાત, સ્થૂળતા"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Personalised antibiotics / vaginal oestrogen",
+        "Pelvic-floor physiotherapy",
+        "Mid-urethral sling, sacrocolpopexy",
+        "Botox for OAB, urethral bulking"
+      ],
+      "hi": [
+        "व्यक्तिगत एंटीबायोटिक्स / योनि एस्ट्रोजन",
+        "पेल्विक-फ्लोर फिजियोथेरेपी",
+        "मिड-यूरेथ्रल स्लिंग, सैक्रोकोल्पोपेक्सी",
+        "OAB के लिए Botox, मूत्रमार्ग बल्किंग"
+      ],
+      "gu": [
+        "વ્યક્તિગત એન્ટિબાયોટિક્સ / યોનિમાર્ગ એસ્ટ્રોજન",
+        "પેલ્વિક-ફ્લોર ફિઝિયોથેરાપી",
+        "મિડ-યુરેથ્રલ સ્લિંગ, સેક્રોકોલ્પોપેક્સી",
+        "OAB માટે Botox, યુરેથ્રલ બલ્કિંગ"
+      ]
+    }
+  },
+  {
+    "id": "paediatric-urology",
+    "icon": "baby-carriage",
+    "image": null,
+    "name": {
+      "en": "Paediatric Urology",
+      "hi": "बाल मूत्र रोग विज्ञान",
+      "gu": "બાળ મૂત્ર રોગ વિજ્ઞાન"
+    },
+    "tagline": {
+      "en": "Children's urology — from antenatal to teenage.",
+      "hi": "बच्चों की मूत्र समस्याएं — गर्भावस्था से किशोरावस्था तक।",
+      "gu": "બાળકોની મૂત્ર સમસ્યાઓ — ગર્ભાવસ્થાથી કિશોરાવસ્થા સુધી।"
+    },
+    "overview": {
+      "en": "Paediatric urology covers antenatal hydronephrosis, VUR, posterior urethral valves, hypospadias, undescended testis, enuresis and stones in children.",
+      "hi": "बाल मूत्र रोग विज्ञान में गर्भावस्था में हाइड्रोनेफ्रोसिस, VUR, पोस्टीरियर यूरेथ्रल वाल्व, हाइपोस्पेडियास, अवरोही अंडकोष, बिस्तर गीला करना और बच्चों में पथरी की समस्याएं शामिल हैं।",
+      "gu": "બાળ મૂત્ર રોગ વિજ્ઞાનમાં ગર્ભાવસ્થામાં હાઇડ્રોનેફ્રોસિસ, VUR, પોસ્ટીરિયર યુરેથ્રલ વાલ્વ, હાઇપોસ્પેડિયાસ, અવતરી વૃષણ, પથારી ભીની કરવી અને બાળકોમાં પથરીની સમસ્યાઓ સામેલ છે।"
+    },
+    "when_to_see": {
+      "en": "Any antenatal hydronephrosis should be rechecked in the baby by 6 weeks of age.",
+      "hi": "गर्भावस्था में पाई गई किसी भी हाइड्रोनेफ्रोसिस की जांच बच्चे के जन्म के 6 सप्ताह के भीतर दोबारा करानी चाहिए।",
+      "gu": "ગર્ભાવસ્થામાં જોવા મળતા કોઈપણ હાઇડ્રોનેફ્રોસિસની તપાસ બાળકના જન્મના 6 અઠવાડિયાની અંદર ફરીથી કરાવવી જોઈએ।"
+    },
+    "symptoms": {
+      "en": [
+        "Antenatal hydronephrosis on scan",
+        "Recurrent UTI in a child",
+        "Abnormal stream / dribbling urine",
+        "Bedwetting > age 7",
+        "Undescended testis"
+      ],
+      "hi": [
+        "स्कैन में गर्भावस्था के दौरान हाइड्रोनेफ्रोसिस",
+        "बच्चे में बार-बार UTI होना",
+        "असामान्य पेशाब की धार / टपकना",
+        "7 वर्ष की उम्र के बाद भी बिस्तर गीला करना",
+        "अवरोही अंडकोष"
+      ],
+      "gu": [
+        "સ્કેનમાં ગર્ભાવસ્થા દરમિયાન હાઇડ્રોનેફ્રોસિસ",
+        "બાળકમાં વારંવાર UTI થવું",
+        "અસામાન્ય પેશાબનો પ્રવાહ / ટપકવું",
+        "7 વર્ષની ઉંમર પછી પણ પથારી ભીની કરવી",
+        "અવતરી વૃષણ"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Congenital anomalies (PUJO, VUR, PUV)",
+        "Vesico-ureteric reflux",
+        "Congenital phimosis"
+      ],
+      "hi": [
+        "जन्मजात विकृतियाँ (PUJO, VUR, PUV)",
+        "वेसिको-यूरेटेरिक रिफ्लक्स",
+        "जन्मजात फिमोसिस"
+      ],
+      "gu": [
+        "જન્મજાત વિકૃતિઓ (PUJO, VUR, PUV)",
+        "વેસિકો-યુરેટેરિક રિફ્લક્સ",
+        "જન્મજાત ફિમોસિસ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Prophylactic antibiotics, DMSA / VCUG imaging",
+        "Endoscopic STING / ureteric re-implantation",
+        "Hypospadias repair (TIP urethroplasty)",
+        "Orchidopexy for undescended testis"
+      ],
+      "hi": [
+        "रोकथाम के लिए एंटीबायोटिक्स, DMSA / VCUG इमेजिंग",
+        "एंडोस्कोपिक STING / यूरेटेरिक री-इम्प्लांटेशन",
+        "हाइपोस्पेडियास रिपेयर (TIP यूरेथ्रोप्लास्टी)",
+        "अवरोही अंडकोष के लिए ऑर्किडोपेक्सी"
+      ],
+      "gu": [
+        "રોકથામ માટે એન્ટિબાયોટિક્સ, DMSA / VCUG ઇમેજિંગ",
+        "એન્ડોસ્કોપિક STING / યુરેટેરિક રી-ઇમ્પ્લાન્ટેશન",
+        "હાઇપોસ્પેડિયાસ રિપેર (TIP યુરેથ્રોપ્લાસ્ટી)",
+        "અવતરી વૃષણ માટે ઓર્કિડોપેક્સી"
+      ]
+    }
+  },
+  {
+    "id": "vur",
+    "icon": "arrow-u-down-left",
+    "image": null,
+    "name": {
+      "en": "Vesico-Ureteric Reflux (VUR)",
+      "hi": "वेसिको-यूरेटेरिक रिफ्लक्स (VUR)",
+      "gu": "વેસિકો-યુરેટેરિક રિફ્લક્સ (VUR)"
+    },
+    "tagline": {
+      "en": "Urine flowing back to the kidneys in children — preventable kidney damage.",
+      "hi": "बच्चों में मूत्र का गुर्दों की ओर वापस बहना — रोकी जा सकने वाली गुर्दे की क्षति।",
+      "gu": "બાળકોમાં પેશાબ કિડનીમાં પાછો વહેવો — અટકાવી શકાય તેવું કિડનીનું નુકસાન।"
+    },
+    "overview": {
+      "en": "VUR is backward flow of urine from the bladder up the ureter to the kidney. It predisposes children to kidney infection and scarring.",
+      "hi": "VUR में मूत्राशय से मूत्र मूत्रवाहिनी (ureter) के माध्यम से वापस गुर्दे की ओर बह जाता है। यह बच्चों में गुर्दे के संक्रमण और निशान (scarring) की संभावना बढ़ाता है।",
+      "gu": "VUR એ પેશાબ મૂત્રાશયમાંથી મૂત્રનળી (ureter) દ્વારા કિડની તરફ પાછો વહેવાની સ્થિતિ છે. આ બાળકોમાં કિડનીના ચેપ અને ડાઘ (scarring) થવાની શક્યતા વધારે છે।"
+    },
+    "when_to_see": {
+      "en": "Any child with >1 febrile UTI deserves an ultrasound and VCUG.",
+      "hi": "किसी भी बच्चे में एक से अधिक बुखार वाले मूत्र संक्रमण (UTI) की स्थिति में अल्ट्रासाउंड और VCUG जांच करानी चाहिए।",
+      "gu": "કોઈપણ બાળકને એક કરતાં વધુ વાર તાવ સાથેનો પેશાબનો ચેપ (UTI) થયો હોય તો અલ્ટ્રાસાઉન્ડ અને VCUG તપાસ જરૂરી છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Recurrent febrile UTI in a child",
+        "Hydronephrosis on antenatal or post-natal scan",
+        "Failure to thrive"
+      ],
+      "hi": [
+        "बच्चे में बार-बार बुखार के साथ मूत्र संक्रमण (UTI)",
+        "जन्म के पूर्व या बाद की जांच में हाइड्रोनेफ्रोसिस (hydronephrosis)",
+        "बच्चे का विकास ठीक से न होना (failure to thrive)"
+      ],
+      "gu": [
+        "બાળકમાં વારંવાર તાવ સાથેનો પેશાબનો ચેપ (UTI)",
+        "જન્મ પહેલાં અથવા પછીની તપાસમાં હાઈડ્રોનેફ્રોસિસ (hydronephrosis)",
+        "બાળકનો યોગ્ય વિકાસ ન થવો (failure to thrive)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Short intravesical ureter (primary VUR)",
+        "Posterior urethral valves",
+        "Neurogenic bladder"
+      ],
+      "hi": [
+        "छोटी इंट्रावेसिकल मूत्रवाहिनी (प्राथमिक VUR)",
+        "पोस्टीरियर यूरेथ्रल वाल्व (posterior urethral valves)",
+        "न्यूरोजेनिक ब्लैडर (neurogenic bladder)"
+      ],
+      "gu": [
+        "નાની ઇન્ટ્રાવેસિકલ મૂત્રનળી (પ્રાથમિક VUR)",
+        "પોસ્ટીરિયર યુરેથ્રલ વાલ્વ્સ (posterior urethral valves)",
+        "ન્યુરોજેનિક બ્લેડર (neurogenic bladder)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Low-dose antibiotic prophylaxis",
+        "Endoscopic Deflux injection",
+        "Ureteric re-implantation (Cohen / Lich-Grégoir)"
+      ],
+      "hi": [
+        "कम खुराक वाली एंटीबायोटिक प्रोफिलैक्सिस",
+        "एंडोस्कोपिक Deflux इंजेक्शन",
+        "मूत्रवाहिनी पुनः प्रत्यारोपण (Cohen / Lich-Grégoir सर्जरी)"
+      ],
+      "gu": [
+        "ઓછી માત્રામાં એન્ટિબાયોટિક પ્રોફિલેક્સિસ",
+        "એન્ડોસ્કોપિક Deflux ઇન્જેક્શન",
+        "મૂત્રનળી પુનઃ રોપણ (Cohen / Lich-Grégoir સર્જરી)"
+      ]
+    }
+  },
+  {
+    "id": "hypospadias",
+    "icon": "baby-face-outline",
+    "image": null,
+    "name": {
+      "en": "Hypospadias",
+      "hi": "हाइपोस्पेडियास",
+      "gu": "હાઇપોસ્પેડિયાસ"
+    },
+    "tagline": {
+      "en": "Urinary opening on the under-side of the penis — surgery fixes it.",
+      "hi": "लिंग के निचले हिस्से पर मूत्र छिद्र — सर्जरी से ठीक हो जाता है।",
+      "gu": "શિશ્નના નીચેના ભાગમાં મૂત્ર છિદ્ર — શસ્ત્રક્રિયાથી સુધારાય છે."
+    },
+    "overview": {
+      "en": "Hypospadias is a birth defect where the urethral opening is on the under-side of the penis. Severity ranges from distal (near glans) to proximal (scrotum).",
+      "hi": "हाइपोस्पेडियास एक जन्मजात दोष है जिसमें मूत्रमार्ग का छिद्र लिंग के निचले हिस्से पर होता है। गंभीरता डिस्टल (शिश्न मुंड के पास) से लेकर प्रॉक्सिमल (अंडकोश) तक हो सकती है।",
+      "gu": "હાઇપોસ્પેડિયાસ એ જન્મજાત ખામી છે જેમાં મૂત્રમાર્ગનું છિદ્ર શિશ્નના નીચેના ભાગમાં હોય છે. તીવ્રતા ડિસ્ટલ (શિશ્ન મુંડ પાસે) થી લઈને પ્રોક્સિમલ (અંડકોશ) સુધી હોઈ શકે છે."
+    },
+    "when_to_see": {
+      "en": "Diagnosis at birth — consult a paediatric urologist early.",
+      "hi": "जन्म के समय निदान — जल्दी बाल मूत्र रोग विशेषज्ञ से परामर्श लें।",
+      "gu": "જન્મ સમયે નિદાન — વહેલી તકે બાળ મૂત્રપિંડ રોગ નિષ્ણાતની સલાહ લો."
+    },
+    "symptoms": {
+      "en": [
+        "Abnormal urinary opening",
+        "Downward-curved penis (chordee)",
+        "Hooded foreskin",
+        "Splitting of stream"
+      ],
+      "hi": [
+        "असामान्य मूत्र छिद्र",
+        "नीचे की ओर मुड़ा हुआ लिंग (कॉर्डी)",
+        "हुडेड फोरस्किन (अग्रत्वचा)",
+        "मूत्र धारा का विभाजन"
+      ],
+      "gu": [
+        "અસામાન્ય મૂત્ર છિદ્ર",
+        "નીચે તરફ વળેલું શિશ્ન (કોર્ડી)",
+        "હૂડેડ ફોરસ્કિન (અગ્રત્વચા)",
+        "મૂત્રધારાનું વિભાજન"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Developmental — hormonal / genetic factors"
+      ],
+      "hi": [
+        "विकासात्मक — हार्मोनल / आनुवंशिक कारक"
+      ],
+      "gu": [
+        "વિકાસલક્ષી — હોર્મોનલ / આનુવંશિક પરિબળો"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Surgery between 6 and 18 months of age",
+        "TIP (Snodgrass) urethroplasty",
+        "Staged repair for severe proximal hypospadias"
+      ],
+      "hi": [
+        "6 से 18 महीने की उम्र के बीच सर्जरी",
+        "TIP (स्नोडग्रास) यूरेथ्रोप्लास्टी",
+        "गंभीर प्रॉक्सिमल हाइपोस्पेडियास के लिए चरणबद्ध मरम्मत"
+      ],
+      "gu": [
+        "6 થી 18 મહિનાની ઉંમર વચ્ચે શસ્ત્રક્રિયા",
+        "TIP (સ્નોડગ્રાસ) યુરેથ્રોપ્લાસ્ટી",
+        "ગંભીર પ્રોક્સિમલ હાઇપોસ્પેડિયાસ માટે તબક્કાવાર સમારકામ"
+      ]
+    }
+  },
+  {
+    "id": "paraphimosis",
+    "icon": "alert-octagon-outline",
+    "image": null,
+    "name": {
+      "en": "Paraphimosis",
+      "hi": "पैराफिमोसिस",
+      "gu": "પેરાફિમોસિસ"
+    },
+    "tagline": {
+      "en": "Stuck retracted foreskin — emergency!",
+      "hi": "फंसी हुई पीछे खिंची चमड़ी — आपातकालीन स्थिति!",
+      "gu": "અટવાયેલી પાછળ ખેંચાયેલી ચામડી — તાત્કાલિક સમસ્યા!"
+    },
+    "overview": {
+      "en": "Paraphimosis is a condition where the foreskin is retracted behind the glans and cannot be replaced, causing swelling and pain.",
+      "hi": "पैराफिमोसिस एक ऐसी स्थिति है जिसमें लिंग की चमड़ी (फोरस्किन) को ग्लान्स के पीछे खींचने के बाद वापस आगे नहीं लाया जा सकता, जिससे सूजन और दर्द होता है।",
+      "gu": "પેરાફિમોસિસ એ એક એવી સ્થિતિ છે જેમાં લિંગની ચામડી (ફોરસ્કિન) ગ્લાન્સની પાછળ ખેંચાયા પછી પાછી આગળ લાવી શકાતી નથી, જેના કારણે સોજો અને દુખાવો થાય છે।"
+    },
+    "when_to_see": {
+      "en": "Go to the nearest emergency room immediately — delay risks tissue loss.",
+      "hi": "तुरंत निकटतम आपातकालीन कक्ष में जाएं — देरी से ऊतक क्षति का खतरा रहता है।",
+      "gu": "તરત જ નજીકના કટોકટી વિભાગમાં જાઓ — વિલંબથી પેશીઓને નુકસાનનું જોખમ રહે છે।"
+    },
+    "symptoms": {
+      "en": [
+        "Swollen painful glans with tight ring of foreskin",
+        "Blue/purple discoloration",
+        "Inability to pull foreskin forward"
+      ],
+      "hi": [
+        "सूजी हुई दर्दनाक ग्लान्स के साथ चमड़ी का कसा हुआ वलय",
+        "नीला/बैंगनी रंग",
+        "चमड़ी को आगे खींचने में असमर्थता"
+      ],
+      "gu": [
+        "સોજો અને દુખાવો સાથે ગ્લાન્સની આસપાસ ચામડીની ચુસ્ત વીંટી",
+        "વાદળી/જાંબુડો રંગ",
+        "ચામડીને આગળ ખેંચી શકવાની અસમર્થતા"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Forgotten after catheterisation",
+        "Forceful retraction during intercourse",
+        "Phimotic ring"
+      ],
+      "hi": [
+        "कैथेटर लगाने के बाद भूल जाना",
+        "संभोग के दौरान जबरदस्ती पीछे खींचना",
+        "फाइमोटिक रिंग (संकुचित वलय)"
+      ],
+      "gu": [
+        "કેથેટર લગાવ્યા પછી ભૂલી જવું",
+        "સંભોગ દરમિયાન બળજબરીથી પાછળ ખેંચવું",
+        "ફાઈમોટિક રિંગ (સંકુચિત વીંટી)"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Manual reduction with ice / sugar / compression",
+        "Dorsal slit under local anaesthetic",
+        "Emergency circumcision"
+      ],
+      "hi": [
+        "बर्फ / चीनी / दबाव से मैनुअल रिडक्शन (सुधार)",
+        "लोकल एनेस्थीसिया के तहत डॉर्सल स्लिट (चीरा)",
+        "आपातकालीन खतना (सर्कमसिशन)"
+      ],
+      "gu": [
+        "બરફ / ખાંડ / દબાણથી મેન્યુઅલ રિડક્શન (સુધારણા)",
+        "લોકલ એનેસ્થેસિયા હેઠળ ડોર્સલ સ્લિટ (ચીરો)",
+        "કટોકટીમાં સર્કમસિઝન (ખતનો)"
+      ]
+    }
+  },
+  {
+    "id": "overactive-kidney-cyst",
+    "icon": "water-circle",
+    "image": null,
+    "name": {
+      "en": "Simple Kidney Cyst",
+      "hi": "सिम्पल किडनी सिस्ट",
+      "gu": "સિમ્પલ કિડની સિસ્ટ"
+    },
+    "tagline": {
+      "en": "Very common, usually harmless.",
+      "hi": "बहुत आम, आमतौर पर हानिरहित।",
+      "gu": "ખૂબ સામાન્ય, સામાન્ય રીતે હાનિકારક નથી."
+    },
+    "overview": {
+      "en": "Simple kidney cysts are fluid-filled sacs, present in up to 50% of people over 50. They rarely cause symptoms or complications.",
+      "hi": "सिम्पल किडनी सिस्ट तरल पदार्थ से भरी थैलियाँ होती हैं, जो 50 वर्ष से अधिक उम्र के 50% तक लोगों में पाई जाती हैं। ये शायद ही कभी लक्षण या जटिलताएँ उत्पन्न करती हैं।",
+      "gu": "સિમ્પલ કિડની સિસ્ટ પ્રવાહીથી ભરેલી થેલીઓ છે, જે 50 વર્ષથી વધુ ઉંમરના 50% સુધી લોકોમાં જોવા મળે છે. તે ભાગ્યે જ લક્ષણો અથવા ગૂંચવણો ઊભી કરે છે."
+    },
+    "when_to_see": {
+      "en": "Only if the cyst has complex walls / solid component (Bosniak III / IV) — your radiologist will flag it.",
+      "hi": "केवल तभी जब सिस्ट की दीवारें जटिल हों / ठोस घटक हो (Bosniak III / IV) — आपके रेडियोलॉजिस्ट इसे चिह्नित करेंगे।",
+      "gu": "ફક્ત જો સિસ્ટની દિવાલો જટિલ હોય / ઘન ઘટક હોય (Bosniak III / IV) — તમારા રેડિયોલોજિસ્ટ તેને ચિહ્નિત કરશે."
+    },
+    "symptoms": {
+      "en": [
+        "Usually found incidentally",
+        "Flank pain if large or complicated",
+        "Haematuria (rare)"
+      ],
+      "hi": [
+        "आमतौर पर संयोगवश पाई जाती है",
+        "यदि बड़ी या जटिल हो तो पार्श्व में दर्द",
+        "हेमाट्यूरिया (दुर्लभ)"
+      ],
+      "gu": [
+        "સામાન્ય રીતે આકસ્મિક રીતે મળી આવે છે",
+        "જો મોટી અથવા જટિલ હોય તો બાજુમાં દુખાવો",
+        "હેમેટ્યુરિયા (દુર્લભ)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Age-related",
+        "Acquired cystic disease in CKD / dialysis"
+      ],
+      "hi": [
+        "उम्र-संबंधित",
+        "CKD / डायलिसिस में अर्जित सिस्टिक रोग"
+      ],
+      "gu": [
+        "ઉંમર-સંબંધિત",
+        "CKD / ડાયાલિસિસમાં પ્રાપ્ત સિસ્ટિક રોગ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation if Bosniak I/II",
+        "Percutaneous aspiration + sclerotherapy (symptomatic)",
+        "Laparoscopic deroofing (rare)"
+      ],
+      "hi": [
+        "Bosniak I/II में अवलोकन",
+        "परक्यूटेनियस एस्पिरेशन + स्क्लेरोथेरेपी (लक्षणात्मक)",
+        "लैप्रोस्कोपिक डीरूफिंग (दुर्लभ)"
+      ],
+      "gu": [
+        "Bosniak I/II માં અવલોકન",
+        "પરક્યુટેનિયસ એસ્પિરેશન + સ્ક્લેરોથેરાપી (લક્ષણાત્મક)",
+        "લેપ્રોસ્કોપિક ડીરૂફિંગ (દુર્લભ)"
+      ]
+    }
+  },
+  {
+    "id": "androgen-deficiency",
+    "icon": "gauge-low",
+    "image": null,
+    "name": {
+      "en": "Testosterone Deficiency (Hypogonadism)",
+      "hi": "टेस्टोस्टेरोन की कमी (हाइपोगोनाडिज़्म)",
+      "gu": "ટેસ્ટોસ્ટેરોનની ઉણપ (હાયપોગોનાડિઝમ)"
+    },
+    "tagline": {
+      "en": "Low T — treatable cause of fatigue, low libido & mood issues.",
+      "hi": "Low T — थकान, कम कामेच्छा और मूड समस्याओं का उपचार योग्य कारण।",
+      "gu": "Low T — થાક, ઓછી કામવાસના અને મૂડની સમસ્યાઓનું સારવાર યોગ્ય કારણ."
+    },
+    "overview": {
+      "en": "Hypogonadism is a clinical syndrome of low serum testosterone with symptoms. Prevalence rises with age, obesity and diabetes.",
+      "hi": "हाइपोगोनाडिज़्म एक नैदानिक सिंड्रोम है जिसमें लक्षणों के साथ सीरम टेस्टोस्टेरोन कम होता है। उम्र, मोटापा और मधुमेह के साथ इसकी व्यापकता बढ़ती है।",
+      "gu": "હાયપોગોનાડિઝમ એ લક્ષણો સાથે ઓછા સીરમ ટેસ્ટોસ્ટેરોનનો ક્લિનિકલ સિન્ડ્રોમ છે. વય, સ્થૂળતા અને ડાયાબિટીસ સાથે તેની વ્યાપકતા વધે છે."
+    },
+    "when_to_see": {
+      "en": "If your morning testosterone is <300 ng/dL on two tests with symptoms — book a consultation.",
+      "hi": "यदि आपका सुबह का टेस्टोस्टेरोन लक्षणों के साथ दो परीक्षणों में <300 ng/dL है — तो परामर्श बुक करें।",
+      "gu": "જો તમારું સવારનું ટેસ્ટોસ્ટેરોન લક્ષણો સાથે બે પરીક્ષણોમાં <300 ng/dL હોય — તો પરામર્શ બુક કરો."
+    },
+    "symptoms": {
+      "en": [
+        "Low libido, erectile dysfunction",
+        "Fatigue, low mood",
+        "Loss of muscle mass, weight gain",
+        "Reduced body hair, hot flushes"
+      ],
+      "hi": [
+        "कम कामेच्छा, स्तंभन दोष",
+        "थकान, कम मूड",
+        "मांसपेशियों में कमी, वजन बढ़ना",
+        "शरीर के बालों में कमी, गर्म लहरें"
+      ],
+      "gu": [
+        "ઓછી કામવાસના, ઇરેક્ટાઇલ ડિસફંક્શન",
+        "થાક, નીચું મૂડ",
+        "સ્નાયુઓમાં ઘટાડો, વજન વધવું",
+        "શરીરના વાળમાં ઘટાડો, ગરમ લહેરો"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Ageing, obesity, diabetes",
+        "Pituitary tumours",
+        "Klinefelter syndrome",
+        "Post-mumps orchitis / chemotherapy"
+      ],
+      "hi": [
+        "बुढ़ापा, मोटापा, मधुमेह",
+        "पिट्यूटरी ट्यूमर",
+        "क्लाइनफेल्टर सिंड्रोम",
+        "पोस्ट-मम्प्स ऑर्काइटिस / कीमोथेरेपी"
+      ],
+      "gu": [
+        "વૃદ્ધત્વ, સ્થૂળતા, ડાયાબિટીસ",
+        "પીટ્યુટરી ટ્યુમર",
+        "ક્લાઇનફેલ્ટર સિન્ડ્રોમ",
+        "પોસ્ટ-મમ્પ્સ ઓર્કાઇટિસ / કીમોથેરાપી"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Testosterone gels / injections / pellets",
+        "Weight loss, strength training, sleep",
+        "Clomiphene if fertility needed",
+        "Monitor PSA and haematocrit"
+      ],
+      "hi": [
+        "टेस्टोस्टेरोन जेल / इंजेक्शन / पेलेट्स",
+        "वजन घटाना, शक्ति प्रशिक्षण, नींद",
+        "यदि प्रजनन क्षमता की आवश्यकता हो तो क्लोमीफीन",
+        "PSA और हीमेटोक्रिट की निगरानी करें"
+      ],
+      "gu": [
+        "ટેસ્ટોસ્ટેરોન જેલ / ઇન્જેક્શન / પેલેટ્સ",
+        "વજન ઘટાડવું, શક્તિ તાલીમ, ઊંઘ",
+        "જો પ્રજનન ક્ષમતા જરૂરી હોય તો ક્લોમીફીન",
+        "PSA અને હિમેટોક્રિટનું નિરીક્ષણ કરો"
+      ]
+    }
+  },
+  {
+    "id": "hematospermia",
+    "icon": "water-alert-outline",
+    "image": null,
+    "name": {
+      "en": "Blood in Semen (Haematospermia)",
+      "hi": "वीर्य में रक्त (हेमाटोस्पर्मिया)",
+      "gu": "વીર્યમાં લોહી (હેમેટોસ્પર્મિયા)"
+    },
+    "tagline": {
+      "en": "Common and usually benign — but deserves a check.",
+      "hi": "आम समस्या और आमतौर पर हानिरहित — लेकिन जांच जरूरी है।",
+      "gu": "સામાન્ય સમસ્યા અને સામાન્ય રીતે હાનિકારક નથી — પણ તપાસ જરૂરી છે।"
+    },
+    "overview": {
+      "en": "Haematospermia is blood in the ejaculate. In men under 40 it is usually benign and self-limiting; in older men, rule out prostate pathology.",
+      "hi": "हेमाटोस्पर्मिया का मतलब है वीर्य में रक्त आना। 40 वर्ष से कम उम्र के पुरुषों में यह आमतौर पर हानिरहित और स्वतः ठीक होने वाली समस्या है; बड़ी उम्र के पुरुषों में प्रोस्टेट संबंधी बीमारी को खारिज करना जरूरी है।",
+      "gu": "હેમેટોસ્પર્મિયા એટલે વીર્યમાં લોહી આવવું. 40 વર્ષથી ઓછી ઉંમરના પુરુષોમાં તે સામાન્ય રીતે હાનિકારક નથી અને પોતાની મેળે સાજું થઈ જાય છે; મોટી ઉંમરના પુરુષોમાં પ્રોસ્ટેટની સમસ્યા ને નકારવી જરૂરી છે।"
+    },
+    "when_to_see": {
+      "en": "Recurrent episodes, age >40, or pain — book a consultation.",
+      "hi": "बार-बार होने पर, उम्र >40 वर्ष, या दर्द हो — तो परामर्श बुक करें।",
+      "gu": "વારંવાર થાય, ઉંમર >40 વર્ષ, અથવા દુખાવો હોય — તો પરામર્શ બુક કરો।"
+    },
+    "symptoms": {
+      "en": [
+        "Red / brown semen",
+        "Pelvic discomfort (occasional)"
+      ],
+      "hi": [
+        "लाल / भूरे रंग का वीर्य",
+        "श्रोणि में असुविधा (कभी-कभी)"
+      ],
+      "gu": [
+        "લાલ / ભૂરા રંગનું વીર્ય",
+        "શ્રોણિમાં અસ્વસ્થતા (ક્યારેક ક્યારેક)"
+      ]
+    },
+    "causes": {
+      "en": [
+        "Prostatitis, seminal vesiculitis",
+        "After prostate biopsy / vasectomy",
+        "BPH, prostate cancer",
+        "Hypertension, clotting disorders"
+      ],
+      "hi": [
+        "प्रोस्टेटाइटिस, सेमिनल वेसिकुलाइटिस",
+        "प्रोस्टेट बायोप्सी / नसबंदी के बाद",
+        "BPH, प्रोस्टेट कैंसर",
+        "उच्च रक्तचाप, रक्त जमने की समस्याएं"
+      ],
+      "gu": [
+        "પ્રોસ્ટેટાઇટિસ, સેમિનલ વેસિક્યુલાઇટિસ",
+        "પ્રોસ્ટેટ બાયોપ્સી / નસબંધી પછી",
+        "BPH, પ્રોસ્ટેટ કેન્સર",
+        "હાયપરટેન્શન, લોહી ગંઠાવાની સમસ્યાઓ"
+      ]
+    },
+    "treatments": {
+      "en": [
+        "Observation for single episode in <40y",
+        "Transrectal ultrasound / MRI in older men",
+        "Treat infection or identified cause"
+      ],
+      "hi": [
+        "<40 वर्ष में एक बार होने पर अवलोकन",
+        "बड़ी उम्र के पुरुषों में ट्रांसरेक्टल अल्ट्रासाउंड / MRI",
+        "संक्रमण या पहचाने गए कारण का उपचार"
+      ],
+      "gu": [
+        "<40 વર્ષમાં એક વાર થાય તો નિરીક્ષણ",
+        "મોટી ઉંમરના પુરુષોમાં ટ્રાન્સરેક્ટલ અલ્ટ્રાસાઉન્ડ / MRI",
+        "ચેપ અથવા ઓળખાયેલ કારણની સારવાર"
+      ]
+    }
+  }
+]

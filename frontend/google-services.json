@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "671401583801",
+    "project_id": "consulturo-87dfa",
+    "storage_bucket": "consulturo-87dfa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671401583801:android:eb9f88238be9cbfa34e768",
+        "android_client_info": {
+          "package_name": "com.drsagarjoshi.consulturo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8oPYsTL2OV9DvbGrUu8CM3DdszL3q4g4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

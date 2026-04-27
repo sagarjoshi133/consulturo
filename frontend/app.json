@@ -1,0 +1,96 @@
+{
+  "expo": {
+    "name": "ConsultUro",
+    "slug": "consulturo",
+    "scheme": "consulturo",
+    "version": "1.0.9",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "owner": "sagar133",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E7C8B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drsagarjoshi.consulturo",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "Save appointment reminders to your calendar"
+      }
+    },
+    "android": {
+      "package": "com.drsagarjoshi.consulturo",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#549BAF"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
+      ],
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "consulturo",
+              "host": "auth-callback"
+            },
+            {
+              "scheme": "consulturo",
+              "host": "magic-link"
+            },
+            {
+              "scheme": "consulturo"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Save appointment reminders to your calendar"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0E7C8B",
+          "defaultChannel": "default"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1e1764aa-2d2c-48c5-be82-1427eae229ea"
+      }
+    }
+  }
+}
