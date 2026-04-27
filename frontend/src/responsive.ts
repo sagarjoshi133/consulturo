@@ -52,13 +52,36 @@ export type ResponsiveInfo = {
 /**
  * Hook — re-renders on viewport resize. Safe on native (returns
  * `isMobile = true` always).
+ *
+ * Desktop mode is enabled when EITHER condition is met:
+ *   1. Width ≥ 1024 px (any device this wide), OR
+ *   2. Width ≥ 900 px AND landscape orientation (width > height) —
+ *      this catches tablets in landscape (iPad, Android tablets,
+ *      Surface, etc.) which read more like a desktop than a phone.
+ *
+ * Phones in landscape (typical max ~900 px) stay in mobile mode.
  */
 export function useResponsive(): ResponsiveInfo {
   const { width, height } = useWindowDimensions();
   const isPlatformWeb = Platform.OS === 'web';
 
-  const isWebTablet = isPlatformWeb && width >= BREAKPOINTS.tablet && width < BREAKPOINTS.desktop;
-  const isWebDesktop = isPlatformWeb && width >= BREAKPOINTS.desktop;
+  const landscape = width > height;
+  // Tablet-landscape detection. We require:
+  //   • Web platform
+  //   • Width >= 900 px (excludes iPhone-class phones at any orientation)
+  //   • Height >= 600 px (excludes phones held in landscape — those have
+  //     only ~400-450 px of height which can't fit a sidebar layout)
+  //   • Currently in landscape orientation (width > height)
+  // Result: iPad/Android tablet landscape → desktop. Phone landscape →
+  // stays in mobile layout where it belongs.
+  const isTabletLandscape =
+    isPlatformWeb &&
+    width >= 900 &&
+    height >= 600 &&
+    width < BREAKPOINTS.desktop &&
+    landscape;
+  const isWebTablet = isPlatformWeb && width >= BREAKPOINTS.tablet && width < 900 && !isTabletLandscape;
+  const isWebDesktop = (isPlatformWeb && width >= BREAKPOINTS.desktop) || isTabletLandscape;
   const isWebWide = isPlatformWeb && width >= BREAKPOINTS.wide;
   const isWebMedium = isWebTablet || isWebDesktop;
   const isWeb = isWebMedium; // semantic alias used by call sites
@@ -94,7 +117,13 @@ export function useResponsive(): ResponsiveInfo {
 export function isWebDesktopStatic(): boolean {
   if (Platform.OS !== 'web') return false;
   if (typeof window === 'undefined') return false; // SSR guard
-  return window.innerWidth >= BREAKPOINTS.desktop;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w >= BREAKPOINTS.desktop) return true;
+  // Tablet landscape (>=900 wide, >=600 tall, landscape) → desktop.
+  // Height threshold excludes phones held in landscape orientation.
+  if (w >= 900 && h >= 600 && w > h) return true;
+  return false;
 }
 
 /**
