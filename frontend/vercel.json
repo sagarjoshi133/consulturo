@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "yarn install --frozen-lockfile && npx expo export -p web --output-dir dist",
+  "buildCommand": "yarn install && npx expo export -p web --output-dir dist",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
