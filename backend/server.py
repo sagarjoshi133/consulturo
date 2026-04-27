@@ -6189,6 +6189,12 @@ async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
         body=msg_body,
         kind="personal",
         data=note_data,
+        # Suppress the implicit push fired by create_notification — we
+        # send our own one below with the correct payload (`type` +
+        # `kind` + optional attachment label). This avoids a double-push
+        # that earlier delivered ONLY `kind` (no `type`), which the
+        # frontend tap handler couldn't route into /inbox.
+        push=False,
     )
 
     try:
