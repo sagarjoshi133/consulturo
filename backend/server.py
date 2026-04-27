@@ -3166,8 +3166,15 @@ async def render_pdf(body: RenderPdfBody, user=Depends(require_user)):
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"PDF engine unavailable: {e}")
 
+    # Run the (synchronous, CPU-bound) render in a worker thread so we
+    # don't block the asyncio event loop. WeasyPrint itself is CPU-heavy
+    # (~1-3 s for a typical Rx); offloading frees the loop to serve
+    # other requests in parallel.
+    import asyncio
+    def _do_render() -> bytes:
+        return HTML(string=body.html, base_url="https://www.drsagarjoshi.com/").write_pdf()
     try:
-        pdf_bytes = HTML(string=body.html, base_url="https://www.drsagarjoshi.com/").write_pdf()
+        pdf_bytes = await asyncio.to_thread(_do_render)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF render failed: {e}")
 
@@ -3183,6 +3190,38 @@ async def render_pdf(body: RenderPdfBody, user=Depends(require_user)):
             "Cache-Control": "no-store",
         },
     )
+
+
+# ──────────────────────────────────────────────────────────────────
+# WeasyPrint warmup. The very first render after process start can
+# take 5-15 s while Cairo/Pango lazy-load shared libraries and font
+# caches build. We pre-render a tiny dummy PDF on startup (in a
+# background thread so it never blocks app boot) to push that cost
+# off the first user request — they then see the steady-state
+# render time (~1-3 s) for the very first prescription.
+# ──────────────────────────────────────────────────────────────────
+async def _warmup_pdf_engine() -> None:
+    try:
+        from weasyprint import HTML  # type: ignore
+    except Exception:
+        return  # WeasyPrint not installed — render endpoint will 503 anyway
+    import asyncio
+    def _go() -> None:
+        try:
+            HTML(string="<html><body><h1>warmup</h1></body></html>").write_pdf()
+        except Exception:
+            pass  # warmup failures are non-fatal
+    try:
+        await asyncio.to_thread(_go)
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+async def _kickoff_pdf_warmup() -> None:
+    # Don't block server startup — fire-and-forget the warmup.
+    import asyncio
+    asyncio.create_task(_warmup_pdf_engine())
 
 
 @app.post("/api/prescriptions")

@@ -829,19 +829,29 @@ async function fetchPdfFromBackend(html: string): Promise<{ blob?: Blob; uri?: s
   return { uri, bytes };
 }
 
-/** Open the native Print dialog for this prescription. Always uses the
- *  backend-rendered PDF so the OS-level print spooler gets a true PDF
- *  document (no HTML iframe, no popup blocker hiccups). */
+/** Open the native Print dialog for this prescription.
+ *
+ *  Native (iOS/Android): uses `Print.printAsync({ html })` directly,
+ *  which lets the OS's print engine render the HTML to PDF
+ *  on-device — typically <1 second, no network call. This is the
+ *  fastest possible path; the previous round-trip to the backend
+ *  WeasyPrint endpoint took 5-30 s on cold-start and frequently
+ *  surfaced as a "Network Error" alert when it exceeded 15 s.
+ *
+ *  Web: opens the rendered HTML in a hidden iframe and calls
+ *  `iframe.contentWindow.print()`. The browser shows its native print
+ *  dialog where the user can either send to a printer or "Save as
+ *  PDF" — instant, no backend needed.
+ */
 export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
   try {
     const s = settings || (await loadClinicSettings());
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web: fetch PDF blob, embed in hidden iframe, trigger iframe.print().
-      const { blob } = await fetchPdfFromBackend(html);
-      if (!blob) throw new Error('No PDF blob received');
-      const url = URL.createObjectURL(blob);
+      // Web: render HTML in a hidden iframe → trigger browser print.
+      // No backend round-trip; the browser's print engine handles
+      // both paper-print AND "Save as PDF" via its dialog.
       const iframe = document.createElement('iframe');
       iframe.style.position = 'fixed';
       iframe.style.right = '-9999px';
@@ -849,28 +859,32 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
       iframe.style.width = '0';
       iframe.style.height = '0';
       iframe.style.border = '0';
-      iframe.src = url;
       document.body.appendChild(iframe);
-      iframe.onload = () => {
+      const idoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!idoc) throw new Error('Could not open print iframe');
+      idoc.open();
+      idoc.write(html);
+      idoc.close();
+      // Give the browser a tick to lay out before printing.
+      setTimeout(() => {
         try {
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();
-        } catch (_e) {
-          // Fallback: open the PDF in a new tab where the user can print.
-          window.open(url, '_blank');
+        } catch (e) {
+          window.alert('Could not open print dialog: ' + (e as any)?.message);
         }
-      };
-      // Cleanup later
+      }, 250);
+      // Clean up the iframe after print dialog closes (60 s safety).
       setTimeout(() => {
-        try { document.body.removeChild(iframe); URL.revokeObjectURL(url); } catch {}
-      }, 60000);
+        try { document.body.removeChild(iframe); } catch {}
+      }, 60_000);
       return;
     }
 
-    // Native: get the PDF file URI then open the OS print dialog.
-    const { uri } = await fetchPdfFromBackend(html);
-    if (!uri) throw new Error('No PDF file generated');
-    await Print.printAsync({ uri });
+    // Native: hand the HTML straight to expo-print. The OS renders
+    // the PDF locally (Android: PrintManager / iOS: UIPrintInteraction)
+    // and shows the native print dialog — no network, no timeout.
+    await Print.printAsync({ html });
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || 'Could not print prescription';
     if (Platform.OS === 'web') window.alert(msg);
@@ -878,9 +892,16 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
   }
 }
 
-/** Download / save the PDF locally. On web this is a real file download
- *  (Content-Disposition); on native we open the share-sheet so the user
- *  can save to Files / Drive / Photos. */
+/** Download / save the PDF locally.
+ *
+ *  Native: uses `Print.printToFileAsync({ html })` to generate the
+ *  PDF on-device (instant) then opens the share-sheet so the user
+ *  can save to Files / Drive / Photos. No backend.
+ *
+ *  Web: still goes through the backend `/render/pdf` (WeasyPrint) so
+ *  the user gets a true PDF download with a real filename. Web has
+ *  no on-device "HTML→PDF→file" API short of a print dialog.
+ */
 export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettings) {
   try {
     const s = settings || (await loadClinicSettings());
@@ -891,8 +912,7 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
     if (Platform.OS === 'web') {
-      // Confirm with the user first ("Download this PDF?") before saving.
-      // window.confirm returns true on user OK, false on cancel.
+      // Web: confirm + fetch from backend.
       if (!window.confirm(`Download ${filename}?`)) return;
       const { blob } = await fetchPdfFromBackend(html);
       if (!blob) throw new Error('No PDF blob received');
@@ -908,7 +928,9 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
       return;
     }
 
-    const { uri } = await fetchPdfFromBackend(html);
+    // Native: render PDF on-device via expo-print. Skips the entire
+    // network round-trip so it's near-instant and never times out.
+    const { uri } = await Print.printToFileAsync({ html });
     if (!uri) throw new Error('No PDF file generated');
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, {
@@ -927,7 +949,11 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
 }
 
 /** Share the PDF FILE via the OS share-sheet. No verify-link text — the
- *  recipient gets the actual PDF attachment. */
+ *  recipient gets the actual PDF attachment.
+ *
+ *  Native: on-device PDF (instant). Web: backend PDF (since browsers
+ *  can't share files programmatically without a real File object).
+ */
 export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings) {
   const safeName = (rx.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
   const suffix = rx.registration_no || rx.prescription_id;
@@ -962,7 +988,8 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
       return;
     }
 
-    const { uri } = await fetchPdfFromBackend(html);
+    // Native: instant on-device PDF via expo-print, then OS share-sheet.
+    const { uri } = await Print.printToFileAsync({ html });
     if (!uri) throw new Error('No PDF file generated');
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, {
