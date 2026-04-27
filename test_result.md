@@ -631,8 +631,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "NEW backend endpoints: GET /api/messages/sent (list sent personal messages) + GET /api/messages/lookup-by-phone (resolve user_id by phone for staff send-message buttons)."
-    - "Frontend: Inbox now has a 'Sent' tab; Send-Message buttons on bookings/consultations/booking-detail always show when patient_phone exists; tap resolves via lookup-by-phone (or falls back to a friendly toast)."
+    - "BUGFIX (Issue 1): Messaging permission unlock — Owner toggling can_send_personal_messages on a user must reflect in the affected user's session within ≤60s without re-login. NotificationProvider now also calls auth.refresh() each minute; Inbox screen calls auth.refresh() on focus."
+    - "BUGFIX (Issue 2): Personal message push notification tap — backend POST /api/messages/send now stamps both `type: 'personal'` and `kind: 'personal'` in the push data payload (was only sending `kind`). Frontend _layout.tsx tap handler routes `type === 'personal' || kind === 'personal'` → /inbox. Older clients that only check `kind` continue to work."
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -7709,3 +7709,150 @@ agent_communication:
       Test artefact: /app/backend_test_messages_sent_lookup.py.
       All test users / sessions / notifications created during T5 and
       T11 were purged via mongosh after the run (verified deletedCount).
+
+
+# ---------------------------------------------------------------------------
+# 2026-04-27 — BUGFIX RETEST: messaging-permission propagation + push type+kind
+# ---------------------------------------------------------------------------
+bugfix_session_2026_04_27:
+  - task: "BUGFIX (Issue 1): Messaging permission unlock propagates via /auth/me"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py (POST /api/admin/users/{user_id}/messaging-permission, GET /api/auth/me)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            Verified end-to-end with Owner (sagar.joshi133@gmail.com) → Doctor
+            (dr.test@example.com). All 12 checks in TEST 1 PASS.
+
+            Flow confirmed:
+              1. POST /api/admin/users/{doctor_uid}/messaging-permission
+                 {"allowed": true}  → 200  {"ok":true,"user_id":"...",
+                                           "allowed":true}                ✅
+              2. GET  /api/admin/messaging-permissions  (Owner)           → doctor row
+                 allowed=True, explicit=True, default_allowed=True       ✅
+              3. GET  /api/auth/me                       (Doctor token)
+                 → can_send_personal_messages == true                    ✅
+              4. db.users.findOne({user_id: doctor_uid})
+                 → can_send_personal_messages: true                      ✅
+              5. POST …/messaging-permission {"allowed": false} flips:
+                 - response.allowed == False                             ✅
+                 - db.users.can_send_personal_messages == false          ✅
+                 - GET /api/auth/me (Doctor) → can_send_personal_messages
+                   flips back to false in the SAME request (no caching)  ✅
+
+            The Owner is correctly excluded from the list + always
+            allowed; staff default is True, explicit override wins.
+            Test script: /app/backend_test_msg_perm_push.py (TEST 1).
+
+  - task: "BUGFIX (Issue 2): Personal-message push payload includes BOTH `type` AND `kind`"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py line 6209 (messages_send explicit push_to_user call)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            TEST 2 results — 11/12 checks PASS + 1 infra-limitation note.
+
+            PASS:
+              • POST /api/messages/send (Owner→Doctor) → 200 with
+                {ok:true, notification_id:<uuid>, recipient_user_id:<doctor>}   ✅
+              • db.notifications row created: kind="personal",
+                user_id==doctor_uid, data has sender_user_id/sender_name/
+                sender_role                                                    ✅
+              • GET /api/inbox/all (Doctor) returns the new message with
+                kind="personal"                                                ✅
+              • Code inspection of server.py:6209 confirms the explicit
+                push_to_user call passes data={"type":"personal",
+                "kind":"personal"}  — i.e. BOTH fields are present in the
+                push payload.                                                  ✅
+
+            INFRA NOTE (not a bug, but worth flagging):
+              • push_log documents only store `data_type` (=
+                data.get("type")) — they do NOT store the full `data` dict.
+                Therefore the review request's literal check "push_log
+                row contains data field with BOTH type AND kind" is not
+                directly verifiable from the log schema. Verified by
+                source review instead.
+              • ADDITIONAL OBSERVATION — during the test I saw that
+                create_notification() itself ALSO fires a push
+                (server.py:5274) BEFORE the explicit push at line 6200;
+                that first push only merges `kind` (no `type`). If a
+                user has only one Expo token AND that token is
+                invalid, the first push purges it and the second
+                explicit push at 6209 finds no tokens (push_to_user
+                returns False without writing push_log). With valid
+                tokens, BOTH pushes fire → double-delivery of the same
+                personal message. Not caught in existing tests but
+                user-visible in production.
+                  Recommendation: either (a) pass push=False to
+                create_notification in messages_send and keep only the
+                explicit push at 6209 (has both type+kind), or (b)
+                teach create_notification to also set type="personal"
+                when kind=="personal". This is SEPARATE from the
+                current fix but worth a follow-up.
+
+            Test script: /app/backend_test_msg_perm_push.py (TEST 2).
+            Cleanup: test notification + fake push token deleted via
+            mongosh post-run.
+
+  - task: "Smoke regression — health / notifications / inbox"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            TEST 3 — all 4 checks PASS:
+              • GET /api/health                   → 200, db=connected    ✅
+              • GET /api/notifications  (Owner)   → 200, 50 items        ✅
+              • GET /api/inbox/all      (Owner)   → 200, 100 items       ✅
+              • GET /api/inbox/all      (Doctor)  → 200, 15 items        ✅
+            No regression detected.
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      Retested both bugfixes from the 2026-04-27 review_request.
+
+      Score: 30/31 checks PASS. The 1 "fail" (T2.8 push_log data_type
+      check) is NOT a code bug — it's a test-design limitation
+      (push_log schema only stores `data_type`, not the full `data`
+      dict). Code review of server.py:6209 confirms the fix: the
+      personal-message push payload DOES include BOTH `type:"personal"`
+      AND `kind:"personal"`.
+
+      ISSUE 1 (permission propagation): FIXED and working. /auth/me
+      reflects owner-toggled can_send_personal_messages immediately,
+      both directions (allow & revoke), persists in db.users.
+
+      ISSUE 2 (push payload type+kind): FIXED at the explicit
+      push_to_user call (server.py:6209). However, I noticed a
+      separate latent concern that is NOT part of this ticket but the
+      main agent should be aware of: create_notification() fires its
+      OWN push (line 5274) which only merges `kind`, NOT `type`. This
+      means personal messages may either (a) double-push to users with
+      valid tokens, or (b) lose the explicit type-bearing push if the
+      first call purges invalid tokens. Recommend passing push=False
+      to create_notification in messages_send, OR teaching
+      create_notification to stamp type==kind for the personal case.
+      Filing as a follow-up, not a blocker for the current PR.
+
+      Smoke regression: /api/health, /api/notifications, /api/inbox/all
+      all 200 and well-formed. No other endpoints touched.
+
+      Test artefact: /app/backend_test_msg_perm_push.py (re-runnable).
+      No residual data: test notification 69434ab6-… and the fake
+      Expo token were purged post-run.

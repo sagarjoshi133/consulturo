@@ -72,6 +72,14 @@ function RootNav() {
         }
         return;
       }
+      // Personal direct messages — route the recipient to their Inbox so
+      // they land on the conversation list. The backend stamps both
+      // `type` and `kind` ('personal') for backward-compatibility with
+      // older clients.
+      if (type === 'personal' || data?.kind === 'personal') {
+        router.push('/inbox' as any);
+        return;
+      }
     });
     return unsub;
   }, [router]);

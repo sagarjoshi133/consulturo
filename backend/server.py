@@ -6202,7 +6202,11 @@ async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
             None,
             title=f"{sender_name}: {title}",
             body=push_body,
-            data={"kind": "personal"},
+            # `type` is the convention used by every other push payload
+            # (booking_*, broadcast, note_reminder…) — the frontend
+            # `_layout.tsx` tap handler routes on `data.type`. We keep
+            # `kind` for backward compatibility with older clients.
+            data={"type": "personal", "kind": "personal"},
         )
         # If a push was actually fanned out to at least one device, the
         # message is considered "delivered" right now (WhatsApp ✓✓).

@@ -136,7 +136,7 @@ function ReceiptTicks({ item, size = 13 }: { item: InboxItem; size?: number }) {
 export default function Inbox() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, refresh: refreshAuth } = useAuth();
   const params = useLocalSearchParams<{ tab?: string; filter?: string }>();
 
   const isStaff = !!user && STAFF_ROLES.has((user.role as string) || '');
@@ -185,7 +185,13 @@ export default function Inbox() {
     }
   }, [canSendMsg]);
 
-  useFocusEffect(useCallback(() => { loadReceived(); }, [loadReceived]));
+  useFocusEffect(useCallback(() => {
+    loadReceived();
+    // Re-pull /auth/me on every focus so a permission unlock from the
+    // Owner takes effect the moment the user opens the Inbox — no
+    // re-login required. Best-effort, fire-and-forget.
+    try { refreshAuth?.(); } catch {}
+  }, [loadReceived, refreshAuth]));
 
   useEffect(() => {
     if (tab === 'sent') loadSent();

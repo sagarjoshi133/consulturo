@@ -50,7 +50,7 @@ const NotifCtx = createContext<Ctx>({
 });
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, refresh: refreshAuth } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -119,9 +119,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     refresh();
     if (!user) return;
-    const timer = setInterval(refresh, 60_000);
+    const timer = setInterval(() => {
+      refresh();
+      // Also re-fetch the user object so permission/role changes made
+      // by the Owner (e.g. unlocking messaging) propagate to the
+      // affected user within ≤60 s — without requiring a re-login.
+      // Fire-and-forget; never throws.
+      try { refreshAuth?.(); } catch {}
+    }, 60_000);
     return () => clearInterval(timer);
-  }, [user, refresh]);
+  }, [user, refresh, refreshAuth]);
 
   const markRead = useCallback(async (id: string) => {
     try {
