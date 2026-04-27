@@ -55,6 +55,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Skeleton } from '../src/skeleton';
 import { whatsappLink, telLink } from '../src/phone';
 import { TodayGlance, SmartAlerts } from '../src/dashboard-widgets';
+import { useResponsive } from '../src/responsive';
 
 // ---------------------------------------------------------------
 // CSV export helper (owner-only on backend). On web, triggers an
@@ -677,6 +678,7 @@ export default function Dashboard() {
 }
 
 function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id: string; name?: string; phone?: string; email?: string; role?: string }) => void } = {}) {
+  const { isWebDesktop } = useResponsive();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'requested' | 'all' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled'>('requested');
@@ -1265,6 +1267,12 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
         />
       )}
 
+      {/* Desktop web — booking cards flex into a 2-up grid. Each row
+          has identical-height columns and the existing per-card
+          interactions (open / select / edit / actions) work
+          unchanged. Mobile keeps the single-column stack which is
+          best for thumb scrolling. */}
+      <View style={isWebDesktop ? styles.bkGrid : undefined}>
       {filtered.map((b) => {
         const statusColor =
           b.status === 'requested' ? COLORS.warning :
@@ -1277,7 +1285,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
           (b.original_time && b.original_time !== b.booking_time);
         const selected = selectedIds.has(b.booking_id);
         return (
-          <View key={b.booking_id} style={[styles.bkCard, selected && styles.bkCardSelected]} testID={`bk-card-${b.booking_id}`}>
+          <View key={b.booking_id} style={[styles.bkCard, selected && styles.bkCardSelected, isWebDesktop && styles.bkCardDesktop]} testID={`bk-card-${b.booking_id}`}>
             <TouchableOpacity
               activeOpacity={0.75}
               onPress={() => {
@@ -1502,11 +1510,13 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
           </View>
         );
       })}
+      </View>
     </>
   );
 }
 
 function PrescriptionsPanel() {
+  const { isWebDesktop } = useResponsive();
   const router = useRouter();
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
@@ -1651,8 +1661,11 @@ function PrescriptionsPanel() {
           {items.length === 0 ? 'No prescriptions yet' : 'No matches.'}
         </Text>
       ) : (
-        filtered.map((rx) => (
-          <View key={rx.prescription_id} style={styles.rxCard}>
+        // Desktop: same card layout, but flex into a 2-up grid
+        // wrapper. Mobile keeps the single-column stack.
+        <View style={isWebDesktop ? styles.bkGrid : undefined}>
+        {filtered.map((rx) => (
+          <View key={rx.prescription_id} style={[styles.rxCard, isWebDesktop && styles.bkCardDesktop]}>
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => router.push({ pathname: '/prescriptions/[id]', params: { id: rx.prescription_id } } as any)}
@@ -1721,7 +1734,8 @@ function PrescriptionsPanel() {
               )}
             </View>
           </View>
-        ))
+        ))}
+        </View>
       )}
     </>
   );
@@ -2093,6 +2107,17 @@ const styles = StyleSheet.create({
   bulkBtnText: { ...FONTS.bodyMedium, color: '#fff', fontSize: 12 },
   bulkCheckbox: { marginRight: 10, marginTop: 2 },
   bkCardSelected: { borderColor: COLORS.primary, borderWidth: 2, backgroundColor: COLORS.primary + '08' },
+  // Desktop grid container — wraps booking & Rx cards into a 2-up
+  // flex grid on wide screens. Mobile keeps the existing single
+  // column stack.
+  bkGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  bkCardDesktop: {
+    width: '49.3%',
+  },
   filterText: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 13 },
   bkCard: { backgroundColor: '#fff', padding: 10, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
   approverBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: COLORS.success + '1A', borderWidth: 1, borderColor: COLORS.success + '40', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginTop: 8 },
