@@ -797,8 +797,17 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 async function fetchPdfFromBackend(html: string): Promise<{ blob?: Blob; uri?: string; bytes?: Uint8Array }>
 {
+  // PDF rendering goes through WeasyPrint on the backend and can take
+  // 5–30 s on a cold-started container, plus the round-trip for the
+  // (potentially 1–2 MB) PDF binary. The default 15 s axios timeout
+  // throws "timeout of 15000ms exceeded" / "Network Error" before the
+  // server has a chance to respond. Bump it to 90 s for this endpoint
+  // only — long enough for cold-start + render + transfer, but short
+  // enough that a truly stuck request still surfaces an error to the
+  // user instead of spinning forever.
   const resp = await api.post('/render/pdf', { html, filename: 'prescription.pdf' }, {
     responseType: Platform.OS === 'web' ? 'blob' : 'arraybuffer',
+    timeout: 90_000,
   });
   if (Platform.OS === 'web') {
     return { blob: resp.data as Blob };
