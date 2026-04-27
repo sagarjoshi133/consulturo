@@ -8,6 +8,7 @@ import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { useI18n } from '../src/i18n';
 import { displayDate } from '../src/date';
 import SmartSearch from '../src/smart-search';
+import { useResponsive } from '../src/responsive';
 
 export default function Blog() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function Blog() {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const { t, lang, setLang } = useI18n();
+  const { isWebDesktop, isWebWide } = useResponsive();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,7 +87,7 @@ export default function Blog() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60, alignItems: 'center' }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       >
-        <View style={{ width: '100%', maxWidth: 680 }}>
+        <View style={{ width: '100%', maxWidth: isWebDesktop ? 1100 : 680 }}>
           <Text style={styles.subtitle}>{t('blog.listSubtitle')}</Text>
 
           <SmartSearch
@@ -107,12 +109,16 @@ export default function Blog() {
             </View>
           ) : null}
 
+          {/* Desktop: 2 / 3-column wrap grid for blog cards. Mobile
+              keeps the existing single-column stack so the touch
+              targets stay big and readable. */}
+          <View style={isWebDesktop ? styles.desktopGrid : undefined}>
           {filtered.map((p) => (
             <TouchableOpacity
               key={p.id}
               onPress={() => router.push(`/blog/${p.id}` as any)}
               activeOpacity={0.85}
-              style={styles.card}
+              style={[styles.card, isWebDesktop && (isWebWide ? styles.cardDesktop3 : styles.cardDesktop2)]}
               testID={`blog-post-${p.id}`}
             >
               {!!p.cover && <Image source={{ uri: p.cover }} style={styles.cover} resizeMode="cover" />}
@@ -133,6 +139,7 @@ export default function Blog() {
               </View>
             </TouchableOpacity>
           ))}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -192,6 +199,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  desktopGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  cardDesktop2: { width: '48.5%' },
+  cardDesktop3: { width: '32%' },
   cover: { width: '100%', height: 200, backgroundColor: COLORS.bg },
   categoryPill: {
     alignSelf: 'flex-start',

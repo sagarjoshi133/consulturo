@@ -13,10 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../src/api';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
+import { useResponsive } from '../src/responsive';
 
 export default function Videos() {
   const router = useRouter();
   const [videos, setVideos] = useState<any[]>([]);
+  const { isWebDesktop, isWebWide } = useResponsive();
 
   useEffect(() => {
     api.get('/videos').then((r) => setVideos(r.data)).catch(() => {});
@@ -44,12 +46,15 @@ export default function Videos() {
           <Ionicons name="open-outline" size={16} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
+        {/* Desktop: 2 / 3-column grid for video thumbnails. Mobile
+            keeps the existing single-column stack. */}
+        <View style={isWebDesktop ? styles.grid : undefined}>
         {videos.map((v) => (
           <TouchableOpacity
             key={v.id}
             onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${v.youtube_id}`)}
             activeOpacity={0.85}
-            style={styles.card}
+            style={[styles.card, isWebDesktop && (isWebWide ? styles.cardDesktop3 : styles.cardDesktop2)]}
             testID={`video-${v.id}`}
           >
             <View style={{ position: 'relative' }}>
@@ -71,6 +76,7 @@ export default function Videos() {
             </View>
           </TouchableOpacity>
         ))}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -84,6 +90,9 @@ const styles = StyleSheet.create({
   ytBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 16 },
   ytBtnText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, flex: 1 },
   card: { backgroundColor: '#fff', borderRadius: RADIUS.lg, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  cardDesktop2: { width: '48.5%' },
+  cardDesktop3: { width: '32%' },
   thumb: { width: '100%', height: 200, backgroundColor: '#000' },
   playBtn: { position: 'absolute', top: '50%', left: '50%', marginLeft: -28, marginTop: -28, width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(229,57,53,0.9)', alignItems: 'center', justifyContent: 'center' },
   duration: { position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },

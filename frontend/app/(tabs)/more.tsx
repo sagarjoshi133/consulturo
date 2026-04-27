@@ -27,6 +27,7 @@ import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useAuth } from '../../src/auth';
 import { useI18n } from '../../src/i18n';
 import { useNotifications } from '../../src/notifications';
+import { useResponsive } from '../../src/responsive';
 
 const WHATSAPP = '+918155075669';
 const STAFF_ROLES = ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
@@ -66,6 +67,7 @@ export default function More() {
   // that was the "ghost notification count" bug. Sourcing both counts
   // from the shared hook keeps every badge in sync.
   const { unread, personalUnread } = useNotifications();
+  const { isWebDesktop } = useResponsive();
 
   const isStaff = !!user && STAFF_ROLES.includes(user.role as string);
   const isOwner = user?.role === 'owner';
@@ -257,7 +259,11 @@ export default function More() {
           </Text>
           {/* Top-right action cluster — same 44 px circles as the
               homepage header. Always show the language switch; the
-              bell appears only for signed-in users. */}
+              bell appears only for signed-in users. On desktop web
+              the WebShell sidebar+topbar already provides these
+              actions, so we hide the in-screen cluster to remove
+              duplication. */}
+          {!isWebDesktop && (
           <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={cycleLang}
@@ -303,6 +309,7 @@ export default function More() {
               </TouchableOpacity>
             ) : null}
           </View>
+          )}
         </View>
 
         {/* Profile HERO — non-tappable when signed in (use the row below

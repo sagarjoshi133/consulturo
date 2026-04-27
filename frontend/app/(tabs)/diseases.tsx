@@ -16,12 +16,14 @@ import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useI18n } from '../../src/i18n';
 import LanguageDropdown from '../../src/language-dropdown';
 import { Skeleton } from '../../src/skeleton';
+import { useResponsive } from '../../src/responsive';
 
 type Disease = { id: string; name: string; icon: string; tagline: string };
 
 export default function Diseases() {
   const router = useRouter();
   const { lang } = useI18n();
+  const { isWebDesktop, isWebWide } = useResponsive();
   const [items, setItems] = useState<Disease[]>([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -83,8 +85,15 @@ export default function Diseases() {
       <FlatList
         data={filtered}
         keyExtractor={(i) => i.id}
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        // On desktop web render the conditions as a 2 / 3-column grid
+        // instead of one tall single-column list. `key` change forces
+        // FlatList to remount when the column count flips between
+        // mobile and web (otherwise it warns about numColumns change).
+        key={isWebWide ? 'cols-3' : isWebDesktop ? 'cols-2' : 'cols-1'}
+        numColumns={isWebWide ? 3 : isWebDesktop ? 2 : 1}
+        columnWrapperStyle={isWebDesktop ? { gap: 12 } : undefined}
+        contentContainerStyle={{ padding: 20, paddingBottom: 100, gap: isWebDesktop ? 12 : 0 }}
+        ItemSeparatorComponent={isWebDesktop ? null : () => <View style={{ height: 12 }} />}
         refreshControl={
           <RefreshControl
             refreshing={loading && items.length === 0}
@@ -127,7 +136,7 @@ export default function Diseases() {
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => router.push(`/disease/${item.id}` as any)}
-            style={styles.row}
+            style={[styles.row, isWebDesktop && { flex: 1 }]}
             testID={`disease-list-item-${item.id}`}
           >
             <View style={styles.iconWrap}>
