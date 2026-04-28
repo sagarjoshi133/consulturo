@@ -76,18 +76,21 @@ function useSidebarCollapsed(): [boolean, () => void] {
 // items). Persisted in localStorage as a JSON string -> string[]. By
 // default Account, Dashboard, Practice (and My Health for patients)
 // are EXPANDED; every other section starts collapsed per latest spec.
+// We seed BOTH English and currently-translated section labels so a
+// language switch doesn't accidentally re-expand sections the user
+// previously collapsed.
 const SECTION_COLLAPSED_KEY = 'consulturo_sidebar_sections_collapsed_v1';
-const DEFAULT_COLLAPSED_SECTIONS = ['Administration', 'Explore', 'App', 'About'];
+const DEFAULT_COLLAPSED_SECTIONS_BASE = ['Administration', 'Explore', 'App', 'About', 'प्रशासन', 'खोजें', 'ऐप', 'परिचय', 'વ્યવસ્થાપન', 'જુઓ', 'ઍપ', 'વિશે'];
 function useCollapsedSections(): [Set<string>, (sec: string) => void] {
   const [collapsed, setCollapsed] = React.useState<Set<string>>(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      return new Set(DEFAULT_COLLAPSED_SECTIONS);
+      return new Set(DEFAULT_COLLAPSED_SECTIONS_BASE);
     }
     try {
       const raw = window.localStorage?.getItem(SECTION_COLLAPSED_KEY);
       if (raw) return new Set(JSON.parse(raw));
     } catch {}
-    return new Set(DEFAULT_COLLAPSED_SECTIONS);
+    return new Set(DEFAULT_COLLAPSED_SECTIONS_BASE);
   });
   const toggle = React.useCallback((sec: string) => {
     setCollapsed((prev) => {
@@ -157,14 +160,14 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   // Sidebar sections mirror the More-tab grouping so desktop + mobile
   // stay cognitively aligned. New layout (per latest spec):
   //   Main → Dashboard → Practice → My Health → Administration → Explore → App → About
-  const SEC_MAIN    = t('more.sectionAccount')   || 'Main';
-  const SEC_DASH    = 'Dashboard';
-  const SEC_PRAC    = t('more.sectionPractice')  || 'Practice';
-  const SEC_HEALTH  = t('more.sectionMyHealth')  || 'My Health';
-  const SEC_ADMIN   = 'Administration';
-  const SEC_EXPLORE = t('more.sectionExplore')   || 'Explore';
-  const SEC_APP     = t('more.sectionApp')       || 'App';
-  const SEC_ABOUT   = t('more.sectionAbout')     || 'About';
+  const SEC_MAIN    = t('more.sectionAccount')        || 'Main';
+  const SEC_DASH    = t('more.sectionDashboard')      || 'Dashboard';
+  const SEC_PRAC    = t('more.sectionPractice')       || 'Practice';
+  const SEC_HEALTH  = t('more.sectionMyHealth')       || 'My Health';
+  const SEC_ADMIN   = t('more.sectionAdministration') || 'Administration';
+  const SEC_EXPLORE = t('more.sectionExplore')        || 'Explore';
+  const SEC_APP     = t('more.sectionApp')            || 'App';
+  const SEC_ABOUT   = t('more.sectionAbout')          || 'About';
 
   // View-mode toggle state — cycles Auto / Desktop / Mobile when the
   // sidebar item is tapped (web-only). Mirrors the More-tab toggle so
@@ -207,7 +210,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
 
   // ── PRACTICE (clinical workflow — staff only) ──────────────────────
   if (isStaff) {
-    items.push({ label: 'Consults',     icon: 'medkit',        route: '/dashboard?tab=consultations', staffOnly: true, section: SEC_PRAC });
+    items.push({ label: t('more.consults') || 'Consults', icon: 'medkit', route: '/dashboard?tab=consultations', staffOnly: true, section: SEC_PRAC });
     items.push({ label: t('more.prescriptions') || 'Prescriptions', icon: 'document-text', route: '/dashboard?tab=prescriptions', staffOnly: true });
     items.push({ label: t('more.surgeries')     || 'Surgeries',     icon: 'medical-outline', route: '/dashboard?tab=surgeries', staffOnly: true });
     items.push({ label: t('more.broadcasts')    || 'Broadcasts',    icon: 'megaphone', route: '/dashboard?tab=broadcasts', staffOnly: true });
@@ -223,11 +226,11 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
 
   // ── ADMINISTRATION (BELOW Practice per latest spec) ────────────────
   if (isStaff && (isOwner || isFullAccess)) {
-    items.push({ label: 'Analytics', icon: 'analytics', route: '/dashboard?tab=analytics', staffOnly: true, section: SEC_ADMIN });
-    items.push({ label: 'Team',      icon: 'people',    route: '/dashboard?tab=team',      staffOnly: true });
+    items.push({ label: t('more.analytics') || 'Analytics', icon: 'analytics', route: '/dashboard?tab=analytics', staffOnly: true, section: SEC_ADMIN });
+    items.push({ label: t('more.team')      || 'Team',      icon: 'people',    route: '/dashboard?tab=team',      staffOnly: true });
   }
   if (isOwner) {
-    items.push({ label: 'Branding',  icon: 'color-palette', route: '/branding', ownerOnly: true, section: !(isStaff && (isOwner || isFullAccess)) ? SEC_ADMIN : undefined });
+    items.push({ label: t('more.branding')    || 'Branding',  icon: 'color-palette', route: '/branding', ownerOnly: true, section: !(isStaff && (isOwner || isFullAccess)) ? SEC_ADMIN : undefined });
     items.push({ label: t('more.permissions') || 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
   }
   if (isOwner || isFullAccess) {
@@ -242,9 +245,13 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   items.push({ label: t('more.videos')    || 'Videos',            icon: 'play-circle', route: '/videos' });
 
   // ── APP — desktop View-mode toggle ─────────────────────────────────
-  const modeLabel: Record<ForceView, string> = { auto: 'Auto', desktop: 'Desktop', mobile: 'Mobile' };
+  const modeLabel: Record<ForceView, string> = {
+    auto: t('more.viewModeAuto') || 'Auto',
+    desktop: t('more.viewModeDesktop') || 'Desktop',
+    mobile: t('more.viewModeMobile') || 'Mobile',
+  };
   items.push({
-    label: 'View mode',
+    label: t('more.viewMode') || 'View mode',
     icon: 'desktop-outline',
     route: '#view-mode',
     onPress: cycleViewMode,

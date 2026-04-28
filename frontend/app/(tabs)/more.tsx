@@ -74,8 +74,16 @@ export default function More() {
   // Account, Dashboard, Practice (and "My Health" for patients) are
   // expanded by default; everything else starts collapsed. Persisted
   // in AsyncStorage so the user's preference survives app restarts.
+  // The default-set carries BOTH English and current-locale section
+  // titles so language switches don't reset the user's choice.
   const SECTIONS_KEY = 'consulturo_more_sections_collapsed_v1';
-  const DEFAULT_COLLAPSED = new Set<string>(['Administration', 'Explore', 'App', 'About']);
+  const DEFAULT_COLLAPSED = new Set<string>([
+    'Administration', 'Explore', 'App', 'About',
+    t('more.sectionAdministration') || 'Administration',
+    t('more.sectionExplore')        || 'Explore',
+    t('more.sectionApp')            || 'App',
+    t('more.sectionAbout')          || 'About',
+  ]);
   const [collapsedSections, setCollapsedSections] = React.useState<Set<string>>(DEFAULT_COLLAPSED);
   React.useEffect(() => {
     AsyncStorage.getItem(SECTIONS_KEY).then((raw) => {
@@ -161,7 +169,7 @@ export default function More() {
   // Surfaces the doctor's primary cockpit prominently (per user spec).
   if (isStaff) {
     sections.push({
-      title: 'Dashboard',
+      title: t('more.sectionDashboard') || 'Dashboard',
       items: [
         { icon: 'view-dashboard', iconLib: 'mci', label: t('more.doctorDashboard'), sub: 'Today, bookings, surgeries, team', route: '/dashboard', testID: 'more-dashboard', pill: user!.role.toUpperCase(), pillColor: COLORS.primary },
       ],
@@ -176,8 +184,8 @@ export default function More() {
       const practiceItems: MenuItem[] = [
         {
           icon: 'medkit',
-          label: 'Consults',
-          sub: 'Today & upcoming · start / resume Rx',
+          label: t('more.consults') || 'Consults',
+          sub: t('more.consultsSub') || 'Today & upcoming · start / resume Rx',
           route: '/dashboard?tab=consultations' as any,
           testID: 'more-consults',
         },
@@ -249,33 +257,33 @@ export default function More() {
     const adminItems: MenuItem[] = [];
     if (isOwner || isFullAccess) {
       adminItems.push(
-        { icon: 'analytics', label: 'Analytics', sub: 'KPIs & trends', route: '/dashboard?tab=analytics' as any, testID: 'more-analytics' },
-        { icon: 'people', label: 'Team', sub: 'Members & roles', route: '/dashboard?tab=team' as any, testID: 'more-team' },
+        { icon: 'analytics', label: t('more.analytics') || 'Analytics', sub: t('more.analyticsSub') || 'KPIs & trends', route: '/dashboard?tab=analytics' as any, testID: 'more-analytics' },
+        { icon: 'people', label: t('more.team') || 'Team', sub: t('more.teamSub') || 'Members & roles', route: '/dashboard?tab=team' as any, testID: 'more-team' },
       );
     }
     if (isOwner) {
       adminItems.push({
         icon: 'key',
-        label: 'Permission Manager',
-        sub: 'Messaging, team, bookings & all access controls',
+        label: t('more.permissionManager') || 'Permission Manager',
+        sub: t('more.permissionManagerSub') || 'Messaging, team, bookings & all access controls',
         route: '/permission-manager' as any,
         testID: 'more-perm-mgr',
       });
       adminItems.push({
         icon: 'color-palette',
-        label: 'Clinic Branding & About Doctor',
-        sub: 'Photos, social links, doctor profile, clinic settings',
+        label: t('more.branding') || 'Clinic Branding & About Doctor',
+        sub: t('more.brandingSub') || 'Photos, social links, doctor profile, clinic settings',
         route: '/branding' as any,
         testID: 'more-branding',
       });
     }
     if (isOwner || isFullAccess) {
       adminItems.push(
-        { icon: 'cloud-upload', label: 'Backups', sub: 'MongoDB cloud snapshots', route: '/admin/backups' as any, testID: 'more-backups' },
+        { icon: 'cloud-upload', label: t('more.backups') || 'Backups', sub: 'MongoDB cloud snapshots', route: '/admin/backups' as any, testID: 'more-backups' },
       );
     }
     if (adminItems.length > 0) {
-      sections.push({ title: 'Administration', items: adminItems });
+      sections.push({ title: t('more.sectionAdministration') || 'Administration', items: adminItems });
     }
   }
 
