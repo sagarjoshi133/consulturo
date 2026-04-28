@@ -24,7 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, usePathname } from 'expo-router';
 import { COLORS, FONTS, RADIUS } from './theme';
-import { useResponsive, DESKTOP } from './responsive';
+import { useResponsive, DESKTOP, getForcedView, setForcedView, type ForceView } from './responsive';
 import { useAuth } from './auth';
 import { useNotifications } from './notifications';
 import { useI18n } from './i18n';
@@ -81,6 +81,10 @@ type NavItem = {
   ownerOnly?: boolean;
   /** optional section header rendered BEFORE this item (mirrors More-tab grouping) */
   section?: string;
+  /** optional click handler — when provided, replaces router.push */
+  onPress?: () => void;
+  /** small status pill rendered to the right of the label (e.g. View mode) */
+  pill?: string;
 };
 
 export function WebShell({ children }: { children: React.ReactNode }) {
@@ -117,61 +121,126 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   const isFullAccess = !!(user as any)?.dashboard_full_access;
 
   // Sidebar sections mirror the More-tab grouping so desktop + mobile
-  // stay cognitively aligned: Main / Practice / My Health / Explore / Staff Tools / About.
+  // stay cognitively aligned. New layout (per latest spec):
+  //   Main → Dashboard → Practice → My Health → Administration → Explore → App → About
   const SEC_MAIN    = t('more.sectionAccount')   || 'Main';
+  const SEC_DASH    = 'Dashboard';
   const SEC_PRAC    = t('more.sectionPractice')  || 'Practice';
   const SEC_HEALTH  = t('more.sectionMyHealth')  || 'My Health';
+  const SEC_ADMIN   = 'Administration';
   const SEC_EXPLORE = t('more.sectionExplore')   || 'Explore';
-  const SEC_APP     = t('more.sectionApp')       || 'Staff Tools';
+  const SEC_APP     = t('more.sectionApp')       || 'App';
   const SEC_ABOUT   = t('more.sectionAbout')     || 'About';
 
-  // Build sidebar nav items based on role.
+  // View-mode toggle state — cycles Auto / Desktop / Mobile when the
+  // sidebar item is tapped (web-only). Mirrors the More-tab toggle so
+  // desktop users have an in-place way to preview the alternate layout.
+  const [forceMode, setForceMode] = React.useState<ForceView>(() => getForcedView());
+  const cycleViewMode = () => {
+    const order: ForceView[] = ['auto', 'desktop', 'mobile'];
+    const next = order[(order.indexOf(forceMode) + 1) % order.length];
+    setForceMode(next);
+    setForcedView(next);
+    // Force a quick reload so every consumer of useResponsive picks up
+    // the new mode without us having to plumb context everywhere.
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      setTimeout(() => window.location.reload(), 80);
+    }
+  };
+
+  // Build sidebar nav items based on role (see new section ordering above).
   const items: NavItem[] = [
     { label: t('tabs.home') || 'Home', icon: 'home', route: '/', section: SEC_MAIN },
     { label: t('tabs.book') || 'Book', icon: 'calendar', route: '/book' },
+    {
+      label: t('more.inbox') || 'Inbox',
+      icon: 'chatbubbles',
+      route: '/inbox',
+      badge: personalUnread || 0,
+    },
+    {
+      label: t('more.notifications') || 'Notifications',
+      icon: 'notifications',
+      route: '/notifications',
+      badge: unread || 0,
+    },
   ];
+
+  // ── DASHBOARD (its own section, just below Main) ───────────────────
   if (isStaff) {
-    items.push({ label: t('more.doctorDashboard') || 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true, section: SEC_PRAC });
+    items.push({ label: t('more.doctorDashboard') || 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true, section: SEC_DASH });
+  }
+
+  // ── PRACTICE (clinical workflow — staff only) ──────────────────────
+  if (isStaff) {
+    items.push({ label: 'Consults',     icon: 'medkit',        route: '/dashboard?tab=consultations', staffOnly: true, section: SEC_PRAC });
+    items.push({ label: t('more.prescriptions') || 'Prescriptions', icon: 'document-text', route: '/dashboard?tab=prescriptions', staffOnly: true });
+    items.push({ label: t('more.surgeries')     || 'Surgeries',     icon: 'medical-outline', route: '/dashboard?tab=surgeries', staffOnly: true });
+    items.push({ label: t('more.broadcasts')    || 'Broadcasts',    icon: 'megaphone', route: '/dashboard?tab=broadcasts', staffOnly: true });
+    items.push({ label: t('more.notes')         || 'Notes',         icon: 'create',  route: '/notes', staffOnly: true });
+    items.push({ label: t('more.reminders')     || 'Reminders',     icon: 'alarm',   route: '/reminders', staffOnly: true });
   } else if (user) {
+    // ── MY HEALTH (patient) ─────────────────────────────────────────
     items.push({ label: t('more.myBookings') || 'My Bookings', icon: 'calendar-clear', route: '/my-bookings', section: SEC_HEALTH });
-    items.push({ label: t('more.myRecords') || 'My Records', icon: 'folder-open', route: '/my-records' });
+    items.push({ label: t('more.myRecords')  || 'My Records',  icon: 'folder-open',     route: '/my-records' });
+    items.push({ label: t('more.notes')      || 'Notes',       icon: 'create',          route: '/notes' });
+    items.push({ label: t('more.reminders')  || 'Reminders',   icon: 'alarm',           route: '/reminders' });
   }
-  items.push({
-    label: t('more.inbox') || 'Inbox',
-    icon: 'chatbubbles',
-    route: '/inbox',
-    badge: personalUnread || 0,
-  });
-  items.push({
-    label: t('more.notifications') || 'Notifications',
-    icon: 'notifications',
-    route: '/notifications',
-    badge: unread || 0,
-  });
-  items.push({ label: t('tabs.diseases') || 'Diseases', icon: 'medical', route: '/diseases', section: SEC_EXPLORE });
-  items.push({ label: t('tabs.tools') || 'Tools', icon: 'calculator', route: '/tools' });
-  items.push({ label: t('more.education') || 'Patient Education', icon: 'book', route: '/education' });
-  items.push({ label: t('more.blog') || 'Blog', icon: 'newspaper', route: '/blog' });
-  items.push({ label: t('more.videos') || 'Videos', icon: 'play-circle', route: '/videos' });
-  if (isStaff) {
-    items.push({ label: t('more.notes') || 'Notes', icon: 'create', route: '/notes', staffOnly: true, section: SEC_APP });
-    items.push({ label: t('more.reminders') || 'Reminders', icon: 'alarm', route: '/reminders', staffOnly: true });
-  }
-  if (isOwner || isFullAccess) {
-    items.push({ label: t('more.backups') || 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true, section: isStaff ? undefined : SEC_APP });
+
+  // ── ADMINISTRATION (BELOW Practice per latest spec) ────────────────
+  if (isStaff && (isOwner || isFullAccess)) {
+    items.push({ label: 'Analytics', icon: 'analytics', route: '/dashboard?tab=analytics', staffOnly: true, section: SEC_ADMIN });
+    items.push({ label: 'Team',      icon: 'people',    route: '/dashboard?tab=team',      staffOnly: true });
   }
   if (isOwner) {
+    items.push({ label: 'Branding',  icon: 'color-palette', route: '/branding', ownerOnly: true, section: !(isStaff && (isOwner || isFullAccess)) ? SEC_ADMIN : undefined });
     items.push({ label: t('more.permissions') || 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
   }
-  // About — mirrors the More-tab "About" section.
+  if (isOwner || isFullAccess) {
+    items.push({ label: t('more.backups') || 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true });
+  }
+
+  // ── EXPLORE ────────────────────────────────────────────────────────
+  items.push({ label: t('tabs.diseases')  || 'Diseases',          icon: 'medical', route: '/diseases', section: SEC_EXPLORE });
+  items.push({ label: t('tabs.tools')     || 'Tools',             icon: 'calculator', route: '/tools' });
+  items.push({ label: t('more.education') || 'Patient Education', icon: 'book',       route: '/education' });
+  items.push({ label: t('more.blog')      || 'Blog',              icon: 'newspaper',  route: '/blog' });
+  items.push({ label: t('more.videos')    || 'Videos',            icon: 'play-circle', route: '/videos' });
+
+  // ── APP — desktop View-mode toggle ─────────────────────────────────
+  const modeLabel: Record<ForceView, string> = { auto: 'Auto', desktop: 'Desktop', mobile: 'Mobile' };
+  items.push({
+    label: 'View mode',
+    icon: 'desktop-outline',
+    route: '#view-mode',
+    onPress: cycleViewMode,
+    pill: modeLabel[forceMode],
+    section: SEC_APP,
+  });
+
+  // ── ABOUT (last) ───────────────────────────────────────────────────
   items.push({ label: t('more.aboutDoctor') || 'About Doctor', icon: 'person-circle', route: '/about', section: SEC_ABOUT });
-  items.push({ label: t('more.aboutApp') || 'About App', icon: 'information-circle', route: '/about-app' });
+  items.push({ label: t('more.aboutApp')    || 'About App',    icon: 'information-circle', route: '/about-app' });
 
   // Active route detection — match exact OR prefix for nested routes.
+  // Special handling for `/dashboard?tab=X` — only highlights the
+  // matching tab entry, and silences the bare /dashboard entry when
+  // ANY tab query is present (so we don't double-highlight).
+  const currentSearch = (typeof window !== 'undefined' && Platform.OS === 'web') ? (window.location.search || '') : '';
+  const currentTab = (() => {
+    try { return new URLSearchParams(currentSearch).get('tab') || ''; } catch { return ''; }
+  })();
   const isActive = (route: string) => {
     if (route === '/') return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
     if (route === '/book') return pathname === '/book' || pathname === '/(tabs)/book';
-    if (route === '/dashboard') return pathname.startsWith('/dashboard');
+    if (route === '/dashboard') {
+      // bare /dashboard only when no tab query is present
+      return pathname.startsWith('/dashboard') && !currentTab;
+    }
+    if (route.startsWith('/dashboard?tab=')) {
+      const wantTab = route.split('=')[1];
+      return pathname.startsWith('/dashboard') && currentTab === wantTab;
+    }
     if (route === '/diseases') return pathname.startsWith('/disease');
     if (route === '/tools') return pathname === '/tools' || pathname.startsWith('/calculators') || pathname === '/ipss';
     return pathname === route || pathname.startsWith(route + '/');
@@ -257,7 +326,13 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
                   <View style={styles.navSectionDot} />
                 )}
                 <TouchableOpacity
-                  onPress={() => router.push(it.route as any)}
+                  onPress={() => {
+                    if (it.onPress) {
+                      it.onPress();
+                    } else {
+                      router.push(it.route as any);
+                    }
+                  }}
                   style={[
                     styles.navItem,
                     active && styles.navItemActive,
@@ -278,6 +353,11 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
                       {it.label}
                     </Text>
                   )}
+                  {!collapsed && it.pill ? (
+                    <View style={styles.navPill}>
+                      <Text style={styles.navPillText}>{it.pill}</Text>
+                    </View>
+                  ) : null}
                   {it.badge && it.badge > 0 ? (
                     <View
                       style={[
@@ -719,6 +799,20 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: '#fff',
     fontFamily: 'Manrope_700Bold',
+  },
+  navPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  navPillText: {
+    ...FONTS.bodyMedium,
+    color: '#fff',
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
   navBadge: {
     minWidth: 18,

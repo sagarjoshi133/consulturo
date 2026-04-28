@@ -133,53 +133,22 @@ export default function More() {
     });
   }
 
-  // ADMIN (staff/team only) — tools that are administrative in nature.
-  // Order: Dashboard → Analytics → Team → Permission Manager → Backups.
+  // DASHBOARD — separate single-item section just below Account.
+  // Surfaces the doctor's primary cockpit prominently (per user spec).
   if (isStaff) {
-    const adminItems: MenuItem[] = [
-      { icon: 'view-dashboard', iconLib: 'mci', label: t('more.doctorDashboard'), sub: 'Bookings, surgeries, team', route: '/dashboard', testID: 'more-dashboard', pill: user!.role.toUpperCase(), pillColor: COLORS.primary },
-    ];
-    if (isOwner || isFullAccess) {
-      adminItems.push(
-        { icon: 'analytics', label: 'Analytics', sub: 'KPIs & trends', route: '/dashboard?tab=analytics' as any, testID: 'more-analytics' },
-        { icon: 'people', label: 'Team', sub: 'Members & roles', route: '/dashboard?tab=team' as any, testID: 'more-team' },
-      );
-    }
-    if (isOwner) {
-      // Owner-only — comprehensive permission hub.
-      adminItems.push({
-        icon: 'key',
-        label: 'Permission Manager',
-        sub: 'Messaging, team, bookings & all access controls',
-        route: '/permission-manager' as any,
-        testID: 'more-perm-mgr',
-      });
-      // Editable clinic branding & About-Doctor section. Visible to
-      // primary_owner and partner. Partners are gated server-side
-      // per-section by the partner_can_edit_* toggles.
-      adminItems.push({
-        icon: 'color-palette',
-        label: 'Clinic Branding & About Doctor',
-        sub: 'Photos, social links, doctor profile, clinic settings',
-        route: '/branding' as any,
-        testID: 'more-branding',
-      });
-    }
-    // Backups now sit AFTER Permission Manager per latest spec.
-    if (isOwner || isFullAccess) {
-      adminItems.push(
-        { icon: 'cloud-upload', label: 'Backups', sub: 'MongoDB cloud snapshots', route: '/admin/backups' as any, testID: 'more-backups' },
-      );
-    }
-    sections.push({ title: 'Administration', items: adminItems });
+    sections.push({
+      title: 'Dashboard',
+      items: [
+        { icon: 'view-dashboard', iconLib: 'mci', label: t('more.doctorDashboard'), sub: 'Today, bookings, surgeries, team', route: '/dashboard', testID: 'more-dashboard', pill: user!.role.toUpperCase(), pillColor: COLORS.primary },
+      ],
+    });
   }
 
-  // PRACTICE / MY HEALTH
+  // PRACTICE — moved to the "Administration's old slot" (immediately
+  // after Dashboard) per latest spec. Day-to-day clinical workflow.
   if (user) {
     const canSendMsg = !!((user as any).can_send_personal_messages || isOwner);
     if (isStaff) {
-      // Practice section — order: Consults, Prescriptions, Surgeries,
-      // Inbox (personal messaging hub), Broadcasts, Notes, Reminders.
       const practiceItems: MenuItem[] = [
         {
           icon: 'medkit',
@@ -246,6 +215,43 @@ export default function More() {
         title: t('more.sectionMyHealth') || 'My Health',
         items: myHealthItems,
       });
+    }
+  }
+
+  // ADMINISTRATION — moved BELOW Practice per latest spec. Clinic-
+  // management surfaces (analytics, team, permissions, branding,
+  // backups). Dashboard now lives in its own section above.
+  if (isStaff) {
+    const adminItems: MenuItem[] = [];
+    if (isOwner || isFullAccess) {
+      adminItems.push(
+        { icon: 'analytics', label: 'Analytics', sub: 'KPIs & trends', route: '/dashboard?tab=analytics' as any, testID: 'more-analytics' },
+        { icon: 'people', label: 'Team', sub: 'Members & roles', route: '/dashboard?tab=team' as any, testID: 'more-team' },
+      );
+    }
+    if (isOwner) {
+      adminItems.push({
+        icon: 'key',
+        label: 'Permission Manager',
+        sub: 'Messaging, team, bookings & all access controls',
+        route: '/permission-manager' as any,
+        testID: 'more-perm-mgr',
+      });
+      adminItems.push({
+        icon: 'color-palette',
+        label: 'Clinic Branding & About Doctor',
+        sub: 'Photos, social links, doctor profile, clinic settings',
+        route: '/branding' as any,
+        testID: 'more-branding',
+      });
+    }
+    if (isOwner || isFullAccess) {
+      adminItems.push(
+        { icon: 'cloud-upload', label: 'Backups', sub: 'MongoDB cloud snapshots', route: '/admin/backups' as any, testID: 'more-backups' },
+      );
+    }
+    if (adminItems.length > 0) {
+      sections.push({ title: 'Administration', items: adminItems });
     }
   }
 

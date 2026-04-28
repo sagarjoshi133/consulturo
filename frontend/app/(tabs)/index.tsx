@@ -81,9 +81,15 @@ export default function Home() {
     );
   };
 
+  const isClinical = !!user && ['primary_owner', 'partner', 'doctor', 'super_owner', 'owner'].includes((user.role as string) || '');
+
   const quickActions = [
     { icon: 'calendar', label: t('home.quickActions.bookVisit'), key: 'bookvisit', route: '/(tabs)/book', color: COLORS.primary, family: 'ion' },
-    { icon: 'logo-whatsapp', label: t('home.quickActions.whatsapp'), key: 'whatsapp', action: openWhatsApp, color: COLORS.whatsapp, family: 'ion' },
+    // Clinical staff get a Consult shortcut here in place of WhatsApp
+    // (they are the clinic — they don't need to "WhatsApp the clinic").
+    isClinical
+      ? { icon: 'medkit', label: 'Consult', key: 'consult', route: '/dashboard?tab=consultations', color: COLORS.success, family: 'ion' as const }
+      : { icon: 'logo-whatsapp', label: t('home.quickActions.whatsapp'), key: 'whatsapp', action: openWhatsApp, color: COLORS.whatsapp, family: 'ion' as const },
     { icon: 'calculator-variant', label: t('home.quickActions.ipss'), key: 'ipss', route: '/ipss', color: COLORS.accent, family: 'mci' },
     { icon: 'school', family: 'mci', label: t('home.quickActions.education'), key: 'education', route: '/education', color: '#6D28D9' },
   ];
