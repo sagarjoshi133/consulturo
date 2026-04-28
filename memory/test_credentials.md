@@ -17,8 +17,24 @@
 
 ## Demo / Read-Only mode
 - Any user with `is_demo: true` is hard-blocked from POST/PUT/PATCH/DELETE by a middleware in `server.py` (whitelist: `/api/auth/*`, mark-as-read endpoints, push register).
-- Created via `POST /api/admin/demo/create` (super_owner only).
+- Created via `POST /api/admin/demo/create` (super_owner only). Body:
+  `{ email, name?, role: "primary_owner"|"patient" (default primary_owner), seed_sample_data: bool (default true) }`.
+- For `role: "patient"` with seed=true, a placeholder users row is created plus 1 sample booking + 1 sample prescription + 1 IPSS row tagged `is_demo_seed:true`. Revoke (`DELETE /api/admin/demo/{user_id}`) sweeps those seeded rows.
 - 403 response: `{"detail": "Demo mode — actions are disabled in this preview account.", "demo": true}`.
+
+## Blog editorial gate
+- `/api/admin/blog` (POST/PUT/DELETE/GET) gated by `require_blog_writer`.
+- ONLY `super_owner` is allowed by default.
+- Super-owner can grant per primary_owner via `PATCH /api/admin/primary-owners/{user_id}/blog-perm` body `{can_create_blog: bool}`.
+- `GET /api/me/tier` exposes `can_create_blog` + `is_demo` so the frontend can hide the Blog tab when not allowed.
+
+## Granular partner-branding toggles
+- `PATCH /api/clinic-settings` partner-write gate uses individual flags:
+  `partner_can_edit_main_photo`, `partner_can_edit_cover_photo`,
+  `partner_can_edit_clinic_info`, `partner_can_edit_socials`,
+  `partner_can_edit_about_doctor`, `partner_can_edit_blog`.
+- All default true. Legacy `partner_can_edit_branding` is honoured as a fallback when a granular flag is unset.
+- Owners always pass through; partners get 403 with detail mentioning the specific granular gate.
 
 ## Owner accounts
 - **Super Owner:** `app.consulturo@gmail.com` (hardcoded — DO NOT change)
