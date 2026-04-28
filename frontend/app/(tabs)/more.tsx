@@ -70,7 +70,14 @@ export default function More() {
   const { isWebDesktop } = useResponsive();
 
   const isStaff = !!user && STAFF_ROLES.includes(user.role as string);
-  const isOwner = user?.role === 'owner';
+  // Owner-tier — super_owner, primary_owner, partner, or legacy
+  // "owner". Used to gate Permission Manager visibility and the
+  // owner-only quick actions on this screen.
+  const isOwner =
+    user?.role === 'super_owner' ||
+    user?.role === 'primary_owner' ||
+    user?.role === 'partner' ||
+    user?.role === 'owner';
   const isFullAccess = !!(user as any)?.dashboard_full_access;
 
   const confirmAndLogout = () => {

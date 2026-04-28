@@ -29,7 +29,7 @@ import { useAuth } from './auth';
 import { useNotifications } from './notifications';
 import { useI18n } from './i18n';
 
-const STAFF_ROLES = new Set(['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing']);
+const STAFF_ROLES = new Set(['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing']);
 
 type NavItem = {
   label: string;
@@ -67,7 +67,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   const { t, lang, setLang } = useI18n();
 
   const isStaff = !!user && STAFF_ROLES.has((user.role as string) || '');
-  const isOwner = user?.role === 'owner';
+  const isOwner = ['super_owner', 'primary_owner', 'owner', 'partner'].includes((user?.role as string) || '');
   const isFullAccess = !!(user as any)?.dashboard_full_access;
 
   // Build sidebar nav items based on role.

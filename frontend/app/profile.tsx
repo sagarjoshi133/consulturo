@@ -38,6 +38,7 @@ import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { useAuth } from '../src/auth';
+import { useTier, roleLabel, roleEmoji } from '../src/tier';
 import api from '../src/api';
 import PhoneAuthModal from '../src/phone-auth';
 import { useI18n } from '../src/i18n';
@@ -61,8 +62,11 @@ export default function ProfileScreen() {
   const [pushEnabled, setPushEnabled] = useState(true);
 
   const u: any = user || {};
-  const isStaff = ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes(u.role);
-  const isOwner = u.role === 'owner';
+  const isStaff = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes(u.role);
+  // Owner-tier (super_owner / primary_owner / partner / legacy owner).
+  // Used to gate clinic-wide settings & permission-manager visibility.
+  const isOwner = ['super_owner', 'primary_owner', 'owner', 'partner'].includes(u.role);
+  const tier = useTier();
   const isFullAccess = !!u.dashboard_full_access;
 
   // Hydrate push preference from local storage. (Native push registration
@@ -449,8 +453,9 @@ export default function ProfileScreen() {
               )}
               <View style={styles.badgeRow}>
                 <View style={styles.badge}>
-                  <Ionicons name="shield-checkmark" size={10} color="#fff" />
-                  <Text style={styles.badgeText}>{u.role.toUpperCase()}</Text>
+                  <Text style={styles.badgeText}>
+                    {roleEmoji(u.role)} {roleLabel(u.role).toUpperCase()}
+                  </Text>
                 </View>
                 {!isOwner && isFullAccess && (
                   <View style={[styles.badge, { backgroundColor: '#F59E0B' }]}>

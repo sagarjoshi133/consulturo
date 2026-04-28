@@ -33,6 +33,7 @@ import api from '../src/api';
 import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
+import OwnersPanel from '../src/owners-panel';
 
 type Section = {
   key: string;
@@ -49,7 +50,16 @@ export default function PermissionManager() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  // Owner-tier gate (primary_owner OR partner OR super_owner OR
+  // legacy "owner"). Partners now reach this screen because their
+  // privilege envelope matches a primary_owner's everywhere except
+  // for partner management — and the owners-panel's inner sections
+  // self-hide based on the finer-grained tier flags.
+  const isOwner =
+    user?.role === 'super_owner' ||
+    user?.role === 'primary_owner' ||
+    user?.role === 'partner' ||
+    user?.role === 'owner'; // legacy alias
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +198,13 @@ export default function PermissionManager() {
           contentContainerStyle={{ padding: 16, paddingBottom: 40 + insets.bottom }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         >
+          {/* Owners & Partners — surfaced FIRST because they are the
+              highest-impact role-management actions in the app. The
+              panel internally hides each section based on the
+              current user's tier (super_owner / primary_owner /
+              partner). */}
+          <OwnersPanel />
+
           {sections.map((s) => (
             <TouchableOpacity
               key={s.key}
