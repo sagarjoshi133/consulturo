@@ -1390,7 +1390,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
               <View style={styles.bkFoot}>
                 <TouchableOpacity onPress={() => Linking.openURL(telLink((b as any).country_code, b.patient_phone))} style={styles.bkAction}>
                   <Ionicons name="call" size={14} color={COLORS.primary} />
-                  <Text style={styles.bkActionText}>{b.patient_phone}</Text>
+                  <Text style={styles.bkActionText} numberOfLines={1}>{b.patient_phone}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -1402,7 +1402,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
                   style={styles.bkAction}
                 >
                   <Ionicons name="logo-whatsapp" size={14} color={COLORS.whatsapp} />
-                  <Text style={[styles.bkActionText, { color: COLORS.whatsapp }]}>WhatsApp</Text>
+                  <Text style={[styles.bkActionText, { color: COLORS.whatsapp }]} numberOfLines={1}>WhatsApp</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => copyPatientInfo(b)}
@@ -1410,7 +1410,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
                   testID={`bk-copy-${b.booking_id}`}
                 >
                   <Ionicons name="copy-outline" size={14} color={COLORS.textSecondary} />
-                  <Text style={[styles.bkActionText, { color: COLORS.textSecondary }]}>Copy</Text>
+                  <Text style={[styles.bkActionText, { color: COLORS.textSecondary }]} numberOfLines={1}>Copy</Text>
                 </TouchableOpacity>
                 {!!b.patient_phone && onMessagePatient && (
                   <TouchableOpacity
@@ -1436,7 +1436,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
                     testID={`bk-msg-${b.booking_id}`}
                   >
                     <Ionicons name="paper-plane" size={14} color={COLORS.primary} />
-                    <Text style={[styles.bkActionText, { color: COLORS.primary }]}>Message</Text>
+                    <Text style={[styles.bkActionText, { color: COLORS.primary }]} numberOfLines={1}>Message</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2173,8 +2173,8 @@ const styles = StyleSheet.create({
   statusPill: { backgroundColor: COLORS.success + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   statusText: { ...FONTS.label, color: COLORS.success, fontSize: 11, textTransform: 'uppercase' },
   bkReason: { ...FONTS.body, color: COLORS.textPrimary, marginTop: 6 },
-  bkFoot: { flexDirection: 'row', gap: 12, marginTop: 10 },
-  bkAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bkFoot: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, rowGap: 6, marginTop: 10 },
+  bkAction: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%' },
   bkActionText: { ...FONTS.body, color: COLORS.primary, fontSize: 13 },
   bkButtons: { flexDirection: 'row', gap: 8, marginTop: 10 },
   bkSmallBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.success, backgroundColor: '#fff' },

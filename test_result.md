@@ -837,11 +837,89 @@ metadata:
     - "Broadcast pipeline VERIFIED end-to-end (18/19 backend tests PASS): create → approve → send → broadcast_inbox per-user records → in-app notifications. Push fan-out path is real but 0 tokens registered in test = sent_count 0."
 
 test_plan:
-  current_focus:
-    - "FEATURE BUNDLE (4 items, retest backend) — (A) Granular partner-branding toggles in PATCH /api/clinic-settings: new fields partner_can_edit_main_photo, partner_can_edit_cover_photo, partner_can_edit_clinic_info, partner_can_edit_socials (all default true; legacy partner_can_edit_branding remains as fallback when granular flags are unset). When a partner attempts to update a field whose granular toggle is OFF, the backend must 403 with detail mentioning the granular gate name. (B) Blog editorial gate — POST/PUT/DELETE/GET /api/admin/blog now use new require_blog_writer dep: super_owner always allowed; primary_owner only if user.can_create_blog == true; everyone else (partner/doctor/etc) 403. New PATCH /api/admin/primary-owners/{user_id}/blog-perm endpoint (super_owner only) flips that flag. GET /api/admin/primary-owners now includes can_create_blog field. /api/me/tier now exposes can_create_blog and is_demo. (C) Demo accounts — POST /api/admin/demo/create now accepts role: 'primary_owner' | 'patient' (default primary_owner) plus seed_sample_data: bool (default true). When role='patient' and the email is new, the endpoint creates a placeholder users row with role=patient,is_demo=true AND seeds 1 booking + 1 prescription + 1 IPSS row tagged is_demo_seed:true. DELETE /api/admin/demo/{user_id} now sweeps those seeded rows (returns cleanup counts). Demo middleware still 403s every write for these accounts. (D) Force-desktop view = pure frontend, no backend test needed."
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+backend_june_2025_patch:
+  - task: "Demo Accounts list — pending invites visibility + signed_in flag (BUG FIX #1)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS via /app/backend_test_demo_msg_patch.py against
+          http://localhost:8001.
+          - POST /admin/demo/create primary_owner (no users row) → 200
+            ok:true. GET /admin/demo includes the email with
+            signed_in:false, user_id:null.
+          - POST /admin/demo/create patient seed=true → users row created
+            (u_demo_<hex>) and signed_in:true on subsequent GET.
+          - DELETE /admin/demo/pending:<email> (URL-encoded) → 200
+            {ok:true, revoked_invites:1, cleanup:{bookings:0,
+            prescriptions:0, ipss:0}}. List no longer contains the email.
+          - DELETE /admin/demo/{patient_user_id} → 200 with cleanup
+            counts (bookings:1, prescriptions:1, ipss:1). List no longer
+            contains that email.
+          Endpoint behavior at server.py:8107-8140 + 8143-8171 exactly
+          matches spec.
+
+  - task: "Personal messaging — owner-tier implicit permission (BUG FIX #2)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS.
+          - GET /auth/me as primary_owner returns
+            can_send_personal_messages:true (server.py:1303-1305 —
+            owner-tier branch — owner/primary_owner/super_owner/partner
+            implicit).
+          - POST /messages/send as primary_owner → patient user_id → 200
+            with notification_id. No 403 'permission denied'.
+          - GET /auth/me as doctor returns can_send_personal_messages:
+            true via staff-default-true rule (server.py:1306-1308). POST
+            /messages/send as doctor → patient → 200.
+          - /api/me/tier exposes role-tier flags (is_owner_tier:true for
+            primary_owner). It does NOT expose can_send_personal_messages
+            (only /auth/me does), which is consistent with the code and
+            review brief's "if exposed there" qualifier.
+          Test fixture note: doctor's can_send_personal_messages was
+          unset by the test (it had been explicitly false from prior
+          messaging-hierarchy test cleanup) so the staff-default-true
+          path could be exercised. Doctor token expiry was extended +7d
+          (purely a session lifecycle fix, no app code touched).
+
+  - task: "Regression smoke — /health, /me/tier, /admin/platform-stats"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          - GET /api/health → 200 {ok:true, db:"connected"}.
+          - GET /api/me/tier as primary_owner → 200 with all 10 keys
+            (role, is_super_owner, is_primary_owner, is_partner,
+            is_owner_tier, can_manage_partners, can_manage_primary_owners,
+            can_create_blog, dashboard_full_access, is_demo).
+          - GET /api/admin/platform-stats as super_owner → 200 with all
+            7 int keys (primary_owners, partners, staff, patients,
+            bookings_last_30d, prescriptions_last_30d, demo_accounts).
 
 
 backend_messaging_hierarchy:
@@ -1090,6 +1168,85 @@ frontend_session_2026_04_28_regression:
 
 
 agent_communication:
+  - agent: "testing"
+    message: |
+      JUNE 2025 BUG FIX PATCH — ALL 47/47 assertions PASS via
+      /app/backend_test_demo_msg_patch.py against http://localhost:8001.
+
+      SETUP: Pre-existing OWNER token (test_session_1776770314741, primary_owner)
+      and DOCTOR token (test_doc_1776771431524) reused. Existing super_owner
+      session (iRQFZgvfycR6pnfCj1ndeHTmFTcwOZ_1DxVGiYiMkRY for
+      app.consulturo@gmail.com / user_f4556817bf29) was unsuitable for testing
+      because the SO row has dashboard_full_access:false (a normal SO state)
+      so we minted a fresh test session via mongosh:
+        token=test_so_session_1777384407439, expires=+7d.
+      That session was deleted in cleanup.
+
+      Doctor token had expired (test_doc_*'s expires_at was 2026-04-28; today
+      is 2026-04-29) and prior tests had explicitly set
+      can_send_personal_messages:false on the doctor user. Refreshed expiry
+      (+7d) and unset the explicit flag so the staff-default-true rule could
+      be exercised. This is a test-fixture restoration, NOT a code change.
+
+      TEST 1 — Demo accounts pending invites visibility (BUG FIX #1) ✅
+        a. POST /admin/demo/create
+           {email:"demo-test-pending-001@example.com", name:"Pending Demo",
+            role:"primary_owner"} → 200 {ok:true, email, role:"primary_owner",
+            is_demo:true, user_id:null, seeded:null}.
+        b. GET /admin/demo → 200; the new pending email IS present in
+           items[] with signed_in:false, user_id:null, role:"primary_owner".
+        c. POST /admin/demo/create
+           {email:"demo-test-patient-002@example.com", role:"patient",
+            seed_sample_data:true} → 200 (placeholder users row created
+            u_demo_<hex>, sample booking+rx+ipss seeded).
+        d. GET /admin/demo → BOTH demos in items[]; patient row has
+           signed_in:true and user_id == creation response's user_id.
+        e. DELETE /admin/demo/pending:demo-test-pending-001%40example.com
+           (URL-encoded) → 200 {ok:true, revoked_invites:1,
+            cleanup:{bookings:0, prescriptions:0, ipss:0}}.
+           Subsequent GET /admin/demo no longer contains that email.
+        f. DELETE /admin/demo/<patient_user_id> → 200 with cleanup counts
+           {bookings:1, prescriptions:1, ipss:1} (sample data swept).
+           Subsequent GET /admin/demo no longer contains that email.
+        Endpoint behavior at server.py:8107-8140 + 8143-8171 matches spec.
+
+      TEST 2 — Personal messaging owner-tier implicit (BUG FIX #2) ✅
+        a. GET /auth/me as primary_owner (sagar.joshi133@gmail.com) →
+           can_send_personal_messages:TRUE (verified at server.py:1303-1305
+           — owner-tier branch).
+        b. GET /me/tier as primary_owner → role=primary_owner,
+           is_owner_tier:true. (/me/tier does NOT expose
+           can_send_personal_messages — it's only on /auth/me. This is
+           consistent with code; flag exposure on /me/tier is optional per
+           review brief.)
+        c. POST /messages/send as primary_owner → patient_user_id → 200
+           with notification_id (no 403 'permission denied').
+        d. GET /auth/me as doctor → can_send_personal_messages:true (via
+           staff-default-true rule, server.py:1306-1308).
+           POST /messages/send as doctor → patient → 200 with
+           notification_id. Owner-tier and staff implicit-permission paths
+           both verified.
+
+      TEST 3 — Regression smoke ✅
+        - GET /api/health → 200 {ok:true, db:"connected"}.
+        - GET /api/me/tier as primary_owner → 200 with all 10 expected
+          keys: role, is_super_owner, is_primary_owner, is_partner,
+          is_owner_tier, can_manage_partners, can_manage_primary_owners,
+          can_create_blog, dashboard_full_access, is_demo.
+        - GET /admin/platform-stats as super_owner → 200 with all 7 int
+          keys: primary_owners, partners, staff, patients,
+          bookings_last_30d, prescriptions_last_30d, demo_accounts.
+
+      CLEANUP ✅ — All test fixtures purged via mongosh:
+        users_deleted=1, team_invites_deleted=1, audit_log_deleted=4,
+        notifications_deleted=3 (sent test messages),
+        so_session_deleted=1. Doctor's can_send_personal_messages was
+        unset (was previously explicitly false) — the doctor staff-default
+        path is now the natural default. No DB pollution remains.
+
+      No 5xx, no auth bypasses, no data leakage. Both bug fixes verified
+      end-to-end at code+behavior level.
+
   - agent: "testing"
     message: |
       Demo Read-Only middleware: ALL 18/18 assertions PASS via

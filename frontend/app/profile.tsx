@@ -321,12 +321,12 @@ export default function ProfileScreen() {
         {/* Quick links */}
         <Text style={styles.sectionLabel}>{t('profile.sectionShortcuts') || 'SHORTCUTS'}</Text>
         <View style={styles.section}>
-          <TouchableOpacity style={styles.row} onPress={() => router.push('/notifications' as any)} activeOpacity={0.78}>
+          <TouchableOpacity style={styles.row} onPress={() => router.push('/inbox' as any)} activeOpacity={0.78}>
             <View style={[styles.iconWrap, { backgroundColor: COLORS.warning + '18' }]}>
-              <Ionicons name="mail-unread" size={18} color={COLORS.warning} />
+              <Ionicons name="chatbubbles" size={18} color={COLORS.warning} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{t('profile.rowNotifications') || 'Notifications'}</Text>
+              <Text style={styles.rowTitle}>{t('more.inbox') || 'Inbox'}</Text>
               <Text style={styles.rowSub}>{t('profile.rowNotificationsSub') || 'Your in-app inbox'}</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />

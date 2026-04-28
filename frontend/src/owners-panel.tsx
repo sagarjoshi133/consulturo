@@ -410,28 +410,39 @@ export default function OwnersPanel() {
           {demos.length === 0 ? (
             <Text style={styles.empty}>No demo accounts yet.</Text>
           ) : (
-            demos.map((p) => (
-              <PersonRow
-                key={p.user_id || p.email}
-                p={p}
-                actionLabel="Revoke"
-                onAction={() => {
-                  if (!p.user_id) return;
-                  confirmX(
-                    'Revoke Demo Account?',
-                    `${p.email} will be demoted to a regular patient account.`,
-                    async () => {
-                      setBusy(true);
-                      try {
-                        await api.delete(`/admin/demo/${p.user_id}`);
-                        await loadAll();
-                      } finally { setBusy(false); }
-                    },
-                    true,
-                  );
-                }}
-              />
-            ))
+            demos.map((p) => {
+              // `user_id` is null for invites the demo user hasn't
+              // signed into yet. We still render them (so the admin
+              // sees their pending demos) and allow revoke by email
+              // via the `pending:<email>` path.
+              const pendingId = p.user_id ? undefined : `pending:${(p.email || '').toLowerCase()}`;
+              const isPending = !p.user_id;
+              return (
+                <PersonRow
+                  key={p.user_id || p.email}
+                  p={{ ...p, name: p.name ? `${p.name}${isPending ? ' (pending sign-in)' : ''}` : p.email }}
+                  actionLabel="Revoke"
+                  onAction={() => {
+                    const id = p.user_id || pendingId;
+                    if (!id) return;
+                    confirmX(
+                      'Revoke Demo Account?',
+                      isPending
+                        ? `${p.email} (pending) will be removed from the demo list.`
+                        : `${p.email} will be demoted to a regular patient account.`,
+                      async () => {
+                        setBusy(true);
+                        try {
+                          await api.delete(`/admin/demo/${encodeURIComponent(id)}`);
+                          await loadAll();
+                        } finally { setBusy(false); }
+                      },
+                      true,
+                    );
+                  }}
+                />
+              );
+            })
           )}
         </View>
       )}

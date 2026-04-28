@@ -351,7 +351,7 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   .brand .info{display:flex; flex-direction:column; justify-content:center;}
   .brand h1{margin:0; color:#0E7C8B; font-size:20px; letter-spacing:.3px;}
   .brand .degrees{color:#1A2E35; font-size:11px; font-weight:600; margin-top:2px;}
-  .brand p{margin:1px 0; color:#5E7C81; font-size:10.5px;}
+  .brand p{margin:1px 0; color:#5E7C81; font-size:10.5px; line-height:1.35;}
   .meta{text-align:right; font-size:10.5px; color:#5E7C81; align-self:center;}
   .meta .line{margin-bottom:2px;}
   .meta b{color:#1A2E35;}
@@ -364,7 +364,7 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     padding:7px 12px;
     margin-top:8px;
     display:grid;
-    grid-template-columns: 1.4fr 0.8fr 0.9fr 1.3fr;
+    grid-template-columns: 1.4fr 0.7fr 1fr 1fr 1fr;
     gap:2px 12px;
     position:relative; z-index:1;
   }
@@ -687,10 +687,8 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     <div><div class="k">Patient</div><div class="v">${escapeHtml(rx.patient_name) || '—'}</div></div>
     <div><div class="k">Age / Sex</div><div class="v">${escapeHtml(ageSex) || '—'}</div></div>
     <div><div class="k">Phone</div><div class="v">${escapeHtml(rx.patient_phone) || '—'}</div></div>
-    <div>
-      <div class="k">Visit ${patientReg ? '· Reg.' : ''}</div>
-      <div class="v">${escapeHtml(visitDisplay)}${patientReg ? ' · ' + escapeHtml(patientReg) : ''}</div>
-    </div>
+    <div><div class="k">Visit</div><div class="v">${escapeHtml(visitDisplay)}</div></div>
+    <div><div class="k">Reg. No.</div><div class="v">${patientReg ? escapeHtml(patientReg) : '—'}</div></div>
     ${rx.patient_address ? `
     <div class="pdAddr">
       <div class="k">Address</div>

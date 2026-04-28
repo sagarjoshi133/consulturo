@@ -577,7 +577,7 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               : 'Try another keyword or open the full logbook.'
           }
           ctaLabel={items.length === 0 ? 'Log Surgery' : undefined}
-          onCta={items.length === 0 ? startNew : undefined}
+          onCta={items.length === 0 ? openNew : undefined}
           compact
           testID="sx-empty"
         />

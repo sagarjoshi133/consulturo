@@ -8109,7 +8109,15 @@ async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_own
     """Revoke a demo account — demote to patient and clear is_demo.
     For patient demos we ALSO sweep up the seeded sample bookings /
     prescriptions / IPSS rows so the user record + their "fake history"
-    disappear together."""
+    disappear together.
+
+    Accepts `user_id="pending:<email>"` to revoke a demo invite that
+    hasn't signed in yet (no users row exists yet)."""
+    # Pending-invite branch — no users doc exists.
+    if user_id.startswith("pending:"):
+        email_l = user_id.split(":", 1)[1].strip().lower()
+        res = await db.team_invites.delete_many({"email": email_l, "is_demo": True})
+        return {"ok": True, "revoked_invites": res.deleted_count, "cleanup": {"bookings": 0, "prescriptions": 0, "ipss": 0}}
     target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -8134,11 +8142,32 @@ async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_own
 
 @app.get("/api/admin/demo")
 async def list_demo_accounts(user=Depends(require_super_owner)):
+    """Lists every demo account including those that have not signed
+    in yet. Previously only `users` with `is_demo:true` were returned
+    which hid freshly-created primary_owner demos (they only exist as
+    team_invites until the user signs in for the first time)."""
     items: List[Dict[str, Any]] = []
+    seen_emails: set = set()
+    # 1) Live users
     async for u in db.users.find({"is_demo": True}, {"_id": 0}):
-        items.append({"user_id": u.get("user_id"), "email": u.get("email"),
+        em = (u.get("email") or "").lower()
+        if em in seen_emails:
+            continue
+        seen_emails.add(em)
+        items.append({"user_id": u.get("user_id"), "email": em,
                       "name": u.get("name"), "role": u.get("role"),
-                      "picture": u.get("picture")})
+                      "picture": u.get("picture"),
+                      "signed_in": True})
+    # 2) Pending invites (not signed in yet).
+    async for iv in db.team_invites.find({"is_demo": True}, {"_id": 0}):
+        em = (iv.get("email") or "").lower()
+        if em in seen_emails:
+            continue
+        seen_emails.add(em)
+        items.append({"user_id": None, "email": em,
+                      "name": iv.get("name"), "role": iv.get("role"),
+                      "picture": None,
+                      "signed_in": False})
     return {"items": items}
 
 
