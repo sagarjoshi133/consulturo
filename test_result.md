@@ -843,6 +843,163 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+
+  - agent: "testing"
+    message: |
+      Frontend regression (2026-04-28) for 6 recent features completed.
+      PASSING: (T1) Collapsible Desktop Sidebar — collapse/expand + localStorage
+      `web_sidebar_collapsed` persistence verified end-to-end. (T2) Force
+      Desktop/Mobile View Toggle — row visible at /more, cycles Auto→Desktop→
+      Mobile→Auto, force_view=desktop on 390w viewport correctly renders
+      desktop sidebar shell. (T3) Super Owner Dashboard split — seeded SO,
+      /dashboard shows Super Owner / Platform administration + all 6 stat
+      cards + Recent activity section, no clinical tabs present.
+      (T5) Branding Panel — all 5 sections + all 9 Partner Access toggles
+      render; Main photo toggle cycle produces no error.
+      PARTIAL / NEEDS-RETEST:
+      (T4) Demo Account Creation (Patient) — role chips + inputs render
+      correctly, but live click on the Patient chip was blocked by a
+      privacy-consent modal that re-appeared on the SO session after the
+      initial onboarding_done flag; could not verify end-to-end create +
+      revoke flow. Recommend seeding consent_medical/consent_terms in the
+      SO fixture seed snippet so the modal does not appear.
+      (T6) Blog tab gating — Blog tab is correctly absent from the
+      primary_owner dashboard (hidden), HOWEVER the regression tabs
+      (Today/Bookings/Rx/etc) were also not detected (likely consent-modal
+      over dashboard). Also /api/me/tier did NOT expose the
+      `can_create_blog` field in the probe (it returned without the key) —
+      this may be a backend gap worth verifying.
+      Cleanup: SO seed user + session purged. Demo patient email also
+      cleaned preemptively from users/bookings/prescriptions/ipss via
+      mongosh. No DB pollution.
+      Screenshots captured: t1_expanded, t1_collapsed, t2_initial, t2_cycled,
+      t2_mobile, t2_desktop_on_mobile, t3_so_dashboard, t4_demo_section,
+      t4_after_create, t5_branding, t6_dashboard in .screenshots/.
+
+frontend_session_2026_04_28_regression:
+  - task: "Collapsible Desktop Sidebar (web-shell.tsx)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/web-shell.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          PASS at 1280x900 with owner token. Sidebar renders with brand "ConsultUro /
+          Dr. Sagar Joshi", Collapse button (testID web-sidebar-collapse), and all 10
+          nav labels (Home, Book, Inbox, Notifications, Diseases, Tools, Education,
+          Blog, Videos, About). Click Collapse → sidebar shrinks; localStorage
+          `web_sidebar_collapsed === '1'`. Reload persists collapsed. Click chevron →
+          expands; reload persists (key cleared → null). Screenshots
+          .screenshots/t1_expanded.png + t1_collapsed.png.
+
+  - task: "Force Desktop/Mobile View Toggle (more.tsx + responsive.ts)"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/more.tsx, /app/frontend/src/responsive.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          PASS at 390x844. "View mode" row (testID more-view-mode) visible in App
+          section. Cycling taps observed localStorage `force_view` transitions:
+          null(Auto) → desktop → mobile → null (Auto). After force_view=mobile,
+          sidebar collapse button count = 0 (mobile layout). After force_view=desktop
+          on 390w viewport, sidebar count = 1 (desktop shell appears). Screenshots
+          t2_initial/cycled/mobile/desktop_on_mobile.
+
+  - task: "Super Owner Dashboard split (super-owner-dashboard.tsx)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/super-owner-dashboard.tsx, /app/frontend/app/dashboard.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          PASS at 390x844 with seeded super_owner token. /dashboard renders the
+          Super Owner dashboard (NOT the clinical one). Header shows "Super Owner /
+          Platform administration". Platform stats section present with all 6 probe
+          labels: Primary Owners, Partners, Staff, Patients, Bookings (30d), Rx
+          (30d), Demo Accounts. Recent activity / Audit section renders. No
+          Rx+Surgeries+Availability clinical-tab combination present. Screenshot
+          t3_so_dashboard.png. (Note: a privacy-consent modal was shown on top but
+          the underlying SO dashboard content was fully rendered and probed.)
+
+  - task: "Demo Account Creation — Patient with sample data (owners-panel.tsx)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/owners-panel.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: |
+          PARTIAL. /permission-manager renders the Demo Accounts section (SO token).
+          Both role chips visible: "Primary Owner" + "Patient (with sample data)".
+          Inputs for email + display name visible. HOWEVER the role-chip click
+          handler could not be exercised live — Playwright locator for the
+          "Patient (with..." text timed out after 30s (likely because a
+          privacy-consent onboarding modal was intercepting pointer events on the
+          SO session). Could not verify end-to-end create → appear in list →
+          revoke. Code inspection at owners-panel.tsx:322-390 confirms wiring is
+          correct (api.post('/admin/demo/create', { role, seed_sample_data:true })).
+          Recommend: seed SO with consent_medical/consent_terms set at seed time
+          or bypass the consent gate for testing. No failure of the component
+          itself observed.
+
+  - task: "Branding Panel — 9 Partner Access toggles (branding-panel.tsx)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/branding-panel.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          PASS at 390x844 with primary_owner token. /branding renders all 5
+          sections (Photos, About the Doctor, Clinic, Social Media, Partner Access).
+          All 9 Partner Access toggles present: Main photo, Cover photo,
+          Clinic name [& website], Social media handles, About-Doctor section,
+          External blog [links], Videos library, Education content,
+          Broadcast announcements. Toggling "Main photo" off then on produced no
+          UI error (error selector scan returned empty). Screenshot t5_branding.png.
+
+  - task: "Blog tab gating on dashboard (can_create_blog)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/dashboard.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: |
+          PARTIAL. Blog tab NOT present in dashboard DOM for the primary_owner
+          (Sagar) session — which matches the expected hidden state. However the
+          regression check (Today/Bookings/Rx/etc tabs) did not find any of the 10
+          expected tab labels in the body text. Possible causes: dashboard was
+          still showing the privacy-consent modal (owner session state carried
+          over after SO navigation), OR the tabs were offscreen in the
+          horizontal scroller. Also /api/me/tier response did not contain
+          `can_create_blog` field (evaluated: None); this may indicate backend
+          is NOT exposing the flag on /api/me/tier yet. Recommend backend
+          verification + re-run after clearing consent state.
+
+
 agent_communication:
   - agent: "testing"
     message: |
