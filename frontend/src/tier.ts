@@ -28,6 +28,7 @@ export type Tier = {
   canManagePartners: boolean;
   canManagePrimaryOwners: boolean;
   canCreateBlog: boolean;
+  dashboardFullAccess: boolean;
   isDemo: boolean;
   loading: boolean;
 };
@@ -41,6 +42,7 @@ const EMPTY_TIER: Tier = {
   canManagePartners: false,
   canManagePrimaryOwners: false,
   canCreateBlog: false,
+  dashboardFullAccess: false,
   isDemo: false,
   loading: false,
 };
@@ -66,6 +68,7 @@ export function useTier(): Tier & { refresh: () => Promise<void> } {
         canManagePartners: !!data?.can_manage_partners,
         canManagePrimaryOwners: !!data?.can_manage_primary_owners,
         canCreateBlog: !!data?.can_create_blog,
+        dashboardFullAccess: !!data?.dashboard_full_access,
         isDemo: !!data?.is_demo,
         loading: false,
       });

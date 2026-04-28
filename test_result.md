@@ -8605,3 +8605,130 @@ agent_communication:
       from this backend test bundle.
 
 
+
+backend_dashboard_perm_apr28:
+  - task: "Dashboard Access permission control — default rule + PATCH /api/admin/primary-owners/{id}/dashboard-perm + /api/me/tier exposure + audit log"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (31/31 assertions) via
+          /app/backend_test_dashboard_perm.py against
+          http://localhost:8001. Plus /backend_test_demo_middleware.py
+          (18/18) and /backend_test_bundle_apr28.py (69/69) re-run cleanly
+          as smoke regression — no breakage from this feature.
+
+          SETUP — Seeded super_owner via mongosh ✅
+            user_id=test-so-dash-<ts>, email=app.consulturo@gmail.com,
+            role=super_owner, +7d session token.
+
+          TEST 1 — /api/me/tier default-true rule ✅
+          1.1 sagar (primary_owner, no dashboard_full_access in DB) →
+              200, role=primary_owner, dashboard_full_access:true
+              (default-true rule for owner-tier roles, server.py:6566-6567).
+          1.2 super_owner → 200, role=super_owner, is_super_owner:true,
+              dashboard_full_access:true.
+          1.3 doctor (test_doc_1776771431524) → 200, role=doctor,
+              dashboard_full_access:false (non owner-tier; falls back to
+              per-user prop which is unset → False, server.py:6568-6569).
+
+          TEST 2 — GET /api/admin/primary-owners includes new field ✅
+          - As super_owner → 200; every row in items[] has the
+            dashboard_full_access key (server.py:6434).
+          - sagar's row present with dashboard_full_access:true (default).
+
+          TEST 3 — PATCH /api/admin/primary-owners/{id}/dashboard-perm ✅
+          3.5 super_owner PATCH {dashboard_full_access:false} on sagar →
+              200, response {ok:true, user_id, dashboard_full_access:
+              false}.
+          3.6 sagar /me/tier now reports dashboard_full_access:false
+              (db.users update verified; default-true rule honours the
+              explicit `false` override per server.py:6567).
+          3.7 GET /api/admin/primary-owners again → sagar's row now
+              dashboard_full_access:false.
+          3.8 super_owner PATCH back to true → 200,
+              dashboard_full_access:true.
+          3.9 sagar /me/tier reports dashboard_full_access:true.
+          Persistence: writes to BOTH db.users (server.py:6495-6497)
+          AND db.team_invites (server.py:6499-6502) so the flag survives
+          sign-out / sign-in.
+
+          TEST 4 — Authorization (require_super_owner gate) ✅
+          4.10 sagar (primary_owner) PATCH dashboard-perm →
+               403 "Super owner access required".
+          4.11 doctor PATCH dashboard-perm → 403 "Super owner access
+               required".
+          4.12 super_owner PATCH on a doctor user_id (non-primary_owner
+               target) → 400 with detail "Target must be a primary_owner"
+               (server.py:6493).
+          4.13 super_owner PATCH on user_id "does_not_exist_user_xyz"
+               → 404 "User not found" (server.py:6491).
+
+          TEST 5 — Audit log ✅
+          - After steps 3.5 and 3.8, db.audit_log.countDocuments(
+            {kind:'dashboard_perm_change',
+             target_email:'sagar.joshi133@gmail.com'}) == 2.
+          - Both rows carry target_email + new_value (one true, one
+            false) — server.py:6503-6511 inserts {ts, kind, target_email,
+            target_user_id, new_value, actor_email}.
+
+          TEST 6 — Smoke ✅
+          - GET /api/health → 200 {"ok":true,"db":"connected"}.
+          - /backend_test_demo_middleware.py → 18/18 PASS unchanged.
+          - /backend_test_bundle_apr28.py → 69/69 PASS unchanged
+            (granular partner-branding + blog gate + demo-patient seed
+            all still green; that script also re-runs role_hierarchy
+            internally → 34/34 still PASS).
+
+          CLEANUP ✅
+          - Deleted super_owner test user + session
+            (db.users.deleteOne({user_id:test-so-dash-*}) +
+             db.user_sessions.deleteOne({session_token:test_so_dash_*})).
+          - Reset sagar's dashboard_full_access via $unset on db.users
+            and db.team_invites — verified post_dfa=undefined.
+          - Deleted both dashboard_perm_change audit rows for
+            sagar.joshi133@gmail.com — verified audit_left=0.
+          End-state matches pre-test exactly (so_users=0 so_sess=0
+          audit_left=0 sagar dfa=undefined).
+
+          No 5xx, no auth bypasses, no DB pollution.
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      Dashboard Access permission control: 31/31 ASSERTIONS PASS via
+      /app/backend_test_dashboard_perm.py against http://localhost:8001.
+      Plus prior demo-middleware (18/18) and bundle_apr28 (69/69, which
+      itself includes role_hierarchy 34/34) regressions still PASS
+      unchanged.
+
+      Verified:
+        • /api/me/tier exposes new `dashboard_full_access` boolean.
+          Owner-tier roles (super_owner/primary_owner/owner/partner)
+          DEFAULT TRUE unless explicitly set to false on db.users.
+          Non-owner roles (doctor) fall back to per-user prop → false
+          when unset.
+        • GET /api/admin/primary-owners now includes
+          `dashboard_full_access` on every row (per spec, super_owner
+          is implicitly true).
+        • PATCH /api/admin/primary-owners/{user_id}/dashboard-perm:
+            – super_owner-only (require_super_owner).
+            – primary_owner / doctor → 403.
+            – non-primary_owner target → 400 "Target must be a
+              primary_owner".
+            – non-existent user → 404.
+            – round-trips on /me/tier and the listing endpoint.
+            – persists on BOTH db.users and db.team_invites.
+        • db.audit_log gets a `kind:'dashboard_perm_change'` row for
+          each PATCH with target_email + new_value populated.
+
+      Cleanup: super_owner fixture purged, sagar's dashboard_full_access
+      $unset, audit rows deleted. End-state clean.
+
+      Re-runnable artifact at /app/backend_test_dashboard_perm.py.

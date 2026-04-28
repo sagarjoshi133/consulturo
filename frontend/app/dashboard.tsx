@@ -236,16 +236,30 @@ export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const tier = useTier();
-  // `effectiveOwner` covers both the real owner AND any team member that
-  // the owner has granted "Full Dashboard Access" to. Tabs/actions that
-  // were previously gated on `isOwner` should use this flag so a Full-
-  // Access team member sees exactly the same dashboard as the doctor.
-  const isOwner = user?.role === 'owner';
-  const isFullAccess = !!(user as any)?.dashboard_full_access;
-  const effectiveOwner = isOwner || isFullAccess;
-  // canPrescribe is true for owner/doctor; custom "doctor-category" roles will
-  // be recognised by the server's require_prescriber regardless.
-  const canPrescribe = user?.role === 'owner' || user?.role === 'doctor';
+  // `effectiveOwner` covers:
+  //  • any owner-tier role (super_owner, primary_owner, legacy owner,
+  //    partner) — they all get FULL dashboard access by default per
+  //    the fundamental hierarchy (SuperOwner > PrimaryOwner > Partner
+  //    > Team).
+  //  • non-owner team members whose primary_owner explicitly flipped
+  //    `dashboard_full_access: true` on their record.
+  // The super-owner can LIMIT a specific primary_owner by flipping
+  // `dashboard_full_access: false` — that revokes administrative tabs
+  // (Analytics, Team, Backups, Blog, Broadcasts) but leaves core
+  // clinical tabs (Today, Bookings, Consults, Rx, Surgeries) intact.
+  const OWNER_TIER_ROLES = ['super_owner', 'primary_owner', 'owner', 'partner'] as const;
+  const isOwnerRole = OWNER_TIER_ROLES.includes((user?.role as any));
+  const isOwner = isOwnerRole;
+  // `dashboardFullAccess` comes from /api/me/tier which applies the
+  // "default-true-for-owner-tier unless explicitly revoked" rule on
+  // the server. Fall back to the raw user prop for non-owner roles.
+  const isFullAccess = isOwnerRole
+    ? tier.dashboardFullAccess
+    : !!(user as any)?.dashboard_full_access;
+  const effectiveOwner = isOwnerRole ? isFullAccess : (isOwner || isFullAccess);
+  // canPrescribe: all owner-tier roles (full Rx power) + doctors. Custom
+  // "doctor-category" roles are validated server-side by require_prescriber.
+  const canPrescribe = isOwnerRole || user?.role === 'doctor';
   const { unread: notifUnread, personalUnread } = useNotifications();
   // Initial tab from URL search params (`?tab=analytics` etc.) so More
   // tab routes like `/dashboard?tab=team` open the right panel.

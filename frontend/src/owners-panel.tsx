@@ -43,6 +43,7 @@ type Person = {
   role?: string;
   picture?: string;
   can_create_blog?: boolean;
+  dashboard_full_access?: boolean;
 };
 
 export default function OwnersPanel() {
@@ -226,6 +227,24 @@ export default function OwnersPanel() {
               p={p}
               actionLabel={tier.canManagePrimaryOwners && p.role !== 'super_owner' ? 'Demote' : undefined}
               onAction={() => demotePrimary(p)}
+              dashboardToggle={
+                tier.isSuperOwner
+                  ? {
+                      value: p.role === 'super_owner' ? true : (p.dashboard_full_access !== false),
+                      disabled: p.role === 'super_owner',
+                      onChange: async (v: boolean) => {
+                        if (!p.user_id || p.role === 'super_owner') return;
+                        setBusy(true);
+                        try {
+                          await api.patch(`/admin/primary-owners/${p.user_id}/dashboard-perm`, { dashboard_full_access: v });
+                          await loadAll();
+                        } catch (e: any) {
+                          alertX('Failed', e?.response?.data?.detail || 'Could not update dashboard access');
+                        } finally { setBusy(false); }
+                      },
+                    }
+                  : undefined
+              }
               blogToggle={
                 tier.isSuperOwner
                   ? {
@@ -425,11 +444,13 @@ function PersonRow({
   actionLabel,
   onAction,
   blogToggle,
+  dashboardToggle,
 }: {
   p: Person;
   actionLabel?: string;
   onAction?: () => void;
   blogToggle?: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean };
+  dashboardToggle?: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean };
 }) {
   return (
     <View>
@@ -457,6 +478,20 @@ function PersonRow({
           </TouchableOpacity>
         )}
       </View>
+      {dashboardToggle && (
+        <View style={styles.permRow}>
+          <Text style={styles.permLabel}>
+            <Ionicons name="grid-outline" size={11} /> Full dashboard access (all admin tabs)
+          </Text>
+          <TouchableOpacity
+            onPress={() => !dashboardToggle.disabled && dashboardToggle.onChange(!dashboardToggle.value)}
+            style={[styles.permToggle, dashboardToggle.value && styles.permToggleOn, dashboardToggle.disabled && { opacity: 0.5 }]}
+            disabled={!!dashboardToggle.disabled}
+          >
+            <View style={[styles.permDot, dashboardToggle.value && styles.permDotOn]} />
+          </TouchableOpacity>
+        </View>
+      )}
       {blogToggle && (
         <View style={styles.permRow}>
           <Text style={styles.permLabel}>

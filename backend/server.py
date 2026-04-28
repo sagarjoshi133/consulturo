@@ -6415,10 +6415,15 @@ async def demote_primary_owner(user_id: str, user=Depends(require_super_owner)):
 @app.get("/api/admin/primary-owners")
 async def list_primary_owners(user=Depends(require_owner)):
     """List all primary_owners + super_owner. Visible to anyone in the
-    owner tier. Includes `can_create_blog` so the super-owner UI can
-    render a per-row toggle."""
+    owner tier. Includes `can_create_blog` + `dashboard_full_access`
+    so the super-owner UI can render per-row toggles."""
     rows: List[Dict[str, Any]] = []
     async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
+        # Dashboard default = True unless explicitly revoked (same rule
+        # as /api/me/tier). Super-owner is always True and can't be
+        # limited.
+        dfa_raw = u.get("dashboard_full_access")
+        dfa = (dfa_raw is not False) if u.get("role") in {"primary_owner", "super_owner"} else bool(dfa_raw)
         rows.append({
             "user_id": u.get("user_id"),
             "email": u.get("email"),
@@ -6426,12 +6431,17 @@ async def list_primary_owners(user=Depends(require_owner)):
             "role": u.get("role"),
             "picture": u.get("picture"),
             "can_create_blog": bool(u.get("can_create_blog")) or u.get("role") == "super_owner",
+            "dashboard_full_access": dfa,
         })
     return {"items": rows}
 
 
 class BlogPermBody(BaseModel):
     can_create_blog: bool
+
+
+class DashboardPermBody(BaseModel):
+    dashboard_full_access: bool
 
 
 @app.patch("/api/admin/primary-owners/{user_id}/blog-perm")
@@ -6466,6 +6476,42 @@ async def set_primary_owner_blog_perm(
     except Exception:
         pass
     return {"ok": True, "user_id": user_id, "can_create_blog": val}
+
+
+@app.patch("/api/admin/primary-owners/{user_id}/dashboard-perm")
+async def set_primary_owner_dashboard_perm(
+    user_id: str, body: DashboardPermBody, user=Depends(require_super_owner)
+):
+    """Super-owner-only. Grant / revoke full-dashboard access for a
+    specific primary_owner. All owner-tier accounts start with full
+    access by default — this flips the explicit override. Super_owner
+    can never be limited (flag is forced True)."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") != "primary_owner":
+        raise HTTPException(status_code=400, detail="Target must be a primary_owner")
+    val = bool(body.dashboard_full_access)
+    await db.users.update_one(
+        {"user_id": user_id}, {"$set": {"dashboard_full_access": val}}
+    )
+    email_l = (target.get("email") or "").lower()
+    if email_l:
+        await db.team_invites.update_one(
+            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=True
+        )
+    try:
+        await db.audit_log.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "kind": "dashboard_perm_change",
+            "target_email": email_l,
+            "target_user_id": user_id,
+            "new_value": val,
+            "actor_email": (user.get("email") or "").lower(),
+        })
+    except Exception:
+        pass
+    return {"ok": True, "user_id": user_id, "dashboard_full_access": val}
 
 
 @app.post("/api/admin/partners/promote")
@@ -6509,15 +6555,28 @@ async def get_my_tier(user=Depends(require_user)):
     can_blog = is_super_owner(user) or (
         user.get("role") == "primary_owner" and bool(user.get("can_create_blog"))
     )
+    # Dashboard access — all owner-tier roles (super_owner, primary_owner,
+    # partner, legacy owner) get FULL dashboard access BY DEFAULT. The
+    # super_owner can demote a specific primary_owner to LIMITED by
+    # flipping `dashboard_full_access: false` on their user record.
+    # Non-owner roles (doctor/assistant/etc) keep the legacy per-user
+    # opt-in semantic.
+    role = user.get("role")
+    dfa_raw = user.get("dashboard_full_access")
+    if role in {"super_owner", "primary_owner", "owner", "partner"}:
+        dashboard_full_access = (dfa_raw is not False)  # default True unless explicitly revoked
+    else:
+        dashboard_full_access = bool(dfa_raw)
     return {
-        "role": user.get("role"),
+        "role": role,
         "is_super_owner": is_super_owner(user),
-        "is_primary_owner": (user.get("role") in {"primary_owner", "owner"}),
-        "is_partner": user.get("role") == "partner",
+        "is_primary_owner": (role in {"primary_owner", "owner"}),
+        "is_partner": role == "partner",
         "is_owner_tier": is_owner_or_partner(user),
         "can_manage_partners": is_primary_or_super(user),
         "can_manage_primary_owners": is_super_owner(user),
         "can_create_blog": can_blog,
+        "dashboard_full_access": dashboard_full_access,
         "is_demo": bool(user.get("is_demo")),
     }
 
