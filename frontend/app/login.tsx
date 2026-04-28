@@ -53,6 +53,8 @@ function makeHandoffId(): string {
 }
 
 const SCREEN_H = Dimensions.get('window').height;
+import { useResponsive } from '../src/responsive';
+
 const COMPACT = SCREEN_H < 720; // small phones (e.g., iPhone SE)
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
@@ -65,6 +67,11 @@ export default function Login() {
   const [emailMode, setEmailMode] = useState<EmailAuthMode | null>(null);
   const [showWebView, setShowWebView] = useState(false);
   const [showPhone, setShowPhone] = useState(false);
+  // Desktop: render the auth surface as a centered 480-wide premium
+  // card on a themed background. Mobile keeps the original full-
+  // screen look.
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
 
   const onAlternativeSuccess = async () => {
     await refresh();
@@ -254,8 +261,24 @@ export default function Login() {
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            // Add a bit more bottom padding for devices with gesture bars
             { paddingBottom: Math.max(insets.bottom, 8) + 8 },
+            isDesktop && {
+              // Desktop: center a premium card in a 480-wide column
+              // on a subtle themed background. Mobile unchanged.
+              maxWidth: 480,
+              alignSelf: 'center',
+              width: '100%',
+              marginTop: 36,
+              marginBottom: 36,
+              backgroundColor: '#fff',
+              borderRadius: 20,
+              padding: 32,
+              shadowColor: '#0B3142',
+              shadowOpacity: 0.12,
+              shadowRadius: 28,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: 8,
+            } as any,
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

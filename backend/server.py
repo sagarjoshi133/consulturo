@@ -6650,7 +6650,17 @@ async def messages_recipients(
     if effective_scope == "patients":
         base = {"role": "patient"}
     else:
-        base = {"role": {"$ne": "patient"}}
+        # Team recipients:
+        #   • never patients (use scope="patients" for that)
+        #   • never super_owner — EXCEPT when the caller is a
+        #     primary_owner. Per the hierarchy rule only Primary
+        #     Owners can personally message the Super Owner; partners,
+        #     doctors and other staff cannot see the super_owner in
+        #     their recipient search.
+        exclude_roles: List[str] = ["patient"]
+        if requester_role != "primary_owner":
+            exclude_roles.append("super_owner")
+        base = {"role": {"$nin": exclude_roles}}
     base["user_id"] = {"$ne": user["user_id"]}
     if qs:
         regex = {"$regex": re.escape(qs), "$options": "i"}
@@ -6689,6 +6699,12 @@ async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
         raise HTTPException(status_code=404, detail="Recipient not found")
     if recipient["user_id"] == user["user_id"]:
         raise HTTPException(status_code=400, detail="Cannot message yourself")
+    # Hierarchy rule: only Primary Owners can message the Super Owner.
+    if recipient.get("role") == "super_owner" and user.get("role") != "primary_owner":
+        raise HTTPException(
+            status_code=403,
+            detail="Only Primary Owners can send personal messages to the Super Owner.",
+        )
 
     sender_name = user.get("name") or user.get("email") or "Team"
     sender_role = user.get("role") or "staff"

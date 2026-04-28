@@ -844,6 +844,95 @@ test_plan:
   test_priority: "high_first"
 
 
+backend_messaging_hierarchy:
+  - task: "Hierarchy messaging — only Primary Owners can message the Super Owner"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 17/17 assertions PASS via
+          /app/backend_test_msg_hierarchy.py against http://localhost:8001
+          (tokens: primary_owner = test_session_1776770314741,
+          doctor = test_doc_1776771431524; test partner seeded + cleaned).
+
+          Regression smoke ✅
+          - GET /api/health → 200 {"ok":true,"db":"connected"}.
+          - GET /api/me/tier as primary_owner (sagar) → 200
+            {role:"primary_owner", dashboard_full_access:true,
+             can_create_blog:true, is_primary_owner:true,
+             is_owner_tier:true, is_demo:false}. Spec fields (can_create_blog,
+             dashboard_full_access, is_demo) all exposed.
+
+          SEED ✅
+          - Super owner already present at db.users
+            {email:'app.consulturo@gmail.com', user_id:'user_f4556817bf29',
+             role:'super_owner'} — reused (not mutated / not deleted in
+            cleanup).
+          - Test partner inserted: user_id=test-partner-<ts>,
+            email=test-partner-<ts>@example.com, role='partner',
+            can_send_personal_messages:true. Session
+            test_partner_session_<ts> valid for 24h. /api/auth/me →200
+            role=partner. Cleaned up on teardown.
+          - Doctor fixture (doc-test-1776771431502) had
+            can_send_personal_messages:false by default which would mask
+            the hierarchy-specific 403 under the generic "Not permitted
+            to send personal messages" 403. Test flipped it to true
+            before T4/T7 and restored to false in cleanup.
+
+          NEW RULE — GET /api/messages/recipients?scope=team ✅
+          Query used: q=consulturo (email substring of the seeded
+          super_owner app.consulturo@gmail.com — "super" literal is absent
+          from the real fixture so we use a non-empty email-matching
+          substring; the rule under test is role-based exclusion, not
+          substring matching).
+            • T2 primary_owner (sagar) → 200, items INCLUDES super_owner
+              (app.consulturo@gmail.com, role:super_owner).
+            • T3 partner (test_partner_session_*) → 200, items DOES NOT
+              include any role=super_owner row (exclude_roles adds
+              'super_owner' for non-primary_owner callers — server.py:6661).
+            • T4 doctor (test_doc_1776771431524, can_send flipped on) →
+              200, items DOES NOT include any role=super_owner row.
+
+          NEW RULE — POST /api/messages/send ✅
+            • T5 primary_owner → super_owner
+              {recipient_user_id:user_f4556817bf29, title:"Hierarchy test
+              — from Primary Owner", body:"..."} → 200 {notification_id,
+              ok:true}. Payload intentionally uses `title` because the
+              PersonalMessageBody schema expects `title`, not `subject`.
+            • T6 partner → super_owner → 403 with detail
+              "Only Primary Owners can send personal messages to the
+              Super Owner." (exact spec string).
+            • T7 doctor → super_owner → 403 with same exact spec detail.
+              (Verified by flipping can_send_personal_messages:true so
+              the hierarchy branch at server.py:6703-6707 executes rather
+              than the upstream _can_send_personal_messages guard.)
+
+          CLEANUP ✅
+          - Partner user + session removed
+            (db.users_count{test-partner/}=0, sessions=0).
+          - Doctor can_send_personal_messages restored to false.
+          - Test-created message notification ids swept
+            (_created_message_ids loop + sender/recipient ref cleanup).
+          - Pre-existing super_owner row left intact (we did not create it).
+
+          FIXTURE NOTE for main agent: The review brief's literal
+          "q=super" will NOT return the existing super_owner because the
+          fixture email is 'app.consulturo@gmail.com' (no "super"
+          substring). To exercise the same rule with q=super the
+          super_owner name/email would need to contain "super" — the test
+          uses q=consulturo as a pragmatic substitute which exercises the
+          exact same role-based exclude path. The rule itself is fully
+          verified.
+
+          No 5xx, no auth bypasses, no data leakage.
+
+
   - agent: "testing"
     message: |
       Frontend regression (2026-04-28) for 6 recent features completed.
@@ -1019,6 +1108,32 @@ agent_communication:
       fixture cleaned up (users_deleted=1 sessions_deleted=1).
       REGRESSION: Re-ran /app/backend_test_role_hierarchy.py → 34/34
       still green. Middleware shape at server.py:311-328 matches spec.
+  - agent: "testing"
+    message: |
+      Hierarchy messaging rule (Phase 2 backend): ALL 17/17 assertions
+      PASS via /app/backend_test_msg_hierarchy.py against
+      http://localhost:8001.
+      (1) GET /api/messages/recipients?scope=team excludes
+          role=super_owner UNLESS caller is primary_owner. Verified for
+          primary_owner (included), partner (excluded), doctor
+          (excluded).
+      (2) POST /api/messages/send 403s with exact spec detail
+          "Only Primary Owners can send personal messages to the Super
+          Owner." when caller is partner or doctor and recipient is
+          role=super_owner. primary_owner → 200.
+      (3) Regression: /api/health →200, /api/me/tier (sagar) →
+          role=primary_owner, dashboard_full_access:true,
+          can_create_blog:true, is_demo:false.
+      FIXTURE NOTE: The literal q=super from the brief matches nothing
+      because the seeded super_owner (app.consulturo@gmail.com, name
+      "ConsultUro App") has no "super" substring; the test uses
+      q=consulturo which exercises the same exclude-roles branch at
+      server.py:6660-6662. Doctor default can_send_personal_messages=
+      false would have masked the hierarchy 403 under the permission
+      403 — the test temporarily flipped it to true and restored in
+      cleanup. All fixtures (partner user + session, test messages)
+      cleaned up. Existing super_owner row was reused, not mutated.
+
 
 frontend_session_2026_04_26_msg_notes:
   - task: "Dashboard FAB → 4-action stack with New Message"

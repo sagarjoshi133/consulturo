@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import api from './api';
 import { useAuth } from './auth';
 import { COLORS, FONTS, RADIUS } from './theme';
+import { useResponsive } from './responsive';
 
 /**
  * First-run consent gate — shown once after sign-in if the user hasn't
@@ -31,6 +32,9 @@ export function ConsentGate() {
   const [policy, setPolicy] = useState(false);
   const [marketing, setMarketing] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Desktop: show as a centered modal card (not a bottom sheet).
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
 
   const check = useCallback(async () => {
     if (!user) return;
@@ -77,8 +81,8 @@ export function ConsentGate() {
       {/* Dimmed backdrop */}
       <View style={styles.backdrop} pointerEvents="box-none" />
       {/* Bottom sheet card */}
-      <SafeAreaView edges={['bottom']} style={styles.sheetWrap} pointerEvents="box-none">
-        <View style={styles.sheet}>
+      <SafeAreaView edges={['bottom']} style={[styles.sheetWrap, isDesktop && styles.sheetWrapDesktop]} pointerEvents="box-none">
+        <View style={[styles.sheet, isDesktop && styles.sheetDesktop]}>
           <View style={styles.grabber} />
           <LinearGradient colors={COLORS.heroGradient} style={styles.sheetHero}>
             <View style={styles.shieldIcon}>
@@ -196,12 +200,35 @@ function ConsentItem({
 const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheetWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  /* Desktop: center the card vertically + horizontally, cap width to
+     540 so it reads like a premium consent prompt instead of a full-
+     width bottom sheet. */
+  sheetWrapDesktop: {
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
   sheet: {
     backgroundColor: COLORS.bg,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     maxHeight: '88%',
     overflow: 'hidden',
+  },
+  sheetDesktop: {
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: 720,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
   },
   grabber: { alignSelf: 'center', width: 40, height: 4, backgroundColor: '#D0D9DB', borderRadius: 2, marginTop: 8, marginBottom: 4 },
   sheetHero: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },

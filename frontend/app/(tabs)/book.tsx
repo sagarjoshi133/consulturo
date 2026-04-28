@@ -28,6 +28,7 @@ import { haptics } from '../../src/haptics';
 import { addBookingToCalendar } from '../../src/calendar';
 import { scheduleBookingReminders, REMINDER_LEADS, ReminderLead, labelFor } from '../../src/booking-reminders';
 import { CountryCodePicker, DEFAULT_COUNTRY, Country } from '../../src/country-code-picker';
+import { useResponsive } from '../../src/responsive';
 
 const FALLBACK_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -57,6 +58,10 @@ export default function Book() {
   const [schedulingReminders, setSchedulingReminders] = useState(false);
   // Duplicate patient detection
   const [duplicateInfo, setDuplicateInfo] = useState<{ open_count: number; next: any } | null>(null);
+  // Desktop layout: centered 720-wide column + card chrome so the
+  // booking form doesn't stretch edge-to-edge on wide screens.
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
 
   const dates = useMemo(() => Array.from({ length: 90 }, (_, i) => addDays(new Date(), i)), []);
   const [date, setDate] = useState(dates[0]);
@@ -178,7 +183,10 @@ export default function Book() {
   if (confirmed) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-        <ScrollView contentContainerStyle={{ padding: 24 }}>
+        <ScrollView contentContainerStyle={[
+          { padding: 24 },
+          isDesktop && { maxWidth: 720, alignSelf: 'center', width: '100%', padding: 28 } as any,
+        ]}>
           <View style={styles.successBadge}>
             <Ionicons name="time" size={40} color="#fff" />
           </View>
@@ -397,7 +405,28 @@ export default function Book() {
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ padding: 20, paddingBottom: 120 + insets.bottom }}
+          contentContainerStyle={[
+            { padding: 20, paddingBottom: 120 + insets.bottom },
+            isDesktop && {
+              // Desktop: centered card-style container with tighter
+              // padding + premium max-width so long-form inputs read
+              // comfortably on 1440-px screens.
+              maxWidth: 760,
+              alignSelf: 'center',
+              width: '100%',
+              padding: 28,
+              paddingBottom: 72,
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              marginTop: 24,
+              marginBottom: 24,
+              shadowColor: '#0B3142',
+              shadowOpacity: 0.06,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 2,
+            } as any,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

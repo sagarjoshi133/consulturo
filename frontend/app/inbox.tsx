@@ -48,6 +48,7 @@ import { useAuth } from '../src/auth';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { displayDateLong } from '../src/date';
 import MessageComposer from '../src/message-composer';
+import { useResponsive } from '../src/responsive';
 
 type InboxItem = {
   id: string;
@@ -157,6 +158,11 @@ export default function Inbox() {
   const [refreshing, setRefreshing] = useState(false);
   const [sentLoading, setSentLoading] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
+  // Desktop: narrow centered list + compact FAB so the inbox doesn't
+  // stretch edge-to-edge on wide screens and feels like a premium
+  // email app.
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
 
   // ── Loaders ──
   const loadReceived = useCallback(async () => {
@@ -344,7 +350,16 @@ export default function Inbox() {
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
+          contentContainerStyle={[
+            { padding: 16, paddingBottom: 110 },
+            isDesktop && {
+              maxWidth: 780,
+              alignSelf: 'center',
+              width: '100%',
+              padding: 20,
+              paddingBottom: 72,
+            } as any,
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

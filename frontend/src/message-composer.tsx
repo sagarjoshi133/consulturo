@@ -31,6 +31,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import api from './api';
 import { useAuth } from './auth';
 import { COLORS, FONTS, RADIUS } from './theme';
+import { useResponsive } from './responsive';
 
 type Attachment = {
   id: string;        // local-only id
@@ -87,6 +88,10 @@ export default function MessageComposer({
   // an `initialRecipient` for a single-direct flow).
   const [selected, setSelected] = useState<Recipient[]>([]);
   const [composing, setComposing] = useState(false);
+  // Desktop: render as a centered 640-wide card instead of full-screen
+  // page sheet — matches how Gmail / Apple Mail look on desktop.
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
 
   // Single-recipient flow stays for backwards compat (e.g. when launching
   // the composer with a pre-filled recipient from a chat).
@@ -356,11 +361,18 @@ export default function MessageComposer({
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
   const showAttachSheet = () => setAttachSheetOpen(true);
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: COLORS.bg }}>
-        {/* Header */}
-        <View style={styles.head}>
+  // Extract the full composer content into a local so we can render it
+  // either full-screen (mobile) OR inside a centered desktop card.
+  const InnerShell = (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' && !isDesktop ? 'padding' : undefined}
+      style={[
+        { flex: 1, backgroundColor: COLORS.bg },
+        isDesktop && { borderRadius: 16, overflow: 'hidden' },
+      ]}
+    >
+      {/* Header */}
+      <View style={styles.head}>
           <TouchableOpacity
             onPress={() => { if (showCompose) backToPicker(); else onClose(); }}
             style={styles.iconBtn}
@@ -668,6 +680,28 @@ export default function MessageComposer({
           </View>
         )}
       </KeyboardAvoidingView>
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      animationType={isDesktop ? 'fade' : 'slide'}
+      presentationStyle={isDesktop ? 'overFullScreen' : 'pageSheet'}
+      transparent={isDesktop}
+      onRequestClose={onClose}
+    >
+      {isDesktop ? (
+        <View style={deskStyles.backdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={onClose}
+          />
+          <View style={deskStyles.panel}>{InnerShell}</View>
+        </View>
+      ) : (
+        InnerShell
+      )}
 
       {/* Attach source picker — shown when the user taps the Attach
           button. Renders inline (cross-platform) instead of using
@@ -923,4 +957,31 @@ const styles = StyleSheet.create({
   sheetItemSub: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11, marginTop: 1 },
   sheetCancel: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
   sheetCancelText: { ...FONTS.bodyMedium, color: COLORS.accent, fontSize: 14 },
+});
+
+/* Desktop composer shell — centered card on top of a dim backdrop so
+ * the writer experience looks like Gmail/Outlook on web instead of a
+ * full-screen mobile sheet. Mobile still uses the native pageSheet. */
+const deskStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 680,
+    height: '90%',
+    maxHeight: 780,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
+  },
 });

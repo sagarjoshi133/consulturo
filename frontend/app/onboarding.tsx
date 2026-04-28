@@ -56,12 +56,19 @@ export async function hasSeenOnboarding(): Promise<boolean> {
   }
 }
 
+import { useResponsive } from '../src/responsive';
+
 export default function Onboarding() {
   const router = useRouter();
   const { t } = useI18n();
   const [page, setPage] = React.useState(0);
   const scrollRef = React.useRef<ScrollView>(null);
-  const { width } = Dimensions.get('window');
+  const dim = Dimensions.get('window');
+  // On desktop the full window is ~1440 px — onboarding slides cap at
+  // 520 px and center so typography feels premium rather than stretched.
+  const r = useResponsive();
+  const isDesktop = r.isWebDesktop;
+  const width = isDesktop ? Math.min(520, dim.width) : dim.width;
 
   const finish = async () => {
     haptics.success();
@@ -93,12 +100,31 @@ export default function Onboarding() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+    <View style={[
+      { flex: 1, backgroundColor: COLORS.bg },
+      isDesktop && { alignItems: 'center', justifyContent: 'center' },
+    ]}>
       <LinearGradient
         colors={['#EAF6F7', '#FFFFFF']}
         style={StyleSheet.absoluteFillObject}
       />
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeAreaView style={[
+        { flex: 1 },
+        isDesktop && {
+          alignSelf: 'center',
+          width: 520,
+          maxWidth: '100%',
+          marginVertical: 32,
+          backgroundColor: '#fff',
+          borderRadius: 20,
+          overflow: 'hidden',
+          shadowColor: '#0B3142',
+          shadowOpacity: 0.12,
+          shadowRadius: 28,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 8,
+        } as any,
+      ]}>
         {/* Top bar: language switcher + Skip */}
         <View style={styles.topBar}>
           <LanguageDropdown testID="onboarding-lang" />
