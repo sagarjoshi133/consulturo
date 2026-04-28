@@ -235,13 +235,7 @@ const ROLES = [
 export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
-  // Super-owner short-circuit: hide all clinical workflows. The
-  // platform-admin gets a dedicated dashboard with stats / owners /
-  // audit log instead of bookings / Rx / surgeries / patients.
   const tier = useTier();
-  if (tier.isSuperOwner) {
-    return <SuperOwnerDashboard />;
-  }
   // `effectiveOwner` covers both the real owner AND any team member that
   // the owner has granted "Full Dashboard Access" to. Tabs/actions that
   // were previously gated on `isOwner` should use this flag so a Full-
@@ -441,6 +435,14 @@ export default function Dashboard() {
         <EmptyState icon="lock-closed" title="Sign in" sub="Please sign in as staff to access the dashboard." />
       </SafeAreaView>
     );
+  }
+  // Super-owner short-circuit: hide all clinical workflows. The
+  // platform-admin gets a dedicated dashboard with stats / owners /
+  // audit log instead of bookings / Rx / surgeries / patients. Placed
+  // here (AFTER every hook above has run) so React's hook-order rule
+  // is preserved.
+  if (tier.isSuperOwner) {
+    return <SuperOwnerDashboard />;
   }
   if (!STAFF.includes(user.role as string)) {
     return (
