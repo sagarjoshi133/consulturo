@@ -71,6 +71,39 @@ function useSidebarCollapsed(): [boolean, () => void] {
   return [collapsed, toggle];
 }
 
+// ── Collapsible per-section state ──────────────────────────────────
+// Tracks WHICH section headers are currently collapsed (hiding their
+// items). Persisted in localStorage as a JSON string -> string[]. By
+// default Account, Dashboard, Practice (and My Health for patients)
+// are EXPANDED; every other section starts collapsed per latest spec.
+const SECTION_COLLAPSED_KEY = 'consulturo_sidebar_sections_collapsed_v1';
+const DEFAULT_COLLAPSED_SECTIONS = ['Administration', 'Explore', 'App', 'About'];
+function useCollapsedSections(): [Set<string>, (sec: string) => void] {
+  const [collapsed, setCollapsed] = React.useState<Set<string>>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      return new Set(DEFAULT_COLLAPSED_SECTIONS);
+    }
+    try {
+      const raw = window.localStorage?.getItem(SECTION_COLLAPSED_KEY);
+      if (raw) return new Set(JSON.parse(raw));
+    } catch {}
+    return new Set(DEFAULT_COLLAPSED_SECTIONS);
+  });
+  const toggle = React.useCallback((sec: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(sec)) next.delete(sec); else next.add(sec);
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.localStorage?.setItem(SECTION_COLLAPSED_KEY, JSON.stringify(Array.from(next)));
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+  return [collapsed, toggle];
+}
+
 type NavItem = {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -112,6 +145,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   const { unread, personalUnread, items: notifs, markRead, markAllRead } = useNotifications();
   const { t, lang, setLang } = useI18n();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const [collapsedSections, toggleSection] = useCollapsedSections();
   // Notification dropdown popover (desktop). Click bell → toggle.
   // Auto-closes on outside-click via a transparent overlay layer.
   const [bellOpen, setBellOpen] = React.useState(false);
@@ -315,63 +349,85 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
           contentContainerStyle={{ paddingVertical: 8 }}
           showsVerticalScrollIndicator={false}
         >
-          {items.map((it) => {
-            const active = isActive(it.route);
-            return (
-              <React.Fragment key={it.route}>
-                {it.section && !collapsed && (
-                  <Text style={styles.navSection}>{it.section.toUpperCase()}</Text>
-                )}
-                {it.section && collapsed && (
-                  <View style={styles.navSectionDot} />
-                )}
-                <TouchableOpacity
-                  onPress={() => {
-                    if (it.onPress) {
-                      it.onPress();
-                    } else {
-                      router.push(it.route as any);
-                    }
-                  }}
-                  style={[
-                    styles.navItem,
-                    active && styles.navItemActive,
-                    collapsed && styles.navItemCollapsed,
-                  ]}
-                  activeOpacity={0.78}
-                  testID={`web-nav-${it.label.toLowerCase().replace(/\s+/g, '-')}`}
-                  accessibilityLabel={it.label}
-                  {...(Platform.OS === 'web' ? { title: it.label } as any : {})}
-                >
-                  <Ionicons
-                    name={it.icon}
-                    size={collapsed ? 20 : 18}
-                    color={active ? '#fff' : 'rgba(255,255,255,0.86)'}
-                  />
-                  {!collapsed && (
-                    <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
-                      {it.label}
-                    </Text>
-                  )}
-                  {!collapsed && it.pill ? (
-                    <View style={styles.navPill}>
-                      <Text style={styles.navPillText}>{it.pill}</Text>
-                    </View>
-                  ) : null}
-                  {it.badge && it.badge > 0 ? (
-                    <View
-                      style={[
-                        styles.navBadge,
-                        collapsed && styles.navBadgeCollapsed,
-                      ]}
+          {(() => {
+            // Walk the items and track the "current" section. When a
+            // section is in the collapsed-set, hide all of its items.
+            // Section headers stay visible and act as a toggle button
+            // (with a chevron). Collapsed=true → hide children.
+            let currentSection = '';
+            const out: React.ReactNode[] = [];
+            items.forEach((it, idx) => {
+              if (it.section) currentSection = it.section;
+              const sectionCollapsed = !collapsed && currentSection && collapsedSections.has(currentSection);
+              const active = isActive(it.route);
+              out.push(
+                <React.Fragment key={`${it.route}__${idx}`}>
+                  {it.section && !collapsed && (
+                    <TouchableOpacity
+                      onPress={() => toggleSection(it.section!)}
+                      style={styles.navSectionRow}
+                      activeOpacity={0.7}
+                      testID={`web-sec-${it.section.toLowerCase().replace(/\s+/g, '-')}`}
                     >
-                      <Text style={styles.navBadgeText}>{it.badge > 9 ? '9+' : String(it.badge)}</Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-              </React.Fragment>
-            );
-          })}
+                      <Text style={styles.navSection}>{it.section.toUpperCase()}</Text>
+                      <Ionicons
+                        name={collapsedSections.has(it.section) ? 'chevron-down' : 'chevron-up'}
+                        size={12}
+                        color="rgba(255,255,255,0.55)"
+                      />
+                    </TouchableOpacity>
+                  )}
+                  {it.section && collapsed && (
+                    <View style={styles.navSectionDot} />
+                  )}
+                  {!sectionCollapsed && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (it.onPress) it.onPress();
+                        else router.push(it.route as any);
+                      }}
+                      style={[
+                        styles.navItem,
+                        active && styles.navItemActive,
+                        collapsed && styles.navItemCollapsed,
+                      ]}
+                      activeOpacity={0.78}
+                      testID={`web-nav-${it.label.toLowerCase().replace(/\s+/g, '-')}`}
+                      accessibilityLabel={it.label}
+                      {...(Platform.OS === 'web' ? { title: it.label } as any : {})}
+                    >
+                      <Ionicons
+                        name={it.icon}
+                        size={collapsed ? 20 : 18}
+                        color={active ? '#fff' : 'rgba(255,255,255,0.86)'}
+                      />
+                      {!collapsed && (
+                        <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
+                          {it.label}
+                        </Text>
+                      )}
+                      {!collapsed && it.pill ? (
+                        <View style={styles.navPill}>
+                          <Text style={styles.navPillText}>{it.pill}</Text>
+                        </View>
+                      ) : null}
+                      {it.badge && it.badge > 0 ? (
+                        <View
+                          style={[
+                            styles.navBadge,
+                            collapsed && styles.navBadgeCollapsed,
+                          ]}
+                        >
+                          <Text style={styles.navBadgeText}>{it.badge > 9 ? '9+' : String(it.badge)}</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  )}
+                </React.Fragment>
+              );
+            });
+            return out;
+          })()}
         </ScrollView>
 
         {/* Bottom — user card + sign out */}
@@ -766,6 +822,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 4,
+  },
+  navSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 12,
   },
   navSectionDot: {
     height: 1,

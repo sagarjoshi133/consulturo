@@ -8,6 +8,7 @@
 //   • About Dr. Sagar Joshi (last main section)
 
 import React from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -68,6 +69,29 @@ export default function More() {
   // from the shared hook keeps every badge in sync.
   const { unread, personalUnread } = useNotifications();
   const { isWebDesktop } = useResponsive();
+
+  // ── Collapsible sections ──────────────────────────────────────────
+  // Account, Dashboard, Practice (and "My Health" for patients) are
+  // expanded by default; everything else starts collapsed. Persisted
+  // in AsyncStorage so the user's preference survives app restarts.
+  const SECTIONS_KEY = 'consulturo_more_sections_collapsed_v1';
+  const DEFAULT_COLLAPSED = new Set<string>(['Administration', 'Explore', 'App', 'About']);
+  const [collapsedSections, setCollapsedSections] = React.useState<Set<string>>(DEFAULT_COLLAPSED);
+  React.useEffect(() => {
+    AsyncStorage.getItem(SECTIONS_KEY).then((raw) => {
+      if (raw) {
+        try { setCollapsedSections(new Set(JSON.parse(raw))); } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+  const toggleSection = (sec: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sec)) next.delete(sec); else next.add(sec);
+      AsyncStorage.setItem(SECTIONS_KEY, JSON.stringify(Array.from(next))).catch(() => {});
+      return next;
+    });
+  };
   // View-mode override (web only): cycles auto → desktop → mobile.
   // Hook-state so the pill label refreshes without a full reload when
   // the user taps it.
@@ -459,41 +483,61 @@ export default function More() {
           </TouchableOpacity>
         )}
 
-        {/* Sections */}
-        {sections.map((sec) => (
-          <View key={sec.title} style={{ marginTop: 18 }}>
-            <Text style={styles.sectionLabel}>{sec.title.toUpperCase()}</Text>
-            <View style={styles.sectionCard}>
-              {sec.items.map((it, i) => (
-                <TouchableOpacity
-                  key={`${sec.title}-${it.label}`}
-                  style={[styles.menuRow, i !== sec.items.length - 1 && styles.menuRowDivider]}
-                  onPress={() => (it.action ? it.action() : it.route ? router.push(it.route as any) : null)}
-                  testID={it.testID}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.menuIcon}>
-                    {it.iconLib === 'mci' ? (
-                      <MaterialCommunityIcons name={it.icon} size={20} color={COLORS.primary} />
-                    ) : (
-                      <Ionicons name={it.icon as any} size={20} color={COLORS.primary} />
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.menuLabel} numberOfLines={1}>{it.label}</Text>
-                    {it.sub ? <Text style={styles.menuSub} numberOfLines={1}>{it.sub}</Text> : null}
-                  </View>
-                  {it.pill ? (
-                    <View style={[styles.pill, it.pillColor && { backgroundColor: it.pillColor + '18' }]}>
-                      <Text style={[styles.pillText, it.pillColor && { color: it.pillColor }]}>{it.pill}</Text>
-                    </View>
-                  ) : null}
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
-                </TouchableOpacity>
-              ))}
+        {/* Sections — collapsible. Account, Dashboard, Practice (and
+            "My Health" for patients) start expanded; everything else
+            starts collapsed. State persisted in AsyncStorage so the
+            user's preference survives app restarts. */}
+        {sections.map((sec) => {
+          const isCollapsed = collapsedSections.has(sec.title);
+          return (
+            <View key={sec.title} style={{ marginTop: 18 }}>
+              <TouchableOpacity
+                onPress={() => toggleSection(sec.title)}
+                activeOpacity={0.7}
+                style={styles.sectionHead}
+                testID={`more-sec-${sec.title.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <Text style={styles.sectionLabel}>{sec.title.toUpperCase()}</Text>
+                <Ionicons
+                  name={isCollapsed ? 'chevron-down' : 'chevron-up'}
+                  size={14}
+                  color={COLORS.textSecondary}
+                />
+              </TouchableOpacity>
+              {!isCollapsed && (
+                <View style={styles.sectionCard}>
+                  {sec.items.map((it, i) => (
+                    <TouchableOpacity
+                      key={`${sec.title}-${it.label}`}
+                      style={[styles.menuRow, i !== sec.items.length - 1 && styles.menuRowDivider]}
+                      onPress={() => (it.action ? it.action() : it.route ? router.push(it.route as any) : null)}
+                      testID={it.testID}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.menuIcon}>
+                        {it.iconLib === 'mci' ? (
+                          <MaterialCommunityIcons name={it.icon} size={20} color={COLORS.primary} />
+                        ) : (
+                          <Ionicons name={it.icon as any} size={20} color={COLORS.primary} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.menuLabel} numberOfLines={1}>{it.label}</Text>
+                        {it.sub ? <Text style={styles.menuSub} numberOfLines={1}>{it.sub}</Text> : null}
+                      </View>
+                      {it.pill ? (
+                        <View style={[styles.pill, it.pillColor && { backgroundColor: it.pillColor + '18' }]}>
+                          <Text style={[styles.pillText, it.pillColor && { color: it.pillColor }]}>{it.pill}</Text>
+                        </View>
+                      ) : null}
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         <Text style={[styles.sectionLabel, { marginTop: 24 }]}>FOLLOW</Text>
         <View style={styles.socialRow}>
@@ -588,6 +632,7 @@ const styles = StyleSheet.create({
   signinText: { color: '#fff', ...FONTS.bodyMedium, fontSize: 12 },
 
   sectionLabel: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 11, marginBottom: 6, letterSpacing: 0.6 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 4, paddingBottom: 2 },
   sectionCard: { backgroundColor: '#fff', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, gap: 12 },
   menuRowDivider: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
