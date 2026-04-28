@@ -112,8 +112,9 @@ export default function MessageDetail() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
-  const isStaff = !!user && ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes((user.role as string) || '');
-  const canSendMsg = !!user && !!(user as any).can_send_personal_messages;
+  const isStaff = !!user && ['owner', 'primary_owner', 'super_owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes((user.role as string) || '');
+  const isOwnerTier = !!user && ['owner', 'primary_owner', 'super_owner', 'partner'].includes((user.role as string) || '');
+  const canSendMsg = !!user && (!!(user as any).can_send_personal_messages || isOwnerTier);
   const [composerOpen, setComposerOpen] = useState(false);
 
   useEffect(() => {

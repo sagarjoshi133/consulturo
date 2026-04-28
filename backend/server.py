@@ -1300,7 +1300,8 @@ async def auth_me(user=Depends(require_user)):
     #     individual patient by setting the flag to True.
     role = user.get("role", "")
     explicit = user.get("can_send_personal_messages")
-    if role == "owner":
+    if role in ("owner", "primary_owner", "super_owner", "partner"):
+        # Owner tier — always permitted per hierarchy.
         out["can_send_personal_messages"] = True
     elif role and role != "patient":
         # Default-True for staff. Only False if explicitly set to False.
@@ -6271,15 +6272,18 @@ class PersonalMessageBody(BaseModel):
 
 
 def _can_send_personal_messages(user: Dict[str, Any]) -> bool:
-    """Owner is implicit. All non-patient team members are permitted by
-    default; owner can explicitly revoke (False). Patients are not
+    """Owner tier (owner / primary_owner / super_owner / partner) is
+    implicit. All non-patient team members are permitted by default;
+    primary_owner can explicitly revoke (False). Patients are not
     permitted unless owner explicitly authorises (True).
     """
     if not user:
         return False
     role = user.get("role", "")
     explicit = user.get("can_send_personal_messages")
-    if role == "owner":
+    # Owner tier — always allowed regardless of the per-user flag
+    # (the hierarchy SuperOwner > PrimaryOwner > Partner grants it).
+    if role in ("owner", "primary_owner", "super_owner", "partner"):
         return True
     if role and role != "patient":
         return explicit is not False

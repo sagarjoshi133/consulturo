@@ -30,6 +30,7 @@ type Video = { id: string; title: string; youtube_id: string; thumbnail: string;
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
+  const isStaff = !!user && user.role !== 'patient';
   const { t, lang, setLang, tRaw } = useI18n();
   const { unread, personalUnread } = useNotifications();
   const { isWebDesktop } = useResponsive();
@@ -132,11 +133,43 @@ export default function Home() {
                   <Text style={styles.brand}>ConsultUro</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  {/* Desktop hero — premium "Book Consultation" pill in
-                      the empty right side. On mobile we keep the
-                      original action cluster (lang/bell/inbox/avatar)
-                      and the secondary CTA card lower down. */}
-                  {isWebDesktop && (
+                  {/* Desktop hero — premium actions in the empty right
+                      side. STAFF see 3 shortcut pills (Bookings /
+                      Consults / Prescription). Patients still get the
+                      single "Book Consultation" pill. Mobile keeps
+                      its original action cluster lower down. */}
+                  {isWebDesktop && isStaff && (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => router.push('/dashboard?tab=bookings' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-bookings"
+                      >
+                        <Ionicons name="calendar-clear" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Bookings</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => router.push('/dashboard?tab=consultations' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-consults"
+                      >
+                        <Ionicons name="medkit" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Consult</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => router.push('/dashboard?tab=prescriptions' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-rx"
+                      >
+                        <Ionicons name="document-text" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Prescription</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {isWebDesktop && !isStaff && (
                     <TouchableOpacity
                       onPress={() => router.push('/(tabs)/book')}
                       style={styles.heroBookBtn}
@@ -633,6 +666,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#0E7C8B',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  heroQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroQuickText: {
+    color: '#0E7C8B',
+    fontFamily: FONTS.h2.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   langCircle: {
     width: 40,

@@ -296,6 +296,9 @@ const hi = {
     surgeries:         'सर्जरी',
     surgeriesSub:      'प्रक्रियाएँ रिकॉर्ड करें',
     aboutDoctorSub:    'क्रेडेंशियल, अनुभव, क्लिनिक',
+    permissions:       'अनुमतियाँ',
+    backups:           'बैकअप',
+    aboutApp:          'ऐप के बारे में',
   },
   profile: {
     title:                 'प्रोफ़ाइल',

@@ -141,8 +141,11 @@ export default function Inbox() {
   const params = useLocalSearchParams<{ tab?: string; filter?: string }>();
 
   const isStaff = !!user && STAFF_ROLES.has((user.role as string) || '');
-  const isOwner = user?.role === 'owner';
-  const canSendMsg = !!(user && ((user as any).can_send_personal_messages || isOwner));
+  // OWNER TIER: super_owner, primary_owner, owner (legacy), partner — all
+  // are implicitly allowed to send personal messages by the hierarchy.
+  const isOwnerTier = !!user && ['owner', 'primary_owner', 'super_owner', 'partner'].includes((user.role as string) || '');
+  const isOwner = isOwnerTier;
+  const canSendMsg = !!(user && ((user as any).can_send_personal_messages || isOwnerTier));
 
   // ── Tab state ──
   const initialTab: MainTab = params.tab === 'sent' && canSendMsg ? 'sent' : 'inbox';

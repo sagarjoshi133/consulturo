@@ -307,6 +307,9 @@ const en = {
     surgeries:         'Surgeries',
     surgeriesSub:      'Log & track procedures',
     aboutDoctorSub:    'Credentials, experience, clinic',
+    permissions:       'Permissions',
+    backups:           'Backups',
+    aboutApp:          'About App',
   },
   profile: {
     title:                 'Profile',

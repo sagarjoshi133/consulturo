@@ -79,6 +79,8 @@ type NavItem = {
   badge?: number;
   staffOnly?: boolean;
   ownerOnly?: boolean;
+  /** optional section header rendered BEFORE this item (mirrors More-tab grouping) */
+  section?: string;
 };
 
 export function WebShell({ children }: { children: React.ReactNode }) {
@@ -114,50 +116,56 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   const isOwner = ['super_owner', 'primary_owner', 'owner', 'partner'].includes((user?.role as string) || '');
   const isFullAccess = !!(user as any)?.dashboard_full_access;
 
+  // Sidebar sections mirror the More-tab grouping so desktop + mobile
+  // stay cognitively aligned: Main / Practice / My Health / Explore / Staff Tools / About.
+  const SEC_MAIN    = t('more.sectionAccount')   || 'Main';
+  const SEC_PRAC    = t('more.sectionPractice')  || 'Practice';
+  const SEC_HEALTH  = t('more.sectionMyHealth')  || 'My Health';
+  const SEC_EXPLORE = t('more.sectionExplore')   || 'Explore';
+  const SEC_APP     = t('more.sectionApp')       || 'Staff Tools';
+  const SEC_ABOUT   = t('more.sectionAbout')     || 'About';
+
   // Build sidebar nav items based on role.
   const items: NavItem[] = [
-    { label: 'Home', icon: 'home', route: '/' },
-    { label: 'Book', icon: 'calendar', route: '/book' },
+    { label: t('tabs.home') || 'Home', icon: 'home', route: '/', section: SEC_MAIN },
+    { label: t('tabs.book') || 'Book', icon: 'calendar', route: '/book' },
   ];
   if (isStaff) {
-    items.push({ label: 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true });
+    items.push({ label: t('more.doctorDashboard') || 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true, section: SEC_PRAC });
   } else if (user) {
-    items.push({ label: 'My Bookings', icon: 'calendar-clear', route: '/my-bookings' });
-    items.push({ label: 'My Records', icon: 'folder-open', route: '/my-records' });
+    items.push({ label: t('more.myBookings') || 'My Bookings', icon: 'calendar-clear', route: '/my-bookings', section: SEC_HEALTH });
+    items.push({ label: t('more.myRecords') || 'My Records', icon: 'folder-open', route: '/my-records' });
   }
   items.push({
-    label: 'Inbox',
+    label: t('more.inbox') || 'Inbox',
     icon: 'chatbubbles',
     route: '/inbox',
     badge: personalUnread || 0,
   });
   items.push({
-    label: 'Notifications',
+    label: t('more.notifications') || 'Notifications',
     icon: 'notifications',
     route: '/notifications',
     badge: unread || 0,
   });
-  items.push({ label: 'Diseases', icon: 'medical', route: '/diseases' });
-  items.push({ label: 'Tools', icon: 'calculator', route: '/tools' });
+  items.push({ label: t('tabs.diseases') || 'Diseases', icon: 'medical', route: '/diseases', section: SEC_EXPLORE });
+  items.push({ label: t('tabs.tools') || 'Tools', icon: 'calculator', route: '/tools' });
   items.push({ label: t('more.education') || 'Patient Education', icon: 'book', route: '/education' });
-  items.push({ label: 'Blog', icon: 'newspaper', route: '/blog' });
-  items.push({ label: 'Videos', icon: 'play-circle', route: '/videos' });
+  items.push({ label: t('more.blog') || 'Blog', icon: 'newspaper', route: '/blog' });
+  items.push({ label: t('more.videos') || 'Videos', icon: 'play-circle', route: '/videos' });
   if (isStaff) {
-    items.push({ label: 'Notes', icon: 'create', route: '/notes', staffOnly: true });
-    items.push({ label: 'Reminders', icon: 'alarm', route: '/reminders', staffOnly: true });
+    items.push({ label: t('more.notes') || 'Notes', icon: 'create', route: '/notes', staffOnly: true, section: SEC_APP });
+    items.push({ label: t('more.reminders') || 'Reminders', icon: 'alarm', route: '/reminders', staffOnly: true });
   }
   if (isOwner || isFullAccess) {
-    items.push({ label: 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true });
+    items.push({ label: t('more.backups') || 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true, section: isStaff ? undefined : SEC_APP });
   }
   if (isOwner) {
-    items.push({ label: 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
+    items.push({ label: t('more.permissions') || 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
   }
-  // About is split into two entries on desktop so both screens are
-  // reachable from the sidebar (mirrors the More-tab structure on
-  // mobile). User feedback: "About ConsultUro App" was not visible
-  // on desktop because there was only one generic "About" link.
-  items.push({ label: 'About Doctor', icon: 'person-circle', route: '/about' });
-  items.push({ label: 'About App', icon: 'information-circle', route: '/about-app' });
+  // About — mirrors the More-tab "About" section.
+  items.push({ label: t('more.aboutDoctor') || 'About Doctor', icon: 'person-circle', route: '/about', section: SEC_ABOUT });
+  items.push({ label: t('more.aboutApp') || 'About App', icon: 'information-circle', route: '/about-app' });
 
   // Active route detection — match exact OR prefix for nested routes.
   const isActive = (route: string) => {
@@ -241,40 +249,47 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
           {items.map((it) => {
             const active = isActive(it.route);
             return (
-              <TouchableOpacity
-                key={it.route}
-                onPress={() => router.push(it.route as any)}
-                style={[
-                  styles.navItem,
-                  active && styles.navItemActive,
-                  collapsed && styles.navItemCollapsed,
-                ]}
-                activeOpacity={0.78}
-                testID={`web-nav-${it.label.toLowerCase().replace(/\s+/g, '-')}`}
-                accessibilityLabel={it.label}
-                {...(Platform.OS === 'web' ? { title: it.label } as any : {})}
-              >
-                <Ionicons
-                  name={it.icon}
-                  size={collapsed ? 20 : 18}
-                  color={active ? '#fff' : 'rgba(255,255,255,0.86)'}
-                />
-                {!collapsed && (
-                  <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
-                    {it.label}
-                  </Text>
+              <React.Fragment key={it.route}>
+                {it.section && !collapsed && (
+                  <Text style={styles.navSection}>{it.section.toUpperCase()}</Text>
                 )}
-                {it.badge && it.badge > 0 ? (
-                  <View
-                    style={[
-                      styles.navBadge,
-                      collapsed && styles.navBadgeCollapsed,
-                    ]}
-                  >
-                    <Text style={styles.navBadgeText}>{it.badge > 9 ? '9+' : String(it.badge)}</Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
+                {it.section && collapsed && (
+                  <View style={styles.navSectionDot} />
+                )}
+                <TouchableOpacity
+                  onPress={() => router.push(it.route as any)}
+                  style={[
+                    styles.navItem,
+                    active && styles.navItemActive,
+                    collapsed && styles.navItemCollapsed,
+                  ]}
+                  activeOpacity={0.78}
+                  testID={`web-nav-${it.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  accessibilityLabel={it.label}
+                  {...(Platform.OS === 'web' ? { title: it.label } as any : {})}
+                >
+                  <Ionicons
+                    name={it.icon}
+                    size={collapsed ? 20 : 18}
+                    color={active ? '#fff' : 'rgba(255,255,255,0.86)'}
+                  />
+                  {!collapsed && (
+                    <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
+                      {it.label}
+                    </Text>
+                  )}
+                  {it.badge && it.badge > 0 ? (
+                    <View
+                      style={[
+                        styles.navBadge,
+                        collapsed && styles.navBadgeCollapsed,
+                      ]}
+                    >
+                      <Text style={styles.navBadgeText}>{it.badge > 9 ? '9+' : String(it.badge)}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              </React.Fragment>
             );
           })}
         </ScrollView>
@@ -663,6 +678,21 @@ const styles = StyleSheet.create({
   },
   brandName: { ...FONTS.h4, color: '#fff', fontSize: 16, lineHeight: 18 },
   brandSub: { ...FONTS.body, color: 'rgba(255,255,255,0.72)', fontSize: 11 },
+  navSection: {
+    ...FONTS.bodyMedium,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: 'rgba(255,255,255,0.45)',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  navSectionDot: {
+    height: 1,
+    marginVertical: 8,
+    marginHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',

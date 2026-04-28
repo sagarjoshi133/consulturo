@@ -295,6 +295,9 @@ const gu = {
     surgeries:         'સર્જરી',
     surgeriesSub:      'પ્રક્રિયાઓ રેકોર્ડ કરો',
     aboutDoctorSub:    'ક્રેડેન્શિયલ, અનુભવ, ક્લિનિક',
+    permissions:       'પરવાનગીઓ',
+    backups:           'બેકઅપ',
+    aboutApp:          'એપ વિશે',
   },
   profile: {
     title:                 'પ્રોફાઇલ',

@@ -401,12 +401,12 @@ export default function BookingDetail() {
         )}
 
         {/* Contact actions */}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
           {(() => {
             // Patient view → show clinic phone. Staff view → patient phone.
             const contactPhone = isStaff ? (rx.patient_phone || '') : (clinicPhone || '');
-            const contactLabel = isStaff ? 'Call patient' : 'Call clinic';
-            const waLabel = isStaff ? 'WhatsApp patient' : 'WhatsApp clinic';
+            const contactLabel = isStaff ? 'Call' : 'Call clinic';
+            const waLabel = 'WhatsApp';
             if (!contactPhone) return null;
             // For staff → patient contact, compose with stored country_code so
             // the WhatsApp / tel deep-link always has a valid international
@@ -427,16 +427,16 @@ export default function BookingDetail() {
                   style={[styles.contactBtn, { borderColor: COLORS.primary }]}
                   testID="bk-call"
                 >
-                  <Ionicons name="call" size={18} color={COLORS.primary} />
-                  <Text style={[styles.contactBtnText, { color: COLORS.primary }]}>{contactLabel}</Text>
+                  <Ionicons name="call" size={16} color={COLORS.primary} />
+                  <Text style={[styles.contactBtnText, { color: COLORS.primary }]} numberOfLines={1}>{contactLabel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => Linking.openURL(`https://wa.me/${intlDigits}?text=${encodeURIComponent(waMsg)}`)}
                   style={[styles.contactBtn, { borderColor: COLORS.whatsapp }]}
                   testID="bk-wa"
                 >
-                  <Ionicons name="logo-whatsapp" size={18} color={COLORS.whatsapp} />
-                  <Text style={[styles.contactBtnText, { color: COLORS.whatsapp }]}>{waLabel}</Text>
+                  <Ionicons name="logo-whatsapp" size={16} color={COLORS.whatsapp} />
+                  <Text style={[styles.contactBtnText, { color: COLORS.whatsapp }]} numberOfLines={1}>{waLabel}</Text>
                 </TouchableOpacity>
                 {isStaff && rx.patient_phone && (
                   <TouchableOpacity
@@ -462,8 +462,8 @@ export default function BookingDetail() {
                     style={[styles.contactBtn, { borderColor: COLORS.primary }]}
                     testID="bk-msg"
                   >
-                    <Ionicons name="paper-plane" size={18} color={COLORS.primary} />
-                    <Text style={[styles.contactBtnText, { color: COLORS.primary }]}>Message</Text>
+                    <Ionicons name="paper-plane" size={16} color={COLORS.primary} />
+                    <Text style={[styles.contactBtnText, { color: COLORS.primary }]} numberOfLines={1}>Message</Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -729,8 +729,8 @@ const styles = StyleSheet.create({
 
   sectionTitle: { ...FONTS.label, color: COLORS.primary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 11 },
   body: { ...FONTS.body, color: COLORS.textPrimary, lineHeight: 22 },
-  contactBtn: { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: RADIUS.md, borderWidth: 1 },
-  contactBtnText: { ...FONTS.bodyMedium, fontSize: 14 },
+  contactBtn: { flex: 1, minWidth: 96, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 8, borderRadius: RADIUS.md, borderWidth: 1 },
+  contactBtnText: { ...FONTS.bodyMedium, fontSize: 13 },
 
   actionsCard: { backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 16, borderWidth: 1, borderColor: COLORS.border, marginTop: 12 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: RADIUS.pill, borderWidth: 1 },
