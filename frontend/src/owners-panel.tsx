@@ -106,14 +106,19 @@ export default function OwnersPanel() {
   };
 
   const demotePartner = (p: Person) => {
-    if (!p.user_id) return;
+    // For pending invites (not signed in yet) we revoke by email.
+    const id = p.user_id || (p.email ? `pending:${p.email.toLowerCase()}` : null);
+    if (!id) return;
+    const isPending = !p.user_id;
     confirmX(
-      'Demote Partner?',
-      `${p.name || p.email} will be demoted from Partner to a regular Doctor role. They will lose admin powers immediately.`,
+      isPending ? 'Revoke Partner Invite?' : 'Demote Partner?',
+      isPending
+        ? `${p.email} will be removed from your Partner list. They will not become a Partner if they sign in later.`
+        : `${p.name || p.email} will be demoted from Partner to a regular Doctor role. They will lose admin powers immediately.`,
       async () => {
         setBusy(true);
         try {
-          await api.delete(`/admin/partners/${p.user_id}`);
+          await api.delete(`/admin/partners/${encodeURIComponent(id)}`);
           await loadAll();
         } catch (e: any) {
           alertX('Failed', e?.response?.data?.detail || 'Could not demote partner');
@@ -311,14 +316,17 @@ export default function OwnersPanel() {
         ) : partners.length === 0 ? (
           <Text style={styles.empty}>No Partners yet.</Text>
         ) : (
-          partners.map((p) => (
-            <PersonRow
-              key={p.user_id || p.email}
-              p={p}
-              actionLabel={tier.canManagePartners ? 'Demote' : undefined}
-              onAction={() => demotePartner(p)}
-            />
-          ))
+          partners.map((p) => {
+            const isPending = !p.user_id;
+            return (
+              <PersonRow
+                key={p.user_id || p.email}
+                p={{ ...p, name: p.name ? `${p.name}${isPending ? ' (pending sign-in)' : ''}` : p.email }}
+                actionLabel={tier.canManagePartners ? (isPending ? 'Revoke' : 'Demote') : undefined}
+                onAction={() => demotePartner(p)}
+              />
+            );
+          })
         )}
       </View>
 

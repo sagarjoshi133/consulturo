@@ -6528,7 +6528,13 @@ async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary
 
 @app.delete("/api/admin/partners/{user_id}")
 async def demote_partner(user_id: str, user=Depends(require_primary_owner)):
-    """Demote a partner to a regular doctor role."""
+    """Demote a partner to a regular doctor role.
+    Accepts user_id='pending:<email>' to revoke a partner who hasn't
+    signed in yet (only the team_invite exists)."""
+    if user_id.startswith("pending:"):
+        email_l = user_id.split(":", 1)[1].strip().lower()
+        res = await db.team_invites.delete_many({"email": email_l, "role": "partner"})
+        return {"ok": True, "revoked_invites": res.deleted_count, "email": email_l}
     target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -6539,15 +6545,37 @@ async def demote_partner(user_id: str, user=Depends(require_primary_owner)):
 
 @app.get("/api/admin/partners")
 async def list_partners(user=Depends(require_owner)):
-    """List all partners. Visible to anyone in the owner tier."""
+    """List all partners — visible to anyone in the owner tier.
+    Includes both LIVE users with role='partner' AND pending team_invites
+    (partners promoted via email but who haven't signed in yet). The
+    pending row carries `signed_in:false` and `user_id:null`."""
     rows: List[Dict[str, Any]] = []
+    seen_emails: set = set()
     async for u in db.users.find({"role": "partner"}, {"_id": 0}):
+        em = (u.get("email") or "").lower()
+        if em in seen_emails:
+            continue
+        seen_emails.add(em)
         rows.append({
             "user_id": u.get("user_id"),
-            "email": u.get("email"),
+            "email": em,
             "name": u.get("name"),
             "role": u.get("role"),
             "picture": u.get("picture"),
+            "signed_in": True,
+        })
+    async for iv in db.team_invites.find({"role": "partner"}, {"_id": 0}):
+        em = (iv.get("email") or "").lower()
+        if em in seen_emails:
+            continue
+        seen_emails.add(em)
+        rows.append({
+            "user_id": None,
+            "email": em,
+            "name": iv.get("name"),
+            "role": "partner",
+            "picture": None,
+            "signed_in": False,
         })
     return {"items": rows}
 
