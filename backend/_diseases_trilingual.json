@@ -199,23 +199,23 @@
     "image": null,
     "name": {
       "en": "Prostate Cancer",
-      "hi": "Prostate Cancer",
-      "gu": "Prostate Cancer"
+      "hi": "प्रोस्टेट कैंसर",
+      "gu": "પ્રોસ્ટેટ કેન્સર"
     },
     "tagline": {
       "en": "Most common cancer in men — early detection saves lives.",
-      "hi": "Most common cancer in men — early detection saves lives.",
-      "gu": "Most common cancer in men — early detection saves lives."
+      "hi": "पुरुषों में सबसे आम कैंसर — जल्दी पता चलने पर जान बच सकती है।",
+      "gu": "પુરુષોમાં સૌથી સામાન્ય કેન્સર — વહેલી તપાસ જીવન બચાવે છે."
     },
     "overview": {
       "en": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE).",
-      "hi": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE).",
-      "gu": "Prostate cancer develops in the prostate gland. Early-stage prostate cancer often has no symptoms; it is usually detected via PSA blood tests and digital rectal examination (DRE)."
+      "hi": "प्रोस्टेट कैंसर प्रोस्टेट ग्रंथि में विकसित होता है। प्रारंभिक चरण में इसके अक्सर कोई लक्षण नहीं होते — आमतौर पर PSA रक्त परीक्षण और DRE (डिजिटल रेक्टल एग्जामिनेशन) से इसका पता लगता है।",
+      "gu": "પ્રોસ્ટેટ કેન્સર પ્રોસ્ટેટ ગ્રંથિમાં વિકસે છે. પ્રારંભિક તબક્કે ઘણી વાર કોઈ લક્ષણો હોતા નથી — સામાન્ય રીતે PSA રક્ત પરીક્ષણ અને DRE દ્વારા ઓળખાય છે."
     },
     "when_to_see": {
       "en": "All men above 50 (or 45 with family history) should get a yearly PSA screening.",
-      "hi": "All men above 50 (or 45 with family history) should get a yearly PSA screening.",
-      "gu": "All men above 50 (or 45 with family history) should get a yearly PSA screening."
+      "hi": "50 वर्ष से अधिक के सभी पुरुषों (या 45+ अगर परिवार में इतिहास हो) को हर साल PSA जाँच करवानी चाहिए।",
+      "gu": "50 વર્ષથી વધુના તમામ પુરુષોએ (અથવા કૌટુંબિક ઇતિહાસ હોય તો 45+) દર વર્ષે PSA સ્ક્રીનિંગ કરાવવી જોઈએ."
     },
     "symptoms": {
       "en": [
@@ -227,20 +227,20 @@
         "Erectile dysfunction"
       ],
       "hi": [
-        "Trouble urinating",
-        "Decreased force in the stream of urine",
-        "Blood in urine or semen",
-        "Bone pain (advanced stage)",
-        "Unexplained weight loss",
-        "Erectile dysfunction"
+        "पेशाब में कठिनाई",
+        "पेशाब की धारा कमज़ोर होना",
+        "पेशाब या वीर्य में खून",
+        "हड्डियों में दर्द (एडवांस्ड स्टेज)",
+        "अनजाने में वज़न घटना",
+        "स्तंभन दोष (इरेक्टाइल डिस्फंक्शन)"
       ],
       "gu": [
-        "Trouble urinating",
-        "Decreased force in the stream of urine",
-        "Blood in urine or semen",
-        "Bone pain (advanced stage)",
-        "Unexplained weight loss",
-        "Erectile dysfunction"
+        "પેશાબમાં તકલીફ",
+        "પેશાબની ધાર નબળી થવી",
+        "પેશાબ કે વીર્યમાં લોહી",
+        "હાડકાંમાં દુખાવો (એડવાન્સ્ડ સ્ટેજ)",
+        "કારણ વગર વજન ઘટવું",
+        "ઈરેક્ટાઇલ ડિસફંક્શન"
       ]
     },
     "causes": {
@@ -250,14 +250,14 @@
         "Obesity"
       ],
       "hi": [
-        "Age above 50",
-        "Family history / genetic factors (BRCA1/2)",
-        "Obesity"
+        "50 वर्ष से अधिक उम्र",
+        "पारिवारिक इतिहास / आनुवंशिक कारण (BRCA1/2)",
+        "मोटापा"
       ],
       "gu": [
-        "Age above 50",
-        "Family history / genetic factors (BRCA1/2)",
-        "Obesity"
+        "50 વર્ષથી વધુ ઉંમર",
+        "કૌટુંબિક ઇતિહાસ / આનુવંશિક પરિબળો (BRCA1/2)",
+        "સ્થૂળતા"
       ]
     },
     "treatments": {
@@ -268,16 +268,16 @@
         "Hormone therapy and chemotherapy"
       ],
       "hi": [
-        "Active surveillance (low-risk cases)",
-        "Robotic radical prostatectomy",
-        "Radiation therapy",
-        "Hormone therapy and chemotherapy"
+        "एक्टिव सर्विलांस (कम-जोखिम मामलों में)",
+        "रोबोटिक रैडिकल प्रोस्टेटेक्टॉमी",
+        "रेडिएशन थेरेपी",
+        "हार्मोन थेरेपी और कीमोथेरेपी"
       ],
       "gu": [
-        "Active surveillance (low-risk cases)",
-        "Robotic radical prostatectomy",
-        "Radiation therapy",
-        "Hormone therapy and chemotherapy"
+        "એક્ટિવ સર્વેલન્સ (ઓછા જોખમી કેસોમાં)",
+        "રોબોટિક રેડિકલ પ્રોસ્ટેટેક્ટોમી",
+        "રેડિએશન થેરપી",
+        "હોર્મોન થેરપી અને કિમોથેરપી"
       ]
     }
   },
@@ -287,23 +287,23 @@
     "image": null,
     "name": {
       "en": "Urinary Tract Infection (UTI)",
-      "hi": "Urinary Tract Infection (UTI)",
-      "gu": "Urinary Tract Infection (UTI)"
+      "hi": "मूत्र मार्ग संक्रमण (UTI)",
+      "gu": "મૂત્ર માર્ગ ચેપ (UTI)"
     },
     "tagline": {
       "en": "Bacterial infection of the urinary system.",
-      "hi": "Bacterial infection of the urinary system.",
-      "gu": "Bacterial infection of the urinary system."
+      "hi": "मूत्र प्रणाली का जीवाणु संक्रमण।",
+      "gu": "મૂત્ર પ્રણાલીનું બેક્ટેરિયલ ઇન્ફેક્શન."
     },
     "overview": {
       "en": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women.",
-      "hi": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women.",
-      "gu": "A UTI is an infection in any part of your urinary system — kidneys, ureters, bladder or urethra. Most infections involve the lower urinary tract and are much more common in women."
+      "hi": "UTI मूत्र प्रणाली के किसी भी हिस्से — किडनी, मूत्रवाहिनी, मूत्राशय या मूत्रमार्ग — में होने वाला संक्रमण है। अधिकतर संक्रमण निचले मूत्र मार्ग में होते हैं और महिलाओं में ज़्यादा आम हैं।",
+      "gu": "UTI તમારી મૂત્ર પ્રણાલીના કોઈપણ ભાગ — કિડની, મૂત્રમાર્ગ, મૂત્રાશય કે યુરેથ્રા — માં થતો ચેપ છે. મોટાભાગના ચેપ નીચલા મૂત્ર માર્ગને અસર કરે છે અને સ્ત્રીઓમાં વધુ સામાન્ય છે."
     },
     "when_to_see": {
       "en": "Consult immediately if you have fever, back pain, vomiting, or blood in urine.",
-      "hi": "Consult immediately if you have fever, back pain, vomiting, or blood in urine.",
-      "gu": "Consult immediately if you have fever, back pain, vomiting, or blood in urine."
+      "hi": "यदि बुखार, कमर दर्द, उल्टी या पेशाब में खून हो तो तुरंत डॉक्टर से मिलें।",
+      "gu": "જો તાવ, કમરનો દુખાવો, ઊલટી કે પેશાબમાં લોહી હોય તો તરત જ ડોક્ટરનો સંપર્ક કરો."
     },
     "symptoms": {
       "en": [
@@ -314,18 +314,18 @@
         "Fever, chills, back pain (kidney involvement)"
       ],
       "hi": [
-        "Burning sensation on urination",
-        "Frequent urge to urinate with little urine passed",
-        "Cloudy, red, or strong-smelling urine",
-        "Pelvic pain (women) or rectal pain (men)",
-        "Fever, chills, back pain (kidney involvement)"
+        "पेशाब करते समय जलन",
+        "बार-बार पेशाब की इच्छा परंतु कम मात्रा में आना",
+        "धुंधला, लाल या तीखी गंध वाला पेशाब",
+        "पेल्विक दर्द (महिलाओं में) या रेक्टल दर्द (पुरुषों में)",
+        "बुखार, ठंड लगना, कमर दर्द (किडनी प्रभावित होने पर)"
       ],
       "gu": [
-        "Burning sensation on urination",
-        "Frequent urge to urinate with little urine passed",
-        "Cloudy, red, or strong-smelling urine",
-        "Pelvic pain (women) or rectal pain (men)",
-        "Fever, chills, back pain (kidney involvement)"
+        "પેશાબ વખતે બળતરા",
+        "વારંવાર પેશાબની ઇચ્છા પણ થોડું જ આવવું",
+        "ધૂંધળું, લાલ કે તીવ્ર ગંધવાળું પેશાબ",
+        "પેલ્વિક દુખાવો (સ્ત્રીઓ) અથવા રેક્ટલ દુખાવો (પુરુષો)",
+        "તાવ, ઠંડી, કમરનો દુખાવો (કિડની અસર થાય ત્યારે)"
       ]
     },
     "causes": {
@@ -337,18 +337,18 @@
         "Diabetes"
       ],
       "hi": [
-        "E. coli from the gastrointestinal tract",
-        "Inadequate hydration",
-        "Urinary retention",
-        "Catheter use",
-        "Diabetes"
+        "आँत से आने वाला E. coli जीवाणु",
+        "पानी की कमी",
+        "पेशाब का रुकना",
+        "कैथेटर का उपयोग",
+        "मधुमेह"
       ],
       "gu": [
-        "E. coli from the gastrointestinal tract",
-        "Inadequate hydration",
-        "Urinary retention",
-        "Catheter use",
-        "Diabetes"
+        "આંતરડામાંથી આવતું E. coli બેક્ટેરિયા",
+        "પાણીની અછત",
+        "પેશાબ રોકાઈ જવો",
+        "કેથેટરનો ઉપયોગ",
+        "ડાયાબિટીસ"
       ]
     },
     "treatments": {
@@ -359,16 +359,16 @@
         "Treatment of underlying cause"
       ],
       "hi": [
-        "Targeted antibiotics based on urine culture",
-        "Hydration and urinary alkalisers",
-        "Prophylactic antibiotics for recurrent UTIs",
-        "Treatment of underlying cause"
+        "यूरिन कल्चर के आधार पर लक्षित एंटीबायोटिक्स",
+        "पानी का अधिक सेवन और मूत्र-क्षारीकारक दवाएँ",
+        "बार-बार होने वाले UTI में रोगनिरोधी एंटीबायोटिक्स",
+        "मूल कारण का इलाज"
       ],
       "gu": [
-        "Targeted antibiotics based on urine culture",
-        "Hydration and urinary alkalisers",
-        "Prophylactic antibiotics for recurrent UTIs",
-        "Treatment of underlying cause"
+        "યુરિન કલ્ચર આધારિત ટાર્ગેટેડ એન્ટિબાયોટિક્સ",
+        "પાણીનું વધુ સેવન અને યુરિનરી અલ્કેલાઈઝર",
+        "વારંવાર થતા UTI માટે પ્રોફાઇલેક્ટિક એન્ટિબાયોટિક્સ",
+        "મૂળ કારણની સારવાર"
       ]
     }
   },
@@ -1143,73 +1143,82 @@
     "image": null,
     "name": {
       "en": "Varicocele",
-      "hi": "Varicocele",
-      "gu": "Varicocele"
+      "hi": "वैरिकोसील",
+      "gu": "વેરિકોસેલ"
     },
     "tagline": {
-      "en": "Varicose veins of the scrotum — commonest reversible cause of male infertility.",
-      "hi": "अंडकोश की वैरिकोज़ नसें — पुरुष बांझपन का सबसे आम उलट सकने वाला कारण।",
-      "gu": "અંડકોશની વેરિકોઝ નસો — પુરુષ વંધ્યત્વનું સૌથી સામાન્ય ઉલટાવી શકાય તેવું કારણ।"
+      "en": "Enlarged veins in the scrotum — a common cause of male infertility.",
+      "hi": "अंडकोष की नसों का फूलना — पुरुष बांझपन का एक आम कारण।",
+      "gu": "અંડકોષની નસોનું ફૂલવું — પુરુષ વંધ્યત્વનું એક સામાન્ય કારણ."
     },
     "overview": {
-      "en": "A varicocele is an enlargement of the pampiniform plexus of veins inside the scrotum, most often on the left. It can cause reduced sperm count and testicular atrophy.",
-      "hi": "Varicocele अंडकोश के अंदर पैम्पिनिफॉर्म प्लेक्सस नसों का बढ़ना है, जो अक्सर बाईं ओर होता है। इससे शुक्राणुओं की संख्या कम हो सकती है और अंडकोष सिकुड़ सकता है।",
-      "gu": "Varicocele એ અંડકોશની અંદર પેમ્પિનિફોર્મ પ્લેક્સસ નસોનું વિસ્તરણ છે, જે મોટાભાગે ડાબી બાજુએ થાય છે। આનાથી શુક્રાણુઓની સંખ્યા ઘટી શકે છે અને અંડકોષ સંકોચાઈ શકે છે।"
+      "en": "A varicocele is an abnormal dilation of veins (pampiniform plexus) in the scrotum. It is similar to a varicose vein in the leg and most commonly affects the left side. Varicoceles can impair sperm production and quality.",
+      "hi": "वैरिकोसील अंडकोष की पैम्पिनिफ़ॉर्म प्लेक्सस नसों का असामान्य फैलाव है। यह पैर की वैरिकोज़ नस जैसा होता है और अधिकतर बायीं ओर होता है। वैरिकोसील शुक्राणु उत्पादन और गुणवत्ता को प्रभावित कर सकता है।",
+      "gu": "વેરિકોસેલ એ અંડકોષમાં પેમ્પિનિફોર્મ પ્લેક્સસ નસોનું અસામાન્ય ફૂલવું છે. તે પગની વેરિકોઝ નસ જેવું છે અને મોટેભાગે ડાબી બાજુ થાય છે. વેરિકોસેલ શુક્રાણુ ઉત્પાદન અને ગુણવત્તા પર અસર કરી શકે છે."
     },
     "when_to_see": {
-      "en": "If you have scrotal ache, testicular shrinkage or subfertility — get a Doppler ultrasound.",
-      "hi": "यदि आपको अंडकोश में दर्द, अंडकोष का छोटा होना या बांझपन की समस्या है — तो Doppler अल्ट्रासाउंड कराएं।",
-      "gu": "જો તમને અંડકોશમાં દુખાવો, અંડકોષ નાનો થવો અથવા વંધ્યત્વની સમસ્યા હોય — તો Doppler અલ્ટ્રાસાઉન્ડ કરાવો।"
+      "en": "Consult a urologist if you have scrotal pain, swelling, infertility, or notice testicular shrinkage.",
+      "hi": "यदि आपको अंडकोष में दर्द, सूजन, बांझपन या अंडकोष का सिकुड़ना दिखे तो यूरोलॉजिस्ट से मिलें।",
+      "gu": "જો તમને અંડકોષમાં દુખાવો, સોજો, વંધ્યત્વ કે અંડકોષ સંકોચાવાનું જણાય તો યુરોલોજિસ્ટની સલાહ લો."
     },
     "symptoms": {
       "en": [
-        "'Bag of worms' feel in the scrotum",
-        "Dull ache worse on standing, relieved on lying",
-        "Reduced testicular size",
+        "\"Bag of worms\" feeling in scrotum",
+        "Dull ache or heaviness, worse on standing",
+        "Visible enlarged veins",
+        "Testicular shrinkage on the affected side",
         "Infertility"
       ],
       "hi": [
-        "अंडकोश में 'कीड़ों की थैली' जैसा महसूस होना",
-        "खड़े होने पर बढ़ने वाला और लेटने पर कम होने वाला हल्का दर्द",
-        "अंडकोष के आकार में कमी",
+        "अंडकोष में \"कीड़ों की थैली\" जैसी अनुभूति",
+        "मंद दर्द या भारीपन, खड़े होने पर अधिक",
+        "फूली हुई नसें दिखाई देना",
+        "प्रभावित अंडकोष का सिकुड़ना",
         "बांझपन"
       ],
       "gu": [
-        "અંડકોશમાં 'કીડાઓની થેલી' જેવો અનુભવ",
-        "ઊભા રહેવાથી વધતો અને સૂતાં ઘટતો હળવો દુખાવો",
-        "અંડકોષના કદમાં ઘટાડો",
+        "અંડકોષમાં \"કૃમિઓની થેલી\" જેવી લાગણી",
+        "મંદ દુખાવો કે ભારેપણું, ઊભા રહેવા પર વધારે",
+        "ફૂલેલી નસો દેખાવી",
+        "અસરગ્રસ્ત બાજુનો અંડકોષ સંકોચાઈ જવો",
         "વંધ્યત્વ"
       ]
     },
     "causes": {
       "en": [
-        "Incompetent valves in testicular veins",
-        "Longer left testicular vein drainage into left renal vein"
+        "Faulty valves in the spermatic cord veins",
+        "Increased venous pressure",
+        "Anatomical reasons (left side more common)"
       ],
       "hi": [
-        "अंडकोष की नसों में दोषपूर्ण वाल्व",
-        "बायीं ओर की अंडकोष नस का लंबा होना और बाएं गुर्दे की नस में जाना"
+        "स्पर्मेटिक कॉर्ड की नसों के वाल्व ख़राब होना",
+        "नसों में बढ़ा हुआ दबाव",
+        "शारीरिक रचना संबंधी कारण (बायीं ओर अधिक आम)"
       ],
       "gu": [
-        "અંડકોષની નસોમાં ખામીયુક્ત વાલ્વ",
-        "ડાબી અંડકોષની નસનું લાંબું હોવું અને ડાબી કિડનીની નસમાં જવું"
+        "સ્પર્મેટિક કોર્ડની નસોના વાલ્વ બગડવા",
+        "નસોમાં વધેલું દબાણ",
+        "શારીરિક રચનાનાં કારણો (ડાબી બાજુ વધુ સામાન્ય)"
       ]
     },
     "treatments": {
       "en": [
-        "Sub-inguinal microsurgical varicocelectomy",
+        "Microsurgical varicocelectomy (gold standard)",
         "Laparoscopic varicocelectomy",
-        "Percutaneous embolisation"
+        "Embolisation by interventional radiology",
+        "Observation for asymptomatic small varicoceles"
       ],
       "hi": [
-        "Sub-inguinal माइक्रोसर्जिकल varicocelectomy",
-        "Laparoscopic varicocelectomy",
-        "Percutaneous embolisation"
+        "माइक्रोसर्जिकल वैरिकोसेलेक्टॉमी (गोल्ड स्टैंडर्ड)",
+        "लैप्रोस्कोपिक वैरिकोसेलेक्टॉमी",
+        "इंटरवेंशनल रेडियोलॉजी द्वारा एम्बोलाइज़ेशन",
+        "छोटे, बिना लक्षण वाले मामलों में निरीक्षण"
       ],
       "gu": [
-        "Sub-inguinal માઇક્રોસર્જિકલ varicocelectomy",
-        "Laparoscopic varicocelectomy",
-        "Percutaneous embolisation"
+        "માઇક્રોસર્જિકલ વેરિકોસેલેક્ટમી (ગોલ્ડ સ્ટાન્ડર્ડ)",
+        "લેપ્રોસ્કોપિક વેરિકોસેલેક્ટમી",
+        "ઈન્ટરવેન્શનલ રેડિયોલોજી દ્વારા એમ્બોલાઇઝેશન",
+        "નાના, લક્ષણહીન કેસોમાં નિરીક્ષણ"
       ]
     }
   },
