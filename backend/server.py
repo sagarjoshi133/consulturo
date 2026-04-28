@@ -252,6 +252,82 @@ app.add_middleware(
 )
 
 
+# ── Demo Read-Only middleware ────────────────────────────────────────
+# Strictly enforces read-only behaviour for any user with `is_demo: True`.
+# Runs before request handlers, so we don't have to sprinkle
+# `block_if_demo(user)` calls across every write endpoint and risk a miss.
+#
+# Whitelist (still allowed for demo users):
+#   • /api/auth/*                  — must be able to log in / out / refresh
+#   • /api/notifications/*read*    — marking own bell read is UX, not data
+#   • /api/inbox/all/read          — marking own inbox read
+#   • /api/broadcasts/inbox/read   — marking own broadcasts read
+#   • /api/push/register           — device push tokens (per-device, not data)
+#
+# Everything else with a write method (POST/PUT/PATCH/DELETE) is 403'd
+# with a friendly JSON body matching the shape used by the rest of the API.
+DEMO_WRITE_WHITELIST_PREFIXES = (
+    "/api/auth/",
+)
+DEMO_WRITE_WHITELIST_EXACT = {
+    "/api/notifications/read-all",
+    "/api/inbox/all/read",
+    "/api/broadcasts/inbox/read",
+    "/api/push/register",
+}
+
+
+async def _try_get_user_from_request(request: Request) -> Optional[Dict[str, Any]]:
+    """Best-effort user lookup that mirrors `get_current_user` but
+    swallows all errors so the middleware never crashes a request.
+    Returns `None` for unauthenticated callers.
+    """
+    try:
+        token = request.cookies.get("session_token")
+        if not token:
+            auth = request.headers.get("authorization") or ""
+            if auth.startswith("Bearer "):
+                token = auth.split(" ", 1)[1]
+        if not token:
+            return None
+        session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+        if not session:
+            return None
+        expires_at = session.get("expires_at")
+        if isinstance(expires_at, str):
+            try:
+                expires_at = datetime.fromisoformat(expires_at)
+            except Exception:
+                expires_at = None
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at and expires_at < datetime.now(timezone.utc):
+            return None
+        return await db.users.find_one({"user_id": session.get("user_id")}, {"_id": 0})
+    except Exception:
+        return None
+
+
+@app.middleware("http")
+async def demo_readonly_middleware(request: Request, call_next):
+    method = (request.method or "").upper()
+    if method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = request.url.path or ""
+        if path.startswith("/api/") and not path.startswith(DEMO_WRITE_WHITELIST_PREFIXES) \
+                and path not in DEMO_WRITE_WHITELIST_EXACT \
+                and not (path.startswith("/api/notifications/") and path.endswith("/read")):
+            user = await _try_get_user_from_request(request)
+            if user and user.get("is_demo"):
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "Demo mode — actions are disabled in this preview account.",
+                        "demo": True,
+                    },
+                )
+    return await call_next(request)
+
+
 # Background: check for due reminders (notes + bookings) once every minute
 # and fire an in-app + push notification so the bell updates on the home/
 # dashboard/my-bookings screens.

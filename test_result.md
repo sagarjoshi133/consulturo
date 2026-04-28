@@ -301,6 +301,104 @@ backend:
           team_invites_deleted=1 audit_deleted=3). No DB pollution, no
           5xx, no auth bypasses.
 
+  - task: "Demo Read-Only middleware (block_if_demo enforcement across all write endpoints)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added @app.middleware("http") `demo_readonly_middleware` (right
+          after CORSMiddleware in /app/backend/server.py around line 246).
+          For any POST/PUT/PATCH/DELETE under /api/* it looks up the user
+          via session_token cookie OR Authorization: Bearer header. If
+          the resolved user has `is_demo: true`, returns
+          HTTP 403 JSON {"detail": "Demo mode — actions are disabled in
+          this preview account.", "demo": true}.
+
+          Whitelist (still allowed for demo users):
+          - any path under /api/auth/* (login/logout/magic/otp/etc)
+          - exact /api/notifications/read-all
+          - any /api/notifications/{id}/read
+          - exact /api/inbox/all/read
+          - exact /api/broadcasts/inbox/read
+          - exact /api/push/register
+
+          Helper `block_if_demo(user)` was kept but is now redundant —
+          the middleware enforces it globally without the risk of
+          missing an endpoint. GETs are never blocked.
+
+          To test: insert a demo user directly via mongosh and a session
+          token, then attempt POST /api/bookings, POST /api/notes,
+          PATCH /api/clinic-settings, POST /api/referrers (must all 403)
+          and POST /api/auth/logout, POST /api/push/register (must NOT
+          403). Confirm a NON-demo session is unaffected.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (18/18 assertions via
+          /app/backend_test_demo_middleware.py against
+          http://localhost:8001).
+
+          SEED — Demo user fixture ✅
+          - mongosh inserted into consulturo.users:
+            {user_id:'test-demo-1', email:'demo@example.com',
+             name:'Demo User', role:'primary_owner', is_demo:true}
+          - mongosh inserted into consulturo.user_sessions:
+            {user_id:'test-demo-1',
+             session_token:'test_demo_session_001',
+             expires_at:+7d}
+          - Sanity: GET /api/auth/me with Bearer
+            test_demo_session_001 → 200 with is_demo:true echoed.
+
+          TEST 2 — BLOCKED write paths (demo user) ✅
+          All 6 returned EXACTLY:
+            HTTP 403
+            {"detail":"Demo mode — actions are disabled in this preview
+             account.","demo":true}
+          - POST   /api/bookings
+          - POST   /api/notes
+          - POST   /api/referrers
+          - POST   /api/prescriptions
+          - PATCH  /api/clinic-settings
+          - DELETE /api/notes/nonexistent-id
+
+          TEST 3 — ALLOWED paths (demo user, whitelist) ✅
+          - POST /api/auth/logout → 200 {"ok":true} (whitelist prefix
+            /api/auth/*).
+          - POST /api/push/register → 422 (validation error for missing
+            'token' field — NOT 403 demo-block; middleware correctly
+            let it through and the endpoint rejected the payload).
+          - GET  /api/auth/me → 200 (reads never blocked).
+          - GET  /api/me/tier → 200 with role=primary_owner,
+            is_primary_owner:true.
+          - GET  /api/notifications → 200.
+          None of these responses contained demo:true in the body.
+
+          TEST 4 — NON-demo primary_owner UNAFFECTED ✅
+          With pre-seeded OWNER token test_session_1776770314741
+          (sagar.joshi133@gmail.com, primary_owner, is_demo absent):
+          - POST /api/notes {title,body} → 200 with note_id
+            (note_c78b8c32d1). No demo:true in body. Test note deleted
+            during cleanup.
+          - GET /api/health → 200 {"ok":true,"db":"connected"}.
+          - GET /api/me/tier → 200 with role=primary_owner,
+            is_primary_owner:true, is_owner_tier:true.
+
+          CLEANUP ✅ — demo user fixture fully purged:
+            users_deleted=1 sessions_deleted=1. No DB pollution.
+
+          REGRESSION ✅ — Re-ran
+          /app/backend_test_role_hierarchy.py — all 34/34 assertions
+          still pass. Middleware does not affect non-demo accounts.
+
+          No 5xx, no auth bypasses. Middleware shape exactly matches
+          spec at server.py lines 311-328.
+
 
 
 frontend:
@@ -739,11 +837,30 @@ metadata:
     - "Broadcast pipeline VERIFIED end-to-end (18/19 backend tests PASS): create → approve → send → broadcast_inbox per-user records → in-app notifications. Push fan-out path is real but 0 tokens registered in test = sent_count 0."
 
 test_plan:
-  current_focus:
-    - "FEATURE (Plan B — 4-tier role hierarchy): super_owner → primary_owner → partner → staff. Backend migration on startup renames every legacy `role: 'owner'` to `role: 'primary_owner'` in db.users + db.team_invites. SUPER_OWNER_EMAIL env (default: app.consulturo@gmail.com) auto-promotes that account to `super_owner` on every login (also updates existing rows on startup). New endpoints: POST/DELETE/GET `/api/admin/primary-owners[/promote|/{id}]` (super_owner only); POST/DELETE/GET `/api/admin/partners[/promote|/{id}]` (primary_owner+ only); GET `/api/me/tier` (returns flat role flags). Helpers: is_super_owner, is_primary_or_super, is_owner_or_partner, require_super_owner, require_primary_owner, require_owner (now accepts owner-tier including legacy 'owner')."
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      Demo Read-Only middleware: ALL 18/18 assertions PASS via
+      /app/backend_test_demo_middleware.py against http://localhost:8001.
+      Verified (1) demo user with Bearer test_demo_session_001 is
+      blocked (HTTP 403 + {demo:true, detail:"Demo mode..."}) on
+      POST /api/bookings, POST /api/notes, POST /api/referrers,
+      POST /api/prescriptions, PATCH /api/clinic-settings,
+      DELETE /api/notes/nonexistent-id. (2) whitelisted paths pass
+      through: POST /api/auth/logout → 200, POST /api/push/register →
+      422 (validation, not demo-block), GET /api/auth/me →200,
+      GET /api/me/tier →200, GET /api/notifications →200. (3) NON-demo
+      primary_owner (test_session_1776770314741) is unaffected:
+      POST /api/notes → 200 with a real note_id, GET /api/health →
+      200, GET /api/me/tier → 200 role=primary_owner. (4) Demo user
+      fixture cleaned up (users_deleted=1 sessions_deleted=1).
+      REGRESSION: Re-ran /app/backend_test_role_hierarchy.py → 34/34
+      still green. Middleware shape at server.py:311-328 matches spec.
 
 frontend_session_2026_04_26_msg_notes:
   - task: "Dashboard FAB → 4-action stack with New Message"
@@ -8011,3 +8128,55 @@ agent_communication:
       pollution. No 5xx, no auth bypasses, no data leakage.
 
       Test artefact: /app/backend_test_role_hierarchy.py (re-runnable).
+
+
+  - agent: "main"
+    message: |
+      NEW BACKEND CHANGE for retest — Demo Read-Only middleware.
+
+      Implementation:
+        Added @app.middleware("http") `demo_readonly_middleware` in
+        /app/backend/server.py (right after CORSMiddleware, ~line 246).
+        For any request whose method is POST/PUT/PATCH/DELETE under
+        /api/*, it best-effort-resolves the caller via session_token
+        cookie OR `Authorization: Bearer ...` header. If the resolved
+        user has `is_demo: true`, returns:
+          HTTP 403
+          {"detail": "Demo mode — actions are disabled in this preview
+                       account.", "demo": true}
+        Whitelisted paths (still allowed for demo users):
+          • /api/auth/*  (any path under it — login/logout/etc)
+          • exact /api/notifications/read-all
+          • any /api/notifications/{id}/read
+          • exact /api/inbox/all/read
+          • exact /api/broadcasts/inbox/read
+          • exact /api/push/register
+
+      Please run a focused regression covering:
+        1. A demo user is BLOCKED with 403 + JSON body for at least:
+              POST /api/bookings
+              POST /api/notes
+              POST /api/referrers
+              POST /api/prescriptions
+              PATCH /api/clinic-settings
+              DELETE /api/notes/{id}        (any non-existent id is fine)
+        2. A demo user is NOT BLOCKED for:
+              POST /api/auth/logout
+              POST /api/push/register   (whitelist)
+              GET  /api/auth/me
+              GET  /api/me/tier
+              GET  /api/notifications
+        3. A NON-demo primary_owner (sagar.joshi133@gmail.com,
+           token test_session_1776770314741) is unaffected — POSTs
+           that require their role still work (or 4xx on validation,
+           NOT 403 demo).
+        4. Health smoke unchanged — /api/health 200.
+
+      To prepare a demo user fixture, the testing agent can use
+      mongosh to insert a `users` doc with `is_demo: true` plus a
+      `user_sessions` row, OR exercise POST /api/admin/demo/create as
+      super_owner. Either is acceptable.
+
+      All other previously-passing 34 RBAC checks should continue to
+      PASS since the middleware is a strict superset (no behavior
+      change for non-demo accounts).

@@ -56,6 +56,8 @@ import { Skeleton } from '../src/skeleton';
 import { whatsappLink, telLink } from '../src/phone';
 import { TodayGlance, SmartAlerts } from '../src/dashboard-widgets';
 import { useResponsive } from '../src/responsive';
+import { useTier } from '../src/tier';
+import SuperOwnerDashboard from '../src/super-owner-dashboard';
 
 // ---------------------------------------------------------------
 // CSV export helper (owner-only on backend). On web, triggers an
@@ -233,6 +235,13 @@ const ROLES = [
 export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  // Super-owner short-circuit: hide all clinical workflows. The
+  // platform-admin gets a dedicated dashboard with stats / owners /
+  // audit log instead of bookings / Rx / surgeries / patients.
+  const tier = useTier();
+  if (tier.isSuperOwner) {
+    return <SuperOwnerDashboard />;
+  }
   // `effectiveOwner` covers both the real owner AND any team member that
   // the owner has granted "Full Dashboard Access" to. Tabs/actions that
   // were previously gated on `isOwner` should use this flag so a Full-

@@ -4,19 +4,26 @@
 - **Google Social Login only** (Emergent-managed OAuth). No app-passwords.
 - Guest mode still allowed for browsing / booking (without history saving).
 
-## Roles hierarchy
-`owner > doctor > assistant > reception > nursing > patient`
+## Roles hierarchy (v2 — 4-tier)
+`super_owner > primary_owner > partner > {doctor, assistant, reception, nursing} > patient`
 
 | Role | Can do |
 |------|--------|
-| **owner** | Everything: dashboard, team invites, prescriptions, bookings, blog |
-| **doctor** | Dashboard, prescriptions, bookings |
-| **assistant / reception / nursing** | Dashboard, bookings (read + status update) |
+| **super_owner** | Platform admin (`app.consulturo@gmail.com`). Manages primary_owners, audits, demos. SEES PLATFORM DASHBOARD ONLY (no clinical workflows). |
+| **primary_owner** | Senior clinic owner. Everything inside the clinic + manage partners. |
+| **partner** | Equal admin/clinical powers EXCEPT partner mgmt. |
+| **doctor / assistant / reception / nursing** | Dashboard, bookings, role-scoped tools |
 | **patient** | Book, IPSS, view blog/videos/education |
 
-## Owner account
-- **Email:** `sagar.joshi133@gmail.com`
-- **How:** On first login with this email, the backend auto-promotes to `role=owner` via the `OWNER_EMAIL` env var in `/app/backend/.env`.
+## Demo / Read-Only mode
+- Any user with `is_demo: true` is hard-blocked from POST/PUT/PATCH/DELETE by a middleware in `server.py` (whitelist: `/api/auth/*`, mark-as-read endpoints, push register).
+- Created via `POST /api/admin/demo/create` (super_owner only).
+- 403 response: `{"detail": "Demo mode — actions are disabled in this preview account.", "demo": true}`.
+
+## Owner accounts
+- **Super Owner:** `app.consulturo@gmail.com` (hardcoded — DO NOT change)
+- **Primary Owner (Dr. Sagar Joshi):** `sagar.joshi133@gmail.com`
+- Legacy `role: "owner"` was migrated to `primary_owner` on backend startup.
 
 ## Inviting team members
 Owner goes to **Dashboard → Team → Invite**, enters email + picks a role. When that person signs in with that Google email, they automatically get the assigned role.
