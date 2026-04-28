@@ -42,6 +42,11 @@ EMERGENT_AUTH_URL = os.environ.get(
     "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
 )
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "sagar.joshi133@gmail.com").lower()
+# Super Owner = platform-level admin (developer / "trustee"). Sits ABOVE
+# all primary owners. Can promote/demote primary owners, audit any
+# clinic operation, and execute platform-level commands. There can be
+# only one in v1; future versions may support multiple super owners.
+SUPER_OWNER_EMAIL = os.environ.get("SUPER_OWNER_EMAIL", "app.consulturo@gmail.com").lower()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_OWNER_CHAT_ID = os.environ.get("TELEGRAM_OWNER_CHAT_ID")
 BLOGGER_FEED_URL = os.environ.get(
@@ -49,8 +54,65 @@ BLOGGER_FEED_URL = os.environ.get(
     "https://www.drsagarjoshi.com/feeds/posts/default?alt=json&max-results=30",
 )
 
-VALID_ROLES = ["owner", "doctor", "assistant", "reception", "nursing", "patient"]
-STAFF_ROLES = ["owner", "doctor", "assistant", "reception", "nursing"]
+# Role hierarchy (top → bottom):
+#   super_owner  → platform admin (only the SUPER_OWNER_EMAIL).
+#   primary_owner → senior co-owners of the practice. Can promote / demote
+#                   partners and other staff. Multiple allowed.
+#   partner       → equal clinical / admin powers as primary_owner, EXCEPT
+#                   cannot manage primary owners or partners.
+#   doctor / assistant / reception / nursing → standard staff roles.
+#   patient       → end user.
+#
+# The legacy "owner" role is retained in VALID_ROLES for backward
+# compatibility during the migration window — the startup migration
+# (see `_migrate_owner_to_primary_owner`) renames every existing
+# `role: "owner"` to `role: "primary_owner"` on first boot, but old
+# clients that still send/check "owner" continue to work via the
+# `is_owner_or_partner` / `is_primary_owner` helpers below.
+VALID_ROLES = [
+    "super_owner",
+    "primary_owner",
+    "owner",  # legacy alias — auto-migrated on startup
+    "partner",
+    "doctor",
+    "assistant",
+    "reception",
+    "nursing",
+    "patient",
+]
+STAFF_ROLES = [
+    "super_owner",
+    "primary_owner",
+    "owner",  # legacy
+    "partner",
+    "doctor",
+    "assistant",
+    "reception",
+    "nursing",
+]
+OWNER_TIER_ROLES = {"super_owner", "primary_owner", "owner", "partner"}
+PRIMARY_TIER_ROLES = {"super_owner", "primary_owner", "owner"}
+
+
+def is_owner_or_partner(user: Dict[str, Any]) -> bool:
+    """True for every role that has 'full clinic admin' powers
+    (super_owner, primary_owner, partner). Legacy 'owner' is treated as
+    primary_owner during the migration window."""
+    return (user or {}).get("role") in OWNER_TIER_ROLES
+
+
+def is_primary_or_super(user: Dict[str, Any]) -> bool:
+    """True only for primary_owner and super_owner (NOT partner). Used
+    for actions that require ultimate authority — e.g. promoting /
+    demoting partners themselves. Legacy 'owner' is treated as
+    primary_owner."""
+    return (user or {}).get("role") in PRIMARY_TIER_ROLES
+
+
+def is_super_owner(user: Dict[str, Any]) -> bool:
+    """True only for the platform-level super owner. Used for
+    promoting/demoting primary owners and platform-level operations."""
+    return (user or {}).get("role") == "super_owner"
 
 # IST offset for "today" in Reg No. generation (patients register locally).
 IST_OFFSET = timedelta(hours=5, minutes=30)
@@ -193,6 +255,45 @@ app.add_middleware(
 # Background: check for due reminders (notes + bookings) once every minute
 # and fire an in-app + push notification so the bell updates on the home/
 # dashboard/my-bookings screens.
+@app.on_event("startup")
+async def _migrate_owner_to_primary_owner() -> None:
+    """One-time migration: rename every legacy `role: "owner"` →
+    `role: "primary_owner"` across all collections that store roles.
+    Idempotent — safe to run on every boot. Logs the count to stdout
+    so operators can confirm the rename actually happened.
+
+    Also auto-promotes the configured SUPER_OWNER_EMAIL to
+    `super_owner` (if a record for that email exists in db.users).
+    """
+    try:
+        # users collection
+        u_res = await db.users.update_many(
+            {"role": "owner"}, {"$set": {"role": "primary_owner"}}
+        )
+        # team_invites
+        ti_res = await db.team_invites.update_many(
+            {"role": "owner"}, {"$set": {"role": "primary_owner"}}
+        )
+        # Promote super-owner email if a user already exists for it.
+        s_res = await db.users.update_many(
+            {"email": SUPER_OWNER_EMAIL},
+            {"$set": {
+                "role": "super_owner",
+                "can_approve_bookings": True,
+                "can_approve_broadcasts": True,
+                "can_send_personal_messages": True,
+            }},
+        )
+        if u_res.modified_count or ti_res.modified_count or s_res.modified_count:
+            print(
+                f"[migration] owner→primary_owner: users={u_res.modified_count} "
+                f"invites={ti_res.modified_count} super_promoted={s_res.modified_count}"
+            )
+    except Exception as e:
+        # Migration failures must not crash the server — log and proceed.
+        print(f"[migration] owner→primary_owner failed: {e}")
+
+
 @app.on_event("startup")
 async def _start_reminder_loop():
     import asyncio
@@ -363,9 +464,21 @@ async def notify_telegram(text: str) -> None:
 
 async def resolve_role_for_email(email: str) -> Dict[str, Any]:
     email_l = (email or "").lower()
+    # Super Owner — platform-level admin, sits above all clinic owners.
+    # Configurable via SUPER_OWNER_EMAIL env (default: app.consulturo@gmail.com).
+    if email_l == SUPER_OWNER_EMAIL:
+        return {
+            "role": "super_owner",
+            "can_approve_bookings": True,
+            "can_approve_broadcasts": True,
+            "can_send_personal_messages": True,
+        }
+    # Primary Owner — the original clinic owner email. Anyone the
+    # super_owner promotes later is also a primary_owner (stored in
+    # team_invites with role="primary_owner").
     if email_l == OWNER_EMAIL:
         return {
-            "role": "owner",
+            "role": "primary_owner",
             "can_approve_bookings": True,
             "can_approve_broadcasts": True,
             "can_send_personal_messages": True,
@@ -373,6 +486,9 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
     invite = await db.team_invites.find_one({"email": email_l}, {"_id": 0})
     if invite:
         role = invite.get("role", "patient")
+        # Migrate legacy "owner" → "primary_owner" on the fly.
+        if role == "owner":
+            role = "primary_owner"
         # Role is valid if it's a core role OR a custom role defined in role_labels.
         is_core = role in VALID_ROLES
         is_custom = False
@@ -383,8 +499,12 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
         if is_core or is_custom:
             return {
                 "role": role,
-                "can_approve_bookings": invite.get("can_approve_bookings", role in ["owner", "doctor"]),
-                "can_approve_broadcasts": invite.get("can_approve_broadcasts", role in ["owner", "doctor"]),
+                "can_approve_bookings": invite.get(
+                    "can_approve_bookings", role in OWNER_TIER_ROLES or role == "doctor"
+                ),
+                "can_approve_broadcasts": invite.get(
+                    "can_approve_broadcasts", role in OWNER_TIER_ROLES or role == "doctor"
+                ),
                 "can_send_personal_messages": invite.get("can_send_personal_messages", False),
             }
     return {
@@ -695,19 +815,46 @@ async def require_staff(user=Depends(require_user)) -> Dict[str, Any]:
 
 
 async def require_owner(user=Depends(require_user)) -> Dict[str, Any]:
-    if user.get("role") != "owner":
+    """Pass for the full "owner tier" — super_owner, primary_owner,
+    partner. Replaces the v1 owner-only check. Legacy "owner" role
+    (pre-migration) is also accepted via OWNER_TIER_ROLES.
+
+    For actions that require ULTIMATE authority (managing partners,
+    transferring primary ownership, platform admin), use
+    `require_primary_owner` or `require_super_owner` instead.
+    """
+    if not is_owner_or_partner(user):
         raise HTTPException(status_code=403, detail="Owner access required")
     return user
 
 
-async def require_full_dashboard_access(user=Depends(require_user)) -> Dict[str, Any]:
-    """Pass for owner OR any team member with `dashboard_full_access=True`.
+async def require_primary_owner(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass only for primary_owner or super_owner — NOT partners. Used
+    when an action must be authorised by someone with partner-management
+    power. Examples: promote staff to partner, demote a partner,
+    transfer primary ownership."""
+    if not is_primary_or_super(user):
+        raise HTTPException(status_code=403, detail="Primary owner access required")
+    return user
 
-    Used to gate every owner-only management endpoint that the doctor wants
-    to delegate (Backups, Notifs, Team config, Homepage settings, push test,
-    etc.). Granting/revoking this flag remains strictly owner-only.
+
+async def require_super_owner(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass only for the platform-level super owner. Used for
+    promote/demote primary_owner endpoints and any platform-level
+    operation that should never be delegated to a clinic owner."""
+    if not is_super_owner(user):
+        raise HTTPException(status_code=403, detail="Super owner access required")
+    return user
+
+
+async def require_full_dashboard_access(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for the owner tier OR any team member with
+    `dashboard_full_access=True`. Used to gate every owner-only
+    management endpoint that the doctor wants to delegate (Backups,
+    Notifs, Team config, Homepage settings, push test, etc.). Granting
+    / revoking this flag remains strictly primary-owner only.
     """
-    if user.get("role") == "owner":
+    if is_owner_or_partner(user):
         return user
     if bool(user.get("dashboard_full_access")):
         return user
@@ -6061,8 +6208,8 @@ async def set_messaging_permission(
     target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") == "owner":
-        return {"ok": True, "user_id": user_id, "allowed": True, "note": "Owner is always permitted"}
+    if is_owner_or_partner(target):
+        return {"ok": True, "user_id": user_id, "allowed": True, "note": "Owner / Partner is always permitted"}
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {"can_send_personal_messages": bool(body.allowed)}},
@@ -6076,6 +6223,165 @@ async def set_messaging_permission(
             upsert=False,
         )
     return {"ok": True, "user_id": user_id, "allowed": bool(body.allowed)}
+
+
+# ──────────────────────────────────────────────────────────────────
+# Partner & Primary-Owner management endpoints (B-tier role hierarchy)
+#
+# Hierarchy:
+#   super_owner   → app.consulturo@gmail.com (platform admin).
+#                   Sole authority to promote/demote primary_owners.
+#   primary_owner → senior co-owners. Can promote/demote partners and
+#                   manage all staff. Multiple allowed.
+#   partner       → equal admin/clinical powers EXCEPT cannot manage
+#                   partners or primary_owners.
+#
+# All endpoints below are deliberately direct (no invite/accept flow)
+# to keep v1 simple. Future: add a confirm-invite step so the promoted
+# user must actively accept the elevation.
+# ──────────────────────────────────────────────────────────────────
+class PromoteByEmailBody(BaseModel):
+    email: str
+
+
+async def _promote_user_to_role(
+    email: str, role: str, *, actor: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Persist a role assignment for `email` and audit-log the actor.
+    Updates BOTH db.users (live session) and db.team_invites (so the
+    role survives sign-out / sign-in)."""
+    email_l = (email or "").strip().lower()
+    if not email_l:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+    target = await db.users.find_one({"email": email_l}, {"_id": 0})
+    perms: Dict[str, Any] = {
+        "role": role,
+        "can_approve_bookings": True,
+        "can_approve_broadcasts": True,
+        "can_send_personal_messages": True,
+    }
+    # Demoting back to 'doctor' should NOT keep the elevated approval
+    # / messaging flags — reset them so an ex-partner doesn't silently
+    # retain owner-level powers via the team_invites row.
+    if role == "doctor":
+        perms = {
+            "role": role,
+            "can_approve_bookings": True,  # doctors usually can approve
+            "can_approve_broadcasts": False,
+            "can_send_personal_messages": False,
+        }
+    if target:
+        await db.users.update_one({"email": email_l}, {"$set": perms})
+    # Always upsert into team_invites so future sign-ins keep the role.
+    await db.team_invites.update_one(
+        {"email": email_l},
+        {"$set": {**perms, "email": email_l}},
+        upsert=True,
+    )
+    # Audit log — best effort, never fails the request.
+    try:
+        await db.audit_log.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "kind": "role_change",
+            "target_email": email_l,
+            "new_role": role,
+            "actor_user_id": actor.get("user_id"),
+            "actor_email": (actor.get("email") or "").lower(),
+            "actor_role": actor.get("role"),
+        })
+    except Exception:
+        pass
+    return {"ok": True, "email": email_l, "role": role, "user_id": (target or {}).get("user_id")}
+
+
+@app.post("/api/admin/primary-owners/promote")
+async def promote_primary_owner(body: PromoteByEmailBody, user=Depends(require_super_owner)):
+    """Promote any email to primary_owner. Only the super_owner may
+    invoke this — primary_owners managing other primary_owners is
+    explicitly disallowed (the super_owner has ultimate authority)."""
+    return await _promote_user_to_role(body.email, "primary_owner", actor=user)
+
+
+@app.delete("/api/admin/primary-owners/{user_id}")
+async def demote_primary_owner(user_id: str, user=Depends(require_super_owner)):
+    """Demote a primary_owner back to a regular `doctor` role. Only the
+    super_owner may invoke this. Cannot demote the configured
+    OWNER_EMAIL — that account always remains a primary_owner."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (target.get("email") or "").lower() == OWNER_EMAIL:
+        raise HTTPException(status_code=400, detail="Cannot demote the configured primary owner")
+    if target.get("role") != "primary_owner":
+        raise HTTPException(status_code=400, detail="User is not a primary owner")
+    return await _promote_user_to_role(target["email"], "doctor", actor=user)
+
+
+@app.get("/api/admin/primary-owners")
+async def list_primary_owners(user=Depends(require_owner)):
+    """List all primary_owners + super_owner. Visible to anyone in the
+    owner tier."""
+    rows: List[Dict[str, Any]] = []
+    async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
+        rows.append({
+            "user_id": u.get("user_id"),
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "role": u.get("role"),
+            "picture": u.get("picture"),
+        })
+    return {"items": rows}
+
+
+@app.post("/api/admin/partners/promote")
+async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary_owner)):
+    """Promote any email to partner. primary_owner or super_owner may
+    invoke this — partners themselves cannot create partners."""
+    return await _promote_user_to_role(body.email, "partner", actor=user)
+
+
+@app.delete("/api/admin/partners/{user_id}")
+async def demote_partner(user_id: str, user=Depends(require_primary_owner)):
+    """Demote a partner to a regular doctor role."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") != "partner":
+        raise HTTPException(status_code=400, detail="User is not a partner")
+    return await _promote_user_to_role(target["email"], "doctor", actor=user)
+
+
+@app.get("/api/admin/partners")
+async def list_partners(user=Depends(require_owner)):
+    """List all partners. Visible to anyone in the owner tier."""
+    rows: List[Dict[str, Any]] = []
+    async for u in db.users.find({"role": "partner"}, {"_id": 0}):
+        rows.append({
+            "user_id": u.get("user_id"),
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "role": u.get("role"),
+            "picture": u.get("picture"),
+        })
+    return {"items": rows}
+
+
+@app.get("/api/me/tier")
+async def get_my_tier(user=Depends(require_user)):
+    """Flat boolean flags describing the current user's tier so the
+    frontend can render role-gated UI without re-implementing the
+    hierarchy logic. Always safe to call."""
+    return {
+        "role": user.get("role"),
+        "is_super_owner": is_super_owner(user),
+        "is_primary_owner": (user.get("role") in {"primary_owner", "owner"}),
+        "is_partner": user.get("role") == "partner",
+        "is_owner_tier": is_owner_or_partner(user),
+        "can_manage_partners": is_primary_or_super(user),
+        "can_manage_primary_owners": is_super_owner(user),
+    }
 
 
 @app.get("/api/admin/messaging-permissions")

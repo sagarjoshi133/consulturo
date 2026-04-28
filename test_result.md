@@ -194,6 +194,115 @@ backend:
                allowed.)
           No 5xx, no auth bypasses, no data leakage.
 
+  - task: "FEATURE Plan B — 4-tier role hierarchy (super_owner/primary_owner/partner/staff) + migration + /api/me/tier + /api/admin/partners + /api/admin/primary-owners"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (34/34 assertions via
+          /app/backend_test_role_hierarchy.py against http://localhost:8001).
+
+          TEST 1 — Migration verification ✅
+          - GET /api/health → 200 {"ok":true,"db":"connected"}.
+          - db.users.countDocuments({role:'owner'}) == 0 → legacy rows
+            auto-migrated on startup (server.py:259
+            _migrate_owner_to_primary_owner).
+          - sagar.joshi133@gmail.com now has role='primary_owner' (was
+            'owner' before).
+          - app.consulturo@gmail.com has not yet signed in — no row in
+            db.users — so the super_owner auto-promotion path only fires
+            on login; no row to verify today (expected per review
+            request's conditional: "If app.consulturo@gmail.com user
+            exists in db.users…").
+
+          TEST 2 — GET /api/me/tier (primary_owner) ✅
+            Response for OWNER token (sagar.joshi133@gmail.com):
+              role: "primary_owner"
+              is_super_owner: false
+              is_primary_owner: true
+              is_partner: false
+              is_owner_tier: true
+              can_manage_partners: true
+              can_manage_primary_owners: false
+            Matches spec exactly.
+
+          TEST 3 — Partner management (primary_owner authority) ✅
+          a. GET /api/admin/partners → 200 {"items":[]} (fresh DB,
+             expected).
+          b. Seeded a user row {email:test-partner-<ts>@example.com,
+             role:'doctor'} via mongosh so full lifecycle is exercisable.
+             POST /api/admin/partners/promote {email:<seed>} as OWNER →
+             200 {ok:true, email, role:'partner', user_id:<seed>}.
+          c. GET /api/admin/partners → shows the new partner.
+          d. 2nd POST (UPSERT idempotency) same email → 200 same
+             response.
+          e. DELETE /api/admin/partners/{user_id} → 200
+             {ok:true, role:'doctor', user_id:<seed>}. Confirms demote
+             clears elevated perms (role→'doctor') — server.py:6268
+             explicitly resets can_approve_broadcasts and
+             can_send_personal_messages to False for demotion.
+          f. GET /api/admin/partners → partner removed ({items:[]}).
+          Negative path: POST /api/admin/partners/promote with DOCTOR
+          token (dr.test@example.com, role=doctor) → 403
+          {"detail":"Primary owner access required"}. ✅
+
+          TEST 4 — Primary-owner management (super_owner authority) ✅
+          a. As primary_owner:
+             POST /api/admin/primary-owners/promote {email:...} →
+             403 {"detail":"Super owner access required"}.
+          b. As primary_owner:
+             GET /api/admin/primary-owners → 200 with {"items":[
+                {user_id:user_4775ed40276e,
+                 email:sagar.joshi133@gmail.com,
+                 name:"Dr. Sagar Joshi",
+                 role:"primary_owner",
+                 picture:<g-avatar>} ]} — owner-tier visible, correct.
+          c. As primary_owner:
+             DELETE /api/admin/primary-owners/anything →
+             403 {"detail":"Super owner access required"}.
+
+          TEST 5 — Backward compatibility ✅
+          - require_owner now accepts primary_owner: GET
+            /api/admin/messaging-permissions with OWNER token → 200
+            (returns a populated items list). No regression.
+          - 0 legacy role='owner' rows remain after startup migration —
+            the compat path (legacy owner → require_owner pass) is not
+            exercisable today because migration is already complete, but
+            the code path at OWNER_TIER_ROLES (server.py:93) explicitly
+            includes "owner" so future stragglers would still pass.
+
+          TEST 6 — Audit log ✅
+          After the TEST-3 promote, db.audit_log contains:
+            { kind: "role_change",
+              new_role: "partner",
+              target_email: "test-partner-<ts>@example.com",
+              actor_email: "sagar.joshi133@gmail.com",
+              actor_user_id: "user_4775ed40276e",
+              actor_role: "primary_owner",
+              ts: ISODate(...) }
+          Inserted at server.py:6285. Confirmed row exists exactly as
+          spec.
+
+          TEST 7 — Smoke tests (primary_owner) ✅
+          All 4 endpoints returned 200 for the primary_owner:
+            GET /api/health → 200
+            GET /api/notifications → 200
+            GET /api/inbox/all → 200
+            GET /api/admin/messaging-permissions → 200
+
+          Cleanup: seed user + team_invite + 3 audit rows for the test
+          partner email purged via mongosh (users_deleted=1
+          team_invites_deleted=1 audit_deleted=3). No DB pollution, no
+          5xx, no auth bypasses.
+
+
+
 frontend:
   - task: "Prescription Actions row (Open / Edit / Print / PDF / Delete)"
     implemented: true
@@ -631,9 +740,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "BUGFIX (Issue 1): Messaging permission unlock — Owner toggling can_send_personal_messages on a user must reflect in the affected user's session within ≤60s without re-login. NotificationProvider now also calls auth.refresh() each minute; Inbox screen calls auth.refresh() on focus."
-    - "BUGFIX (Issue 2): Personal message push notification tap — backend POST /api/messages/send now stamps both `type: 'personal'` and `kind: 'personal'` in the push data payload. Frontend _layout.tsx tap handler routes `type === 'personal' || kind === 'personal'` → /inbox. Removed the implicit double-push from create_notification (passed push=False)."
-    - "FEATURE (Issue 3 — Phases A+B+C+D): Desktop web responsive shell. New /app/frontend/src/responsive.ts hook + /app/frontend/src/web-shell.tsx wrapper. Desktop mode triggers when width >=1024px OR (width >=900 AND height >=600 AND landscape). Mobile (native + web <768px) untouched. Includes: gradient sidebar nav, top bar, centered content pane (1180px max), bottom-tabs auto-hide on desktop, redundant per-screen header buttons hidden on desktop (Home/More), multi-column grids for Diseases / Blog / Videos / Latest Blogs / Latest Videos / Common Conditions, and 2-column grids for staff Bookings + Prescriptions cards on the Dashboard."
+    - "FEATURE (Plan B — 4-tier role hierarchy): super_owner → primary_owner → partner → staff. Backend migration on startup renames every legacy `role: 'owner'` to `role: 'primary_owner'` in db.users + db.team_invites. SUPER_OWNER_EMAIL env (default: app.consulturo@gmail.com) auto-promotes that account to `super_owner` on every login (also updates existing rows on startup). New endpoints: POST/DELETE/GET `/api/admin/primary-owners[/promote|/{id}]` (super_owner only); POST/DELETE/GET `/api/admin/partners[/promote|/{id}]` (primary_owner+ only); GET `/api/me/tier` (returns flat role flags). Helpers: is_super_owner, is_primary_or_super, is_owner_or_partner, require_super_owner, require_primary_owner, require_owner (now accepts owner-tier including legacy 'owner')."
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -7857,3 +7964,50 @@ agent_communication:
       Test artefact: /app/backend_test_msg_perm_push.py (re-runnable).
       No residual data: test notification 69434ab6-… and the fake
       Expo token were purged post-run.
+
+
+  - agent: "testing"
+    message: |
+      Plan B — 4-tier role hierarchy backend tests: ALL 34/34 PASS via
+      /app/backend_test_role_hierarchy.py against http://localhost:8001.
+
+      TEST 1 Migration ✅ — 0 legacy role='owner' rows remain;
+        sagar.joshi133@gmail.com migrated to primary_owner on startup
+        via _migrate_owner_to_primary_owner (server.py:259).
+        app.consulturo@gmail.com has never signed in, so no db.users
+        row exists to verify — expected (super_owner auto-promotion
+        fires on login).
+
+      TEST 2 GET /api/me/tier ✅ — For primary_owner, response exactly
+        matches spec: role=primary_owner, is_super_owner=false,
+        is_primary_owner=true, is_partner=false, is_owner_tier=true,
+        can_manage_partners=true, can_manage_primary_owners=false.
+
+      TEST 3 Partner management ✅ — promote (200, role=partner),
+        list (new partner visible), idempotent re-promote (UPSERT
+        200), delete (200, role=doctor), list again (removed). As
+        DOCTOR → 403 with correct detail "Primary owner access
+        required".
+
+      TEST 4 Primary-owner management ✅ — As primary_owner:
+        POST /api/admin/primary-owners/promote → 403 "Super owner
+        access required"; GET /api/admin/primary-owners → 200 (owner
+        tier can read); DELETE → 403.
+
+      TEST 5 Backward compat ✅ — require_owner now accepts
+        primary_owner: /api/admin/messaging-permissions returns 200.
+        0 legacy 'owner' rows, so legacy-owner pass-through path
+        isn't exercisable but code (OWNER_TIER_ROLES at server.py:93)
+        explicitly supports it.
+
+      TEST 6 Audit log ✅ — db.audit_log has the expected row
+        {kind:'role_change', new_role:'partner', target_email,
+         actor_email:sagar.joshi133@gmail.com, actor_role:primary_owner}.
+
+      TEST 7 Smoke ✅ — /api/health, /api/notifications, /api/inbox/all,
+        /api/admin/messaging-permissions all 200 for primary_owner.
+
+      Cleanup: seed user + team_invite + audit rows purged; no DB
+      pollution. No 5xx, no auth bypasses, no data leakage.
+
+      Test artefact: /app/backend_test_role_hierarchy.py (re-runnable).
