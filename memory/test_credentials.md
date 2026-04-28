@@ -22,6 +22,14 @@
 - For `role: "patient"` with seed=true, a placeholder users row is created plus 1 sample booking + 1 sample prescription + 1 IPSS row tagged `is_demo_seed:true`. Revoke (`DELETE /api/admin/demo/{user_id}`) sweeps those seeded rows.
 - 403 response: `{"detail": "Demo mode — actions are disabled in this preview account.", "demo": true}`.
 
+## Dashboard access policy
+- All owner-tier roles (`super_owner`, `primary_owner`, `partner`, legacy `owner`) get **FULL dashboard access by default**.
+- `super_owner` can LIMIT a specific `primary_owner` via `PATCH /api/admin/primary-owners/{user_id}/dashboard-perm` body `{dashboard_full_access: bool}`.
+  - When set to `false`, the primary_owner loses administrative tabs (Analytics, Team, Backups, Broadcasts) but retains core clinical tabs (Today, Bookings, Consults, Rx, Surgeries, Availability).
+  - Super_owner cannot be limited — flag is forced true.
+- The OwnersPanel UI exposes per-row toggles for both **Dashboard** and **Blog** (super_owner only).
+- `/api/me/tier` returns `dashboard_full_access` reflecting the effective value (default-true unless explicitly revoked).
+
 ## Blog editorial gate
 - `/api/admin/blog` (POST/PUT/DELETE/GET) gated by `require_blog_writer`.
 - ONLY `super_owner` is allowed by default.
