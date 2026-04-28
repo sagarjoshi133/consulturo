@@ -44,7 +44,30 @@ type Person = {
   picture?: string;
   can_create_blog?: boolean;
   dashboard_full_access?: boolean;
+  created_at?: string | null;
+  suspended?: boolean;
+  suspended_at?: string | null;
+  suspended_reason?: string | null;
+  signed_in?: boolean;
 };
+
+/** Compact "Active since X year, Y month" tag rendered under each
+ * primary-owner entry. Falls back to "Active" if no created_at is
+ * known. Visible to super_owner only (per spec). */
+function activeSinceLabel(iso?: string | null): string {
+  if (!iso) return 'Active';
+  const d = new Date(iso);
+  if (isNaN(+d)) return 'Active';
+  const now = new Date();
+  let years = now.getFullYear() - d.getFullYear();
+  let months = now.getMonth() - d.getMonth();
+  if (months < 0) { years -= 1; months += 12; }
+  if (years <= 0 && months <= 0) return 'Active · just joined';
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+  return `Active since ${parts.join(', ')}`;
+}
 
 export default function OwnersPanel() {
   const tier = useTier();
@@ -179,6 +202,53 @@ export default function OwnersPanel() {
     );
   };
 
+  /**
+   * Super-owner-only soft-pause for a primary-owner account. Calls
+   * PATCH /api/admin/primary-owners/{id}/suspend with the inverted
+   * boolean. The resume path takes one tap; the suspend path collects
+   * a free-text reason via prompt() (web) — fallback to "Suspended by
+   * super-owner" on native where prompt() may not be available.
+   */
+  const suspendPrimary = async (p: Person) => {
+    if (!p.user_id || p.role === 'super_owner') return;
+    const isResume = !!p.suspended;
+    if (isResume) {
+      confirmX(
+        'Resume Account?',
+        `${p.name || p.email} will be reactivated and able to sign in again.`,
+        async () => {
+          setBusy(true);
+          try {
+            await api.patch(`/admin/primary-owners/${p.user_id}/suspend`, { suspended: false });
+            await loadAll();
+          } catch (e: any) {
+            alertX('Failed', e?.response?.data?.detail || 'Could not resume account');
+          } finally { setBusy(false); }
+        },
+        false,
+      );
+      return;
+    }
+    let reason = '';
+    if (typeof window !== 'undefined' && (window as any).prompt) {
+      reason = (window as any).prompt('Reason for suspension (optional):') || '';
+    }
+    confirmX(
+      'Suspend Primary Owner?',
+      `${p.name || p.email} will be temporarily blocked from signing in. Their data is preserved — you can resume the account any time.`,
+      async () => {
+        setBusy(true);
+        try {
+          await api.patch(`/admin/primary-owners/${p.user_id}/suspend`, { suspended: true, reason });
+          await loadAll();
+        } catch (e: any) {
+          alertX('Failed', e?.response?.data?.detail || 'Could not suspend account');
+        } finally { setBusy(false); }
+      },
+      true,
+    );
+  };
+
   if (!tier.isOwnerTier) return null;
 
   return (
@@ -227,53 +297,78 @@ export default function OwnersPanel() {
           <Text style={styles.empty}>No Primary Owners yet.</Text>
         ) : (
           primaryOwners.map((p) => (
-            <PersonRow
-              key={p.user_id || p.email}
-              p={p}
-              actionLabel={tier.canManagePrimaryOwners && p.role !== 'super_owner' ? 'Delete' : undefined}
-              onAction={() => deletePrimary(p)}
-              dashboardToggle={
-                tier.isSuperOwner
-                  ? {
-                      value: p.role === 'super_owner' ? true : (p.dashboard_full_access !== false),
-                      disabled: p.role === 'super_owner',
-                      onChange: async (v: boolean) => {
-                        if (!p.user_id || p.role === 'super_owner') return;
-                        setBusy(true);
-                        try {
-                          await api.patch(`/admin/primary-owners/${p.user_id}/dashboard-perm`, { dashboard_full_access: v });
-                          await loadAll();
-                        } catch (e: any) {
-                          alertX('Failed', e?.response?.data?.detail || 'Could not update dashboard access');
-                        } finally { setBusy(false); }
-                      },
-                    }
-                  : undefined
-              }
-              blogToggle={
-                tier.isSuperOwner
-                  ? {
-                      value: !!p.can_create_blog || p.role === 'super_owner',
-                      disabled: p.role === 'super_owner',
-                      onChange: async (v: boolean) => {
-                        if (!p.user_id || p.role === 'super_owner') return;
-                        setBusy(true);
-                        try {
-                          await api.patch(`/admin/primary-owners/${p.user_id}/blog-perm`, { can_create_blog: v });
-                          await loadAll();
-                        } catch (e: any) {
-                          alertX('Failed', e?.response?.data?.detail || 'Could not update blog access');
-                        } finally { setBusy(false); }
-                      },
-                    }
-                  : undefined
-              }
-            />
+            <View key={p.user_id || p.email}>
+              <PersonRow
+                p={p}
+                actionLabel={tier.isSuperOwner && p.role !== 'super_owner' ? (p.suspended ? 'Resume' : 'Suspend') : undefined}
+                onAction={() => suspendPrimary(p)}
+                dashboardToggle={
+                  tier.isSuperOwner
+                    ? {
+                        value: p.role === 'super_owner' ? true : (p.dashboard_full_access !== false),
+                        disabled: p.role === 'super_owner',
+                        onChange: async (v: boolean) => {
+                          if (!p.user_id || p.role === 'super_owner') return;
+                          setBusy(true);
+                          try {
+                            await api.patch(`/admin/primary-owners/${p.user_id}/dashboard-perm`, { dashboard_full_access: v });
+                            await loadAll();
+                          } catch (e: any) {
+                            alertX('Failed', e?.response?.data?.detail || 'Could not update dashboard access');
+                          } finally { setBusy(false); }
+                        },
+                      }
+                    : undefined
+                }
+                blogToggle={
+                  tier.isSuperOwner
+                    ? {
+                        value: !!p.can_create_blog || p.role === 'super_owner',
+                        disabled: p.role === 'super_owner',
+                        onChange: async (v: boolean) => {
+                          if (!p.user_id || p.role === 'super_owner') return;
+                          setBusy(true);
+                          try {
+                            await api.patch(`/admin/primary-owners/${p.user_id}/blog-perm`, { can_create_blog: v });
+                            await loadAll();
+                          } catch (e: any) {
+                            alertX('Failed', e?.response?.data?.detail || 'Could not update blog access');
+                          } finally { setBusy(false); }
+                        },
+                      }
+                    : undefined
+                }
+              />
+              {/* Active-since chip + suspended hint — visible to all
+                  owner-tier viewers but only super_owner can act. */}
+              {p.role !== 'super_owner' && (
+                <View style={styles.metaRow}>
+                  <View style={[styles.metaChip, p.suspended ? { backgroundColor: COLORS.warning + '22', borderColor: COLORS.warning + '55' } : null]}>
+                    <Ionicons
+                      name={p.suspended ? 'pause-circle' : 'time-outline'}
+                      size={12}
+                      color={p.suspended ? COLORS.warning : COLORS.success}
+                    />
+                    <Text style={[styles.metaChipText, p.suspended && { color: COLORS.warning }]}>
+                      {p.suspended ? 'Suspended' : activeSinceLabel(p.created_at)}
+                    </Text>
+                  </View>
+                  {p.suspended && p.suspended_reason ? (
+                    <Text style={styles.metaReason} numberOfLines={1}>
+                      Reason: {p.suspended_reason}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </View>
           ))
         )}
       </View>
 
-      {/* ── PARTNERS — primary_owner+ can manage ── */}
+      {/* ── PARTNERS — primary_owner ONLY (super_owner is intentionally
+            hidden from this section: partner management is a
+            clinic-owner concern, not a platform-admin concern). */}
+      {!tier.isSuperOwner && (
       <View style={styles.section}>
         <View style={styles.sectionHead}>
           <Ionicons name="star" size={18} color={COLORS.accent} />
@@ -332,6 +427,7 @@ export default function OwnersPanel() {
           })
         )}
       </View>
+      )}
 
       {/* ── DEMO ACCOUNTS — super_owner only ── */}
       {tier.isSuperOwner && (
@@ -598,6 +694,10 @@ const styles = StyleSheet.create({
   },
   addBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Manrope_700Bold' },
   empty: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center', paddingVertical: 12 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 8, marginLeft: 50, flexWrap: 'wrap' },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '40' },
+  metaChipText: { fontSize: 10.5, color: COLORS.success, fontFamily: 'Manrope_600SemiBold', letterSpacing: 0.2 },
+  metaReason: { fontSize: 11, color: COLORS.textSecondary, fontStyle: 'italic', flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

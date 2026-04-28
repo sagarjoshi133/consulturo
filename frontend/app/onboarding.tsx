@@ -379,12 +379,13 @@ const styles = StyleSheet.create({
   },
 
   heroIconCircleLg: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 144,
+    height: 144,
+    borderRadius: 72,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
     shadowColor: COLORS.primary,
     shadowOpacity: 0.18,
     shadowRadius: 22,

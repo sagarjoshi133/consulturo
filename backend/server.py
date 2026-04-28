@@ -877,6 +877,14 @@ async def get_current_user(
 async def require_user(user=Depends(get_current_user)) -> Dict[str, Any]:
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # Block any user whose primary_owner account has been suspended by
+    # the super_owner. Suspension is intended as a soft-pause (e.g. the
+    # clinic is being on-boarded / off-boarded) and is fully reversible.
+    if user.get("suspended"):
+        raise HTTPException(
+            status_code=403,
+            detail="ACCOUNT_SUSPENDED: This account has been temporarily suspended by the platform admin. Please contact ConsultUro support.",
+        )
     return user
 
 
@@ -912,6 +920,18 @@ async def require_primary_owner(user=Depends(require_user)) -> Dict[str, Any]:
     transfer primary ownership."""
     if not is_primary_or_super(user):
         raise HTTPException(status_code=403, detail="Primary owner access required")
+    return user
+
+
+async def require_primary_owner_strict(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass ONLY for the primary_owner role (legacy "owner" alias also
+    allowed for backward compat). Super-owner is intentionally NOT
+    accepted because partner management is a clinic-owner concern, not
+    a platform-admin concern. Used by /api/admin/partners/* so that the
+    super-owner UI can hide the partner-management surface entirely.
+    """
+    if user.get("role") not in {"primary_owner", "owner"}:
+        raise HTTPException(status_code=403, detail="Primary owner only — partner management is a clinic-owner action.")
     return user
 
 
@@ -6371,11 +6391,22 @@ async def _promote_user_to_role(
             "can_send_personal_messages": False,
         }
     if target:
+        # Stamp `created_at` (now) only when this row never had one
+        # before — preserves the original sign-up date for already
+        # existing users while back-filling old rows that pre-date
+        # the field.
+        update_doc: Dict[str, Any] = {"$set": perms}
+        if not target.get("created_at"):
+            update_doc["$setOnInsert"] = {"created_at": datetime.now(timezone.utc)}
+            # find_one_and_update with upsert isn't useful here since the
+            # row already exists; instead do an explicit conditional set.
+            await db.users.update_one({"email": email_l, "created_at": {"$exists": False}}, {"$set": {"created_at": datetime.now(timezone.utc)}})
         await db.users.update_one({"email": email_l}, {"$set": perms})
     # Always upsert into team_invites so future sign-ins keep the role.
     await db.team_invites.update_one(
         {"email": email_l},
-        {"$set": {**perms, "email": email_l}},
+        {"$set": {**perms, "email": email_l},
+         "$setOnInsert": {"invited_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
     # Audit log — best effort, never fails the request.
@@ -6421,14 +6452,21 @@ async def demote_primary_owner(user_id: str, user=Depends(require_super_owner)):
 async def list_primary_owners(user=Depends(require_owner)):
     """List all primary_owners + super_owner. Visible to anyone in the
     owner tier. Includes `can_create_blog` + `dashboard_full_access`
-    so the super-owner UI can render per-row toggles."""
+    so the super-owner UI can render per-row toggles. Also includes
+    `created_at` (ISO string — set on first promotion or earliest
+    timestamp recoverable from the user doc) and `suspended` so the
+    super-owner UI can render an "Active since X" tag and a
+    Suspend/Resume button per row."""
     rows: List[Dict[str, Any]] = []
     async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
-        # Dashboard default = True unless explicitly revoked (same rule
-        # as /api/me/tier). Super-owner is always True and can't be
-        # limited.
         dfa_raw = u.get("dashboard_full_access")
         dfa = (dfa_raw is not False) if u.get("role") in {"primary_owner", "super_owner"} else bool(dfa_raw)
+        # `created_at` may be missing on rows that pre-date the field —
+        # fall back to `promoted_at`, then to a stable string so the UI
+        # can still render an Active-since label.
+        created_at = u.get("created_at") or u.get("promoted_at")
+        if isinstance(created_at, datetime):
+            created_at = created_at.isoformat()
         rows.append({
             "user_id": u.get("user_id"),
             "email": u.get("email"),
@@ -6437,6 +6475,10 @@ async def list_primary_owners(user=Depends(require_owner)):
             "picture": u.get("picture"),
             "can_create_blog": bool(u.get("can_create_blog")) or u.get("role") == "super_owner",
             "dashboard_full_access": dfa,
+            "created_at": created_at,
+            "suspended": bool(u.get("suspended")),
+            "suspended_at": (u.get("suspended_at").isoformat() if isinstance(u.get("suspended_at"), datetime) else u.get("suspended_at")),
+            "suspended_reason": u.get("suspended_reason"),
         })
     return {"items": rows}
 
@@ -6447,6 +6489,46 @@ class BlogPermBody(BaseModel):
 
 class DashboardPermBody(BaseModel):
     dashboard_full_access: bool
+
+
+class SuspendBody(BaseModel):
+    suspended: bool
+    reason: Optional[str] = None
+
+
+@app.patch("/api/admin/primary-owners/{user_id}/suspend")
+async def set_primary_owner_suspended(
+    user_id: str, body: SuspendBody, user=Depends(require_super_owner)
+):
+    """Super-owner-only. Temporarily suspend (or resume) a primary owner.
+    A suspended user is blocked from logging in and from making any
+    authenticated API call (auth middleware enforces). Useful when the
+    super-owner needs to pause a clinic without deleting historical
+    data."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") not in ("primary_owner", "owner"):
+        raise HTTPException(status_code=400, detail="Only primary owners can be suspended")
+    update: Dict[str, Any] = {"suspended": bool(body.suspended)}
+    if body.suspended:
+        update["suspended_at"] = datetime.utcnow()
+        update["suspended_by"] = user.get("user_id")
+        update["suspended_reason"] = (body.reason or "").strip() or None
+    else:
+        update["suspended_at"] = None
+        update["suspended_by"] = None
+        update["suspended_reason"] = None
+        # Drop any active sessions for this user so they're forced to
+        # re-authenticate after we resume them. This is a low-cost
+        # hygiene step — sessions for suspended-then-resumed accounts
+        # may carry stale role flags.
+    await db.users.update_one({"user_id": user_id}, {"$set": update})
+    if body.suspended:
+        # Hard-stop: invalidate every existing session token so the
+        # user is logged out immediately on their next request.
+        await db.user_sessions.delete_many({"user_id": user_id})
+    return {"ok": True, "suspended": bool(body.suspended)}
 
 
 @app.patch("/api/admin/primary-owners/{user_id}/blog-perm")
@@ -6520,14 +6602,14 @@ async def set_primary_owner_dashboard_perm(
 
 
 @app.post("/api/admin/partners/promote")
-async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary_owner)):
+async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary_owner_strict)):
     """Promote any email to partner. primary_owner or super_owner may
     invoke this — partners themselves cannot create partners."""
     return await _promote_user_to_role(body.email, "partner", actor=user)
 
 
 @app.delete("/api/admin/partners/{user_id}")
-async def demote_partner(user_id: str, user=Depends(require_primary_owner)):
+async def demote_partner(user_id: str, user=Depends(require_primary_owner_strict)):
     """Demote a partner to a regular doctor role.
     Accepts user_id='pending:<email>' to revoke a partner who hasn't
     signed in yet (only the team_invite exists)."""

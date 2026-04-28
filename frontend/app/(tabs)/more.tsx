@@ -120,6 +120,7 @@ export default function More() {
     user?.role === 'primary_owner' ||
     user?.role === 'partner' ||
     user?.role === 'owner';
+  const isSuperOwner = user?.role === 'super_owner';
   // Dashboard full-access: all owner-tier roles default TRUE per the
   // hierarchy SuperOwner > PrimaryOwner > Partner > Team. Super-owner
   // can revoke for a specific primary_owner via Permission Manager —
@@ -166,8 +167,24 @@ export default function More() {
   }
 
   // DASHBOARD — separate single-item section just below Account.
-  // Surfaces the doctor's primary cockpit prominently (per user spec).
-  if (isStaff) {
+  // Super-owner gets a "Platform Administration" link instead, since
+  // the regular doctor dashboard is irrelevant to them. This is the
+  // ONLY admin gateway in the More tab for super_owner — every other
+  // clinic-management section is hidden below.
+  if (isSuperOwner) {
+    sections.push({
+      title: t('more.sectionAdministration') || 'Administration',
+      items: [
+        {
+          icon: 'shield-checkmark',
+          label: 'Platform Administration',
+          sub: 'Primary Owners, Demo Accounts, Audit Trail',
+          route: '/permission-manager' as any,
+          testID: 'more-platform-admin',
+        },
+      ],
+    });
+  } else if (isStaff) {
     sections.push({
       title: t('more.sectionDashboard') || 'Dashboard',
       items: [
@@ -178,7 +195,8 @@ export default function More() {
 
   // PRACTICE — moved to the "Administration's old slot" (immediately
   // after Dashboard) per latest spec. Day-to-day clinical workflow.
-  if (user) {
+  // Super-owner is INTENTIONALLY skipped: they have no clinic to run.
+  if (user && !isSuperOwner) {
     const canSendMsg = !!((user as any).can_send_personal_messages || isOwner);
     if (isStaff) {
       const practiceItems: MenuItem[] = [
@@ -253,7 +271,9 @@ export default function More() {
   // ADMINISTRATION — moved BELOW Practice per latest spec. Clinic-
   // management surfaces (analytics, team, permissions, branding,
   // backups). Dashboard now lives in its own section above.
-  if (isStaff) {
+  // Super-owner is hidden from the entire clinic-mgmt block — they
+  // have a single "Platform Administration" entry above.
+  if (isStaff && !isSuperOwner) {
     const adminItems: MenuItem[] = [];
     if (isOwner || isFullAccess) {
       adminItems.push(

@@ -155,6 +155,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
 
   const isStaff = !!user && STAFF_ROLES.has((user.role as string) || '');
   const isOwner = ['super_owner', 'primary_owner', 'owner', 'partner'].includes((user?.role as string) || '');
+  const isSuperOwner = user?.role === 'super_owner';
   const isFullAccess = !!(user as any)?.dashboard_full_access;
 
   // Sidebar sections mirror the More-tab grouping so desktop + mobile
@@ -204,12 +205,16 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   ];
 
   // ── DASHBOARD (its own section, just below Main) ───────────────────
-  if (isStaff) {
+  // Super-owner gets a single "Platform Administration" link instead;
+  // they should NOT see clinical Dashboard tabs.
+  if (isSuperOwner) {
+    items.push({ label: 'Platform Administration', icon: 'shield-checkmark', route: '/permission-manager', ownerOnly: true, section: SEC_ADMIN });
+  } else if (isStaff) {
     items.push({ label: t('more.doctorDashboard') || 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true, section: SEC_DASH });
   }
 
-  // ── PRACTICE (clinical workflow — staff only) ──────────────────────
-  if (isStaff) {
+  // ── PRACTICE (clinical workflow — staff only, never super_owner) ──
+  if (isStaff && !isSuperOwner) {
     items.push({ label: t('more.consults') || 'Consults', icon: 'medkit', route: '/dashboard?tab=consultations', staffOnly: true, section: SEC_PRAC });
     items.push({ label: t('more.prescriptions') || 'Prescriptions', icon: 'document-text', route: '/dashboard?tab=prescriptions', staffOnly: true });
     items.push({ label: t('more.surgeries')     || 'Surgeries',     icon: 'medical-outline', route: '/dashboard?tab=surgeries', staffOnly: true });
