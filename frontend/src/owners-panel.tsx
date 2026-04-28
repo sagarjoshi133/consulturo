@@ -42,6 +42,7 @@ type Person = {
   name?: string;
   role?: string;
   picture?: string;
+  can_create_blog?: boolean;
 };
 
 export default function OwnersPanel() {
@@ -54,6 +55,7 @@ export default function OwnersPanel() {
   const [demos, setDemos] = useState<Person[]>([]);
   const [demoEmail, setDemoEmail] = useState('');
   const [demoName, setDemoName] = useState('');
+  const [demoRole, setDemoRole] = useState<'primary_owner' | 'patient'>('primary_owner');
   const [busy, setBusy] = useState(false);
 
   const loadAll = useCallback(async () => {
@@ -224,6 +226,24 @@ export default function OwnersPanel() {
               p={p}
               actionLabel={tier.canManagePrimaryOwners && p.role !== 'super_owner' ? 'Demote' : undefined}
               onAction={() => demotePrimary(p)}
+              blogToggle={
+                tier.isSuperOwner
+                  ? {
+                      value: !!p.can_create_blog || p.role === 'super_owner',
+                      disabled: p.role === 'super_owner',
+                      onChange: async (v: boolean) => {
+                        if (!p.user_id || p.role === 'super_owner') return;
+                        setBusy(true);
+                        try {
+                          await api.patch(`/admin/primary-owners/${p.user_id}/blog-perm`, { can_create_blog: v });
+                          await loadAll();
+                        } catch (e: any) {
+                          alertX('Failed', e?.response?.data?.detail || 'Could not update blog access');
+                        } finally { setBusy(false); }
+                      },
+                    }
+                  : undefined
+              }
             />
           ))
         )}
@@ -283,19 +303,43 @@ export default function OwnersPanel() {
         )}
       </View>
 
-      {/* ── DEMO PRIMARY OWNERS — super_owner only ── */}
+      {/* ── DEMO ACCOUNTS — super_owner only ── */}
       {tier.isSuperOwner && (
         <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Ionicons name="film" size={18} color="#D97706" />
-            <Text style={styles.sectionTitle}>Demo Primary Owners</Text>
+            <Text style={styles.sectionTitle}>Demo Accounts</Text>
             <View style={styles.countBadge}>
               <Text style={styles.countBadgeText}>{demos.length}</Text>
             </View>
           </View>
           <Text style={styles.sectionSub}>
-            Create read-only Primary Owner accounts for sales / onboarding demos. The user can navigate the entire app but every write is blocked server-side. Useful when showcasing ConsultUro to prospective clinics.
+            Read-only accounts for sales / onboarding demos. The user can browse the entire app but every write is blocked. Choose <Text style={{ fontWeight: '700' }}>Primary Owner</Text> for staff-side demos or <Text style={{ fontWeight: '700' }}>Patient</Text> to showcase the patient experience (auto-seeded with sample bookings, Rx & IPSS).
           </Text>
+
+          {/* Role chips */}
+          <View style={[styles.addRow, { marginBottom: 6 }]}>
+            {(['primary_owner', 'patient'] as const).map((r) => (
+              <TouchableOpacity
+                key={r}
+                onPress={() => setDemoRole(r)}
+                style={[
+                  styles.roleChip,
+                  demoRole === r && { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+                ]}
+              >
+                <Ionicons
+                  name={r === 'primary_owner' ? 'shield' : 'person'}
+                  size={13}
+                  color={demoRole === r ? '#fff' : COLORS.primary}
+                />
+                <Text style={[styles.roleChipText, demoRole === r && { color: '#fff' }]}>
+                  {r === 'primary_owner' ? 'Primary Owner' : 'Patient (with sample data)'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.addRow}>
             <TextInput
               value={demoEmail}
@@ -319,10 +363,20 @@ export default function OwnersPanel() {
                 if (!email || !email.includes('@')) { alertX('Invalid email'); return; }
                 setBusy(true);
                 try {
-                  await api.post('/admin/demo/create', { email, name: demoName.trim() || undefined });
+                  await api.post('/admin/demo/create', {
+                    email,
+                    name: demoName.trim() || undefined,
+                    role: demoRole,
+                    seed_sample_data: true,
+                  });
                   setDemoEmail(''); setDemoName('');
                   await loadAll();
-                  alertX('Demo created', `${email} is now a read-only Primary Owner.`);
+                  alertX(
+                    'Demo created',
+                    demoRole === 'patient'
+                      ? `${email} is now a read-only Patient with sample bookings, prescription & IPSS.`
+                      : `${email} is now a read-only Primary Owner.`
+                  );
                 } catch (e: any) {
                   alertX('Failed', e?.response?.data?.detail || 'Could not create demo');
                 } finally { setBusy(false); }
@@ -370,34 +424,52 @@ function PersonRow({
   p,
   actionLabel,
   onAction,
+  blogToggle,
 }: {
   p: Person;
   actionLabel?: string;
   onAction?: () => void;
+  blogToggle?: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean };
 }) {
   return (
-    <View style={styles.row}>
-      {p.picture ? (
-        <Image source={{ uri: p.picture }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, { backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' }]}>
-          <Text style={{ color: COLORS.primary, fontFamily: 'Manrope_700Bold' }}>
-            {(p.name || p.email || '?').trim().charAt(0).toUpperCase()}
+    <View>
+      <View style={styles.row}>
+        {p.picture ? (
+          <Image source={{ uri: p.picture }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: COLORS.primary, fontFamily: 'Manrope_700Bold' }}>
+              {(p.name || p.email || '?').trim().charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.rowName} numberOfLines={1}>
+            {roleEmoji(p.role)} {p.name || p.email || '—'}
+          </Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>
+            {p.email} · {roleLabel(p.role)}
           </Text>
         </View>
-      )}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.rowName} numberOfLines={1}>
-          {roleEmoji(p.role)} {p.name || p.email || '—'}
-        </Text>
-        <Text style={styles.rowMeta} numberOfLines={1}>
-          {p.email} · {roleLabel(p.role)}
-        </Text>
+        {actionLabel && onAction && (
+          <TouchableOpacity onPress={onAction} style={styles.demoteBtn}>
+            <Text style={styles.demoteBtnText}>{actionLabel}</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      {actionLabel && onAction && (
-        <TouchableOpacity onPress={onAction} style={styles.demoteBtn}>
-          <Text style={styles.demoteBtnText}>{actionLabel}</Text>
-        </TouchableOpacity>
+      {blogToggle && (
+        <View style={styles.permRow}>
+          <Text style={styles.permLabel}>
+            <Ionicons name="newspaper-outline" size={11} /> In-app Blog editor access
+          </Text>
+          <TouchableOpacity
+            onPress={() => !blogToggle.disabled && blogToggle.onChange(!blogToggle.value)}
+            style={[styles.permToggle, blogToggle.value && styles.permToggleOn, blogToggle.disabled && { opacity: 0.5 }]}
+            disabled={!!blogToggle.disabled}
+          >
+            <View style={[styles.permDot, blogToggle.value && styles.permDotOn]} />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -491,4 +563,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   demoteBtnText: { color: '#991B1B', fontSize: 11, fontFamily: 'Manrope_700Bold' },
+  roleChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, height: 32, borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.primary + '55',
+    backgroundColor: '#fff',
+  },
+  roleChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  permRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 8, paddingHorizontal: 6, gap: 8,
+  },
+  permLabel: { color: COLORS.textSecondary, fontSize: 11, flex: 1 },
+  permToggle: { width: 38, height: 22, borderRadius: 11, backgroundColor: '#E5E7EB', padding: 2, justifyContent: 'center' },
+  permToggleOn: { backgroundColor: COLORS.primary },
+  permDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+  permDotOn: { transform: [{ translateX: 16 }] },
 });

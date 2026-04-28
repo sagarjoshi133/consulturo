@@ -837,7 +837,8 @@ metadata:
     - "Broadcast pipeline VERIFIED end-to-end (18/19 backend tests PASS): create → approve → send → broadcast_inbox per-user records → in-app notifications. Push fan-out path is real but 0 tokens registered in test = sent_count 0."
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "FEATURE BUNDLE (4 items, retest backend) — (A) Granular partner-branding toggles in PATCH /api/clinic-settings: new fields partner_can_edit_main_photo, partner_can_edit_cover_photo, partner_can_edit_clinic_info, partner_can_edit_socials (all default true; legacy partner_can_edit_branding remains as fallback when granular flags are unset). When a partner attempts to update a field whose granular toggle is OFF, the backend must 403 with detail mentioning the granular gate name. (B) Blog editorial gate — POST/PUT/DELETE/GET /api/admin/blog now use new require_blog_writer dep: super_owner always allowed; primary_owner only if user.can_create_blog == true; everyone else (partner/doctor/etc) 403. New PATCH /api/admin/primary-owners/{user_id}/blog-perm endpoint (super_owner only) flips that flag. GET /api/admin/primary-owners now includes can_create_blog field. /api/me/tier now exposes can_create_blog and is_demo. (C) Demo accounts — POST /api/admin/demo/create now accepts role: 'primary_owner' | 'patient' (default primary_owner) plus seed_sample_data: bool (default true). When role='patient' and the email is new, the endpoint creates a placeholder users row with role=patient,is_demo=true AND seeds 1 booking + 1 prescription + 1 IPSS row tagged is_demo_seed:true. DELETE /api/admin/demo/{user_id} now sweeps those seeded rows (returns cleanup counts). Demo middleware still 403s every write for these accounts. (D) Force-desktop view = pure frontend, no backend test needed."
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -8180,3 +8181,270 @@ agent_communication:
       All other previously-passing 34 RBAC checks should continue to
       PASS since the middleware is a strict superset (no behavior
       change for non-demo accounts).
+
+  - agent: "main"
+    message: |
+      NEW BACKEND CHANGES (4-feature bundle) — please test.
+
+      ─── A. Granular partner-branding toggles ───
+      File: /app/backend/server.py (around the patch_clinic_settings handler).
+      Added Pydantic fields + clinic_settings defaults:
+        • partner_can_edit_main_photo
+        • partner_can_edit_cover_photo
+        • partner_can_edit_clinic_info     (clinic_name + clinic_website)
+        • partner_can_edit_socials         (all social_* handles)
+      The legacy `partner_can_edit_branding` flag is kept as a FALLBACK:
+      a granular flag that is None falls back to the umbrella's value.
+
+      Test as a PARTNER (you'll need to seed one):
+        1) Set partner_can_edit_main_photo=false in clinic_settings.
+           PATCH /api/clinic-settings { main_photo_url: "data:..." }
+           → 403, detail mentions `partner_can_edit_main_photo`.
+        2) Flip it back to true → same PATCH → 200.
+        3) Same for cover_photo / clinic_info / socials.
+      As a primary_owner: any granular toggle set/cleared via PATCH
+      /api/clinic-settings persists; partner restrictions skip.
+
+      ─── B. Blog editorial gate ───
+      File: /app/backend/server.py
+        • New `require_blog_writer` dep replaces `require_prescriber`
+          on /api/admin/blog (POST/PUT/DELETE/GET).
+        • New endpoint: PATCH /api/admin/primary-owners/{user_id}/blog-perm
+          body { can_create_blog: bool }   (super_owner only).
+        • GET /api/admin/primary-owners now returns `can_create_blog`.
+        • GET /api/me/tier now returns `can_create_blog` + `is_demo`.
+
+      Test:
+        • Super_owner POST /api/admin/blog → 200/created.
+        • Primary_owner WITHOUT can_create_blog flag POST /api/admin/blog
+          → 403 "Blog editorial access required…"
+        • Super_owner PATCH primary-owners/{id}/blog-perm
+          { can_create_blog: true } → 200.
+        • Same primary_owner POST /api/admin/blog → 200.
+        • Primary_owner cannot call PATCH primary-owners/{id}/blog-perm
+          (only super_owner) → 403.
+        • Doctor / partner POST /api/admin/blog → 403.
+
+      ─── C. Demo Patient (with sample-data seed) ───
+      File: /app/backend/server.py — the existing /api/admin/demo/*
+      endpoints have been extended.
+        • POST /api/admin/demo/create body: {
+            email, name?,
+            role: "primary_owner" | "patient"  (default primary_owner),
+            seed_sample_data: bool             (default true; patient only)
+          }
+        • When role="patient" and email is new, backend inserts a
+          placeholder users row + 1 booking + 1 prescription + 1 IPSS
+          row tagged `is_demo_seed: true` (linked by user_id).
+        • DELETE /api/admin/demo/{user_id} now also deletes those
+          seeded rows; response includes a `cleanup` count summary.
+        • Middleware still blocks all writes from is_demo:true users.
+
+      Test:
+        • POST /api/admin/demo/create { email: "patient1@ex.com",
+          role: "patient", seed_sample_data: true } as super_owner →
+          200, response has user_id + seeded:{bookings:1,prescriptions:1,ipss:1}.
+        • db.bookings.find({user_id, is_demo_seed:true}).count() == 1
+          (and similarly for prescriptions / ipss_submissions).
+        • Issue a session token for that user_id; GET /api/auth/me →
+          role=patient, is_demo=true.
+        • POST /api/bookings as that user → 403 (middleware).
+        • DELETE /api/admin/demo/{user_id} → 200, cleanup counts non-zero.
+        • Bookings/Rx/IPSS rows seeded earlier are now gone.
+
+      ─── D. Force-desktop view ───
+      Frontend only — no backend test required.
+
+      All previously-passing 18/18 demo-middleware + 34/34 RBAC tests
+      should continue to PASS unchanged. Health smoke /api/health 200.
+
+
+backend_bundle_apr28:
+  - task: "A. Granular partner-branding toggles in PATCH /api/clinic-settings"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (22/22) for the partner-branding granular gate
+          via /app/backend_test_bundle_apr28.py against http://localhost:8001.
+          Seeded a partner user via mongosh
+          (user_id=u_test_partner_<rand>, role=partner, session token).
+          For each of the 4 granular toggles, verified the full
+          off→403→on→200 cycle:
+            • partner_can_edit_main_photo  → blocks main_photo_url
+            • partner_can_edit_cover_photo → blocks cover_photo_url
+            • partner_can_edit_clinic_info → blocks clinic_name
+            • partner_can_edit_socials     → blocks social_facebook
+          When a granular toggle is FALSE, partner PATCH returns 403 with
+          detail string explicitly containing the granular gate key (per
+          server.py:7841 — "Partners are not permitted to edit this section
+          ({gate_key})"). Flipping the toggle back to TRUE re-allows the
+          partner write (200). Partner /auth/me round-trips role=partner.
+          Cleanup: partner user + session + clinic_settings toggles reset
+          to default true.
+
+  - task: "B. Blog editorial gate (require_blog_writer) + PATCH /api/admin/primary-owners/{id}/blog-perm"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (14/14) for the blog editorial gate.
+          1. Doctor (test_doc_1776771431524) POST /api/admin/blog → 403
+             with detail "Blog editorial access required. The Super Owner
+             must grant this privilege." (server.py:991). ✅
+          2. Primary_owner sagar WITHOUT can_create_blog flag set, POST
+             /api/admin/blog → 403 (gate enforced). ✅
+          3. Seeded a super_owner via mongosh
+             (email=app.consulturo@gmail.com, role=super_owner, session
+             token). GET /api/admin/primary-owners → 200; sagar's row
+             present with `can_create_blog: false`. ✅
+          4. Super_owner PATCH /api/admin/primary-owners/{sagar_uid}/
+             blog-perm {can_create_blog:true} → 200, response includes
+             can_create_blog:true. db.users + db.team_invites both updated
+             (verified by subsequent /me/tier check). ✅
+          5. GET /api/me/tier as sagar → can_create_blog:true,
+             is_demo:false. Both new flags exposed exactly per spec. ✅
+          6. Sagar POST /api/admin/blog → 200; response contains
+             post_id starting "ap_". The post was deleted in cleanup. ✅
+          7. Primary_owner sagar PATCH /api/admin/primary-owners/{any}/
+             blog-perm → 403 "Super owner access required" (require_super_owner
+             enforced). ✅
+          Cleanup: super_owner user + session + team_invite removed;
+          sagar's can_create_blog flag unset on both db.users and
+          db.team_invites; the test blog post deleted; audit log rows
+          for blog_perm_change purged. End-state matches pre-test.
+
+  - task: "C. Demo Patient with sample-data seed (POST /api/admin/demo/create role=patient + DELETE cleanup)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (24/24) for the demo-patient seed lifecycle.
+          1. As super_owner, POST /api/admin/demo/create
+             {email:'demo-patient-<ts>@example.com', name:'Demo Pat',
+              role:'patient', seed_sample_data:true} → 200.
+             Response: user_id=u_demo_<10hex>, is_demo:true, role:'patient',
+             seeded:{bookings:1, prescriptions:1, ipss:1,
+             registration_no:<str>}. ✅
+          2. mongosh verification:
+              • db.users.findOne({email}) → role:'patient', is_demo:true,
+                user_id matches.
+              • db.bookings.countDocuments({user_id, is_demo_seed:true}) ==1
+              • db.prescriptions.countDocuments({user_id, is_demo_seed:true}) ==1
+              • db.ipss_submissions.countDocuments({user_id, is_demo_seed:true}) ==1
+              All four queries returned the expected counts. ✅
+          3. Inserted user_sessions row {session_token, user_id, +7d expiry};
+             GET /api/auth/me with that Bearer → 200 with is_demo:true and
+             role:'patient'. ✅
+          4. As demo patient, POST /api/bookings (minimal valid body) →
+             403 with body {detail:"Demo mode — actions are disabled in
+             this preview account.", demo:true}. Demo middleware still
+             intercepts every write for is_demo accounts. ✅
+          5. As demo patient, GET /api/bookings/me → 200 (reads
+             unaffected by middleware). ✅
+          6. As super_owner, DELETE /api/admin/demo/{user_id} → 200.
+             Response cleanup counts: {bookings:1, prescriptions:1,
+             ipss:1}. ✅
+          7. mongosh post-delete: bookings/prescriptions/ipss_submissions
+             counts for that user_id with is_demo_seed:true are all 0. ✅
+          8. db.users.findOne({user_id}) shows role:'patient',
+             is_demo:false (revoke clears the demo flag, demotes to
+             patient — server.py:8033-8035). ✅
+          Cleanup: demo user record + sessions + audit rows + any
+          residual bookings/Rx/IPSS for that uid purged. End-state clean.
+
+  - task: "D. Smoke regression — /api/health + /backend_test_demo_middleware.py + /backend_test_role_hierarchy.py"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS.
+          • GET /api/health → 200 {"ok":true,"db":"connected"}.
+          • Re-ran /app/backend_test_demo_middleware.py → exit 0
+            (18/18 still green, no regressions from the new endpoints).
+          • Re-ran /app/backend_test_role_hierarchy.py → exit 0
+            (34/34 still green; partner promote/demote, primary-owner
+            management gates, audit log all unchanged).
+          No 5xx, no auth bypasses, no data leakage.
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      4-feature backend bundle: 69/69 ASSERTIONS PASS via
+      /app/backend_test_bundle_apr28.py against http://localhost:8001.
+      Plus prior /app/backend_test_demo_middleware.py (18/18) and
+      /app/backend_test_role_hierarchy.py (34/34) regressions still
+      green when re-run.
+
+      A. Partner-branding granular toggles ✅
+         • All 4 toggles (main_photo, cover_photo, clinic_info, socials)
+           verified with the off→403→on→200 cycle.
+         • 403 detail string contains the granular gate key per spec.
+         • Legacy partner_can_edit_branding fallback preserved (only
+           consulted when granular flag is None — code path
+           server.py:7820-7824).
+         • Partners cannot self-toggle their own permissions
+           (payload.pop "partner_can_*" at server.py:7844-7846).
+
+      B. Blog editorial gate ✅
+         • require_blog_writer (server.py:983) gates POST/PUT/DELETE/GET
+           /api/admin/blog. Super-owner always allowed; primary_owner
+           only when can_create_blog:true; doctor/partner/etc → 403.
+         • PATCH /api/admin/primary-owners/{uid}/blog-perm is
+           super_owner-only and persists on both db.users AND
+           db.team_invites (survives sign-out/sign-in).
+         • GET /api/admin/primary-owners includes can_create_blog;
+           super_owner row is implicitly true.
+         • /api/me/tier exposes can_create_blog + is_demo per spec.
+
+      C. Demo Patient + sample-data seed ✅
+         • POST /api/admin/demo/create role='patient' with
+           seed_sample_data:true returns user_id, is_demo:true, role:
+           'patient', seeded:{bookings:1, prescriptions:1, ipss:1,
+           registration_no}. mongosh confirms each row tagged
+           is_demo_seed:true.
+         • Demo middleware still 403s every write (POST /api/bookings
+           returns {demo:true, detail:"Demo mode — actions are
+           disabled..."}). Reads unaffected.
+         • DELETE /api/admin/demo/{uid} returns cleanup counts and
+           sweeps the seeded rows; user record demoted to role:
+           'patient', is_demo:false.
+
+      D. Smoke + regressions: /api/health 200; both prior backend test
+         scripts re-run cleanly. No 5xx, no auth bypasses.
+
+      Cleanup: every test fixture removed (partner user/session,
+      super_owner user/session/team_invite, demo user/session, blog
+      post, audit_log entries for the test, sagar's can_create_blog
+      flag unset, clinic_settings granular toggles reset to default
+      true). DB is left clean.
+
+      Re-runnable test artifact at /app/backend_test_bundle_apr28.py.
+      Force-desktop view (D) is frontend-only and was not exercised
+      from this backend test bundle.
+
+

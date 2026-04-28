@@ -109,59 +109,87 @@ export default function BrandingPanel() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
       {/* Photos */}
-      <Text style={styles.sectionTitle}>Photos</Text>
-      <View style={styles.photoRow}>
-        <TouchableOpacity onPress={() => pickImage('main_photo_url')} style={styles.photoBox}>
-          {s.main_photo_url ? (
-            <Image source={{ uri: s.main_photo_url }} style={styles.mainPhoto} />
-          ) : (
-            <View style={[styles.mainPhoto, styles.photoEmpty]}>
-              <Ionicons name="person" size={32} color={COLORS.textSecondary} />
-              <Text style={styles.photoLabel}>Main photo</Text>
+      {(() => {
+        // Partner UI gate: hide each section if the partner toggle is off.
+        // Owners always see everything. We compute here for inline use below.
+        const isPartner = tier.isPartner;
+        const showMain = !isPartner || s.partner_can_edit_main_photo !== false && (s.partner_can_edit_main_photo !== undefined || s.partner_can_edit_branding !== false);
+        const showCover = !isPartner || s.partner_can_edit_cover_photo !== false && (s.partner_can_edit_cover_photo !== undefined || s.partner_can_edit_branding !== false);
+        if (!showMain && !showCover) return null;
+        return (
+          <>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <View style={styles.photoRow}>
+              {showMain && (
+                <TouchableOpacity onPress={() => pickImage('main_photo_url')} style={styles.photoBox}>
+                  {s.main_photo_url ? (
+                    <Image source={{ uri: s.main_photo_url }} style={styles.mainPhoto} />
+                  ) : (
+                    <View style={[styles.mainPhoto, styles.photoEmpty]}>
+                      <Ionicons name="person" size={32} color={COLORS.textSecondary} />
+                      <Text style={styles.photoLabel}>Main photo</Text>
+                    </View>
+                  )}
+                  <Text style={styles.photoCaption}>Tap to change</Text>
+                </TouchableOpacity>
+              )}
+              {showCover && (
+                <TouchableOpacity onPress={() => pickImage('cover_photo_url')} style={[styles.photoBox, { flex: 1 }]}>
+                  {s.cover_photo_url ? (
+                    <Image source={{ uri: s.cover_photo_url }} style={styles.coverPhoto} />
+                  ) : (
+                    <View style={[styles.coverPhoto, styles.photoEmpty]}>
+                      <Ionicons name="image" size={28} color={COLORS.textSecondary} />
+                      <Text style={styles.photoLabel}>Cover photo</Text>
+                    </View>
+                  )}
+                  <Text style={styles.photoCaption}>Tap to change</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          )}
-          <Text style={styles.photoCaption}>Tap to change</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => pickImage('cover_photo_url')} style={[styles.photoBox, { flex: 1 }]}>
-          {s.cover_photo_url ? (
-            <Image source={{ uri: s.cover_photo_url }} style={styles.coverPhoto} />
-          ) : (
-            <View style={[styles.coverPhoto, styles.photoEmpty]}>
-              <Ionicons name="image" size={28} color={COLORS.textSecondary} />
-              <Text style={styles.photoLabel}>Cover photo</Text>
+          </>
+        );
+      })()}
+
+      {/* About Doctor — partners gated via partner_can_edit_about_doctor */}
+      {(!tier.isPartner || s.partner_can_edit_about_doctor !== false) && (
+        <>
+          <Text style={styles.sectionTitle}>About the Doctor</Text>
+          <Field label="Doctor name" v={s.doctor_name} on={(v) => set('doctor_name', v)} placeholder="Dr. Sagar Joshi" />
+          <Field label="Title" v={s.doctor_title} on={(v) => set('doctor_title', v)} placeholder="Consultant Urologist" />
+          <Field label="Tagline" v={s.doctor_tagline} on={(v) => set('doctor_tagline', v)} placeholder="Restoring health, dignity & confidence" />
+          <Field label="Short bio" v={s.doctor_short_bio} on={(v) => set('doctor_short_bio', v)} placeholder="MBBS, MS, DrNB Urology · 10+ yrs..." multiline />
+        </>
+      )}
+
+      {/* Clinic info — partners gated via partner_can_edit_clinic_info */}
+      {(!tier.isPartner || s.partner_can_edit_clinic_info !== false && (s.partner_can_edit_clinic_info !== undefined || s.partner_can_edit_branding !== false)) && (
+        <>
+          <Text style={styles.sectionTitle}>Clinic</Text>
+          <Field label="Clinic name" v={s.clinic_name} on={(v) => set('clinic_name', v)} placeholder="My Urology Practice" />
+          <Field label="Website" v={s.clinic_website} on={(v) => set('clinic_website', v)} placeholder="https://yourwebsite.com" autoCapitalize="none" />
+        </>
+      )}
+
+      {/* Socials — partners gated via partner_can_edit_socials */}
+      {(!tier.isPartner || s.partner_can_edit_socials !== false && (s.partner_can_edit_socials !== undefined || s.partner_can_edit_branding !== false)) && (
+        <>
+          <Text style={styles.sectionTitle}>Social Media</Text>
+          {SOCIALS.map((sc) => (
+            <View key={sc.key} style={styles.socRow}>
+              <Ionicons name={sc.icon} size={18} color={COLORS.primary} />
+              <TextInput
+                style={styles.socInput}
+                value={s[sc.key] || ''}
+                onChangeText={(v) => set(sc.key, v)}
+                placeholder={sc.placeholder}
+                autoCapitalize="none"
+                keyboardType={sc.key === 'social_whatsapp' ? 'phone-pad' : 'default'}
+              />
             </View>
-          )}
-          <Text style={styles.photoCaption}>Tap to change</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* About Doctor */}
-      <Text style={styles.sectionTitle}>About the Doctor</Text>
-      <Field label="Doctor name" v={s.doctor_name} on={(v) => set('doctor_name', v)} placeholder="Dr. Sagar Joshi" />
-      <Field label="Title" v={s.doctor_title} on={(v) => set('doctor_title', v)} placeholder="Consultant Urologist" />
-      <Field label="Tagline" v={s.doctor_tagline} on={(v) => set('doctor_tagline', v)} placeholder="Restoring health, dignity & confidence" />
-      <Field label="Short bio" v={s.doctor_short_bio} on={(v) => set('doctor_short_bio', v)} placeholder="MBBS, MS, DrNB Urology · 10+ yrs..." multiline />
-
-      {/* Clinic */}
-      <Text style={styles.sectionTitle}>Clinic</Text>
-      <Field label="Clinic name" v={s.clinic_name} on={(v) => set('clinic_name', v)} placeholder="My Urology Practice" />
-      <Field label="Website" v={s.clinic_website} on={(v) => set('clinic_website', v)} placeholder="https://yourwebsite.com" autoCapitalize="none" />
-
-      {/* Socials */}
-      <Text style={styles.sectionTitle}>Social Media</Text>
-      {SOCIALS.map((sc) => (
-        <View key={sc.key} style={styles.socRow}>
-          <Ionicons name={sc.icon} size={18} color={COLORS.primary} />
-          <TextInput
-            style={styles.socInput}
-            value={s[sc.key] || ''}
-            onChangeText={(v) => set(sc.key, v)}
-            placeholder={sc.placeholder}
-            autoCapitalize="none"
-            keyboardType={sc.key === 'social_whatsapp' ? 'phone-pad' : 'default'}
-          />
-        </View>
-      ))}
+          ))}
+        </>
+      )}
 
       {/* Partner toggles — only primary_owner/super_owner see these */}
       {(tier.isPrimaryOwner || tier.isSuperOwner) && (
@@ -169,23 +197,32 @@ export default function BrandingPanel() {
           <Text style={styles.sectionTitle}>Partner Access</Text>
           <Text style={styles.help}>Toggle which sections Partners are allowed to edit. Owners can always edit everything.</Text>
           {[
-            ['partner_can_edit_branding', 'Photos, social handles, clinic name'],
+            ['partner_can_edit_main_photo', 'Main photo'],
+            ['partner_can_edit_cover_photo', 'Cover photo'],
+            ['partner_can_edit_clinic_info', 'Clinic name & website'],
+            ['partner_can_edit_socials', 'Social media handles'],
             ['partner_can_edit_about_doctor', 'About-Doctor section'],
             ['partner_can_edit_blog', 'External blog links'],
             ['partner_can_edit_videos', 'Videos library'],
             ['partner_can_edit_education', 'Education content'],
             ['partner_can_manage_broadcasts', 'Broadcast announcements'],
-          ].map(([k, label]) => (
-            <View key={k} style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>{label}</Text>
-              <TouchableOpacity
-                onPress={() => { const v = !s[k]; set(k, v); save({ [k]: v }); }}
-                style={[styles.toggle, s[k] && styles.toggleOn]}
-              >
-                <View style={[styles.toggleDot, s[k] && styles.toggleDotOn]} />
-              </TouchableOpacity>
-            </View>
-          ))}
+          ].map(([k, label]) => {
+            // Default ON if the granular flag isn't yet set in the doc
+            // (matches backend fallback to partner_can_edit_branding=true).
+            const cur = s[k];
+            const on = cur === undefined ? true : !!cur;
+            return (
+              <View key={k} style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>{label}</Text>
+                <TouchableOpacity
+                  onPress={() => { const v = !on; set(k, v); save({ [k]: v }); }}
+                  style={[styles.toggle, on && styles.toggleOn]}
+                >
+                  <View style={[styles.toggleDot, on && styles.toggleDotOn]} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </>
       )}
 

@@ -972,6 +972,26 @@ async def is_prescriber(user: Dict[str, Any]) -> bool:
     return bool(custom)
 
 
+# ── Blog write-access gate ─────────────────────────────────────────
+# Default policy: ONLY super_owner can author / publish / approve /
+# delete blog posts. Super-owner can grant the privilege to a specific
+# primary_owner via PATCH /api/admin/primary-owners/{id}/blog-perm —
+# that toggles `can_create_blog: true` on that user record.
+#
+# Partners and lower roles are NEVER allowed (the prior pending-review
+# workflow for doctors is replaced by editorial gating at the source).
+async def require_blog_writer(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for super_owner OR primary_owner with `can_create_blog`."""
+    if is_super_owner(user):
+        return user
+    if user.get("role") == "primary_owner" and bool(user.get("can_create_blog")):
+        return user
+    raise HTTPException(
+        status_code=403,
+        detail="Blog editorial access required. The Super Owner must grant this privilege.",
+    )
+
+
 # ============================================================================
 # /auth-callback BRIDGE — for native APK installs + production deploys
 # ============================================================================
@@ -4884,16 +4904,13 @@ def _admin_to_html(text: str) -> str:
 
 
 @app.post("/api/admin/blog")
-async def admin_create_post(body: BlogPostBody, user=Depends(require_prescriber)):
-    """
-    Owner → posts are auto-published.
-    Doctors → posts are saved as 'pending_review' and visible to owner for approval.
-    """
+async def admin_create_post(body: BlogPostBody, user=Depends(require_blog_writer)):
+    """Super-owner (and any primary_owner explicitly granted
+    `can_create_blog`) can create blog posts. Posts auto-publish
+    immediately — review workflow no longer required since only
+    editors can author. Other roles get a 403 from the gate."""
     post_id = f"ap_{uuid.uuid4().hex[:10]}"
-    is_owner = user.get("role") == "owner"
-    status = body.status or ("published" if is_owner else "pending_review")
-    if not is_owner and status == "published":
-        status = "pending_review"
+    status = body.status or "published"
     doc = {
         "post_id": post_id,
         "title": body.title,
@@ -4917,18 +4934,16 @@ async def admin_create_post(body: BlogPostBody, user=Depends(require_prescriber)
 
 
 @app.put("/api/admin/blog/{post_id}")
-async def admin_update_post(post_id: str, body: BlogPostBody, user=Depends(require_prescriber)):
+async def admin_update_post(post_id: str, body: BlogPostBody, user=Depends(require_blog_writer)):
     existing = await db.blog_posts.find_one({"post_id": post_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
-    is_owner = user.get("role") == "owner"
-    # Only the author (if doctor) or owner can update
-    if not is_owner and existing.get("author_user_id") != user["user_id"]:
+    # Super-owner can edit any post; primary_owner editors can edit
+    # their own. Stays simple now that authoring is editor-only.
+    is_super = is_super_owner(user)
+    if not is_super and existing.get("author_user_id") != user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only edit your own posts")
-    # Non-owner editing a published post pushes it back to pending review
-    new_status = body.status or existing.get("status") or ("published" if is_owner else "pending_review")
-    if not is_owner and new_status == "published":
-        new_status = "pending_review"
+    new_status = body.status or existing.get("status") or "published"
     updates = {
         "title": body.title,
         "category": body.category or "Urology",
@@ -4968,12 +4983,12 @@ async def admin_review_post(post_id: str, body: BlogReviewBody, user=Depends(req
 
 
 @app.delete("/api/admin/blog/{post_id}")
-async def admin_delete_post(post_id: str, user=Depends(require_prescriber)):
+async def admin_delete_post(post_id: str, user=Depends(require_blog_writer)):
     existing = await db.blog_posts.find_one({"post_id": post_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
-    is_owner = user.get("role") == "owner"
-    if not is_owner and existing.get("author_user_id") != user["user_id"]:
+    is_super = is_super_owner(user)
+    if not is_super and existing.get("author_user_id") != user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only delete your own posts")
     await db.blog_posts.delete_one({"post_id": post_id})
     return {"ok": True}
@@ -4982,11 +4997,11 @@ async def admin_delete_post(post_id: str, user=Depends(require_prescriber)):
 @app.get("/api/admin/blog")
 async def admin_list_posts(
     status: Optional[str] = None,
-    user=Depends(require_prescriber),
+    user=Depends(require_blog_writer),
 ):
     q: Dict[str, Any] = {}
-    is_owner = user.get("role") == "owner"
-    if not is_owner:
+    is_super = is_super_owner(user)
+    if not is_super:
         q["author_user_id"] = user["user_id"]
     if status:
         q["status"] = status
@@ -6398,7 +6413,8 @@ async def demote_primary_owner(user_id: str, user=Depends(require_super_owner)):
 @app.get("/api/admin/primary-owners")
 async def list_primary_owners(user=Depends(require_owner)):
     """List all primary_owners + super_owner. Visible to anyone in the
-    owner tier."""
+    owner tier. Includes `can_create_blog` so the super-owner UI can
+    render a per-row toggle."""
     rows: List[Dict[str, Any]] = []
     async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
         rows.append({
@@ -6407,8 +6423,47 @@ async def list_primary_owners(user=Depends(require_owner)):
             "name": u.get("name"),
             "role": u.get("role"),
             "picture": u.get("picture"),
+            "can_create_blog": bool(u.get("can_create_blog")) or u.get("role") == "super_owner",
         })
     return {"items": rows}
+
+
+class BlogPermBody(BaseModel):
+    can_create_blog: bool
+
+
+@app.patch("/api/admin/primary-owners/{user_id}/blog-perm")
+async def set_primary_owner_blog_perm(
+    user_id: str, body: BlogPermBody, user=Depends(require_super_owner)
+):
+    """Super-owner-only. Grant / revoke blog editorial access for a
+    specific primary_owner. Super_owner is always allowed regardless of
+    this flag (immutable)."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") != "primary_owner":
+        raise HTTPException(status_code=400, detail="Target must be a primary_owner")
+    val = bool(body.can_create_blog)
+    await db.users.update_one({"user_id": user_id}, {"$set": {"can_create_blog": val}})
+    # Persist on team_invites too so the flag survives sign-out / sign-in.
+    email_l = (target.get("email") or "").lower()
+    if email_l:
+        await db.team_invites.update_one(
+            {"email": email_l}, {"$set": {"can_create_blog": val}}, upsert=True
+        )
+    try:
+        await db.audit_log.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "kind": "blog_perm_change",
+            "target_email": email_l,
+            "target_user_id": user_id,
+            "new_value": val,
+            "actor_email": (user.get("email") or "").lower(),
+        })
+    except Exception:
+        pass
+    return {"ok": True, "user_id": user_id, "can_create_blog": val}
 
 
 @app.post("/api/admin/partners/promote")
@@ -6449,6 +6504,9 @@ async def get_my_tier(user=Depends(require_user)):
     """Flat boolean flags describing the current user's tier so the
     frontend can render role-gated UI without re-implementing the
     hierarchy logic. Always safe to call."""
+    can_blog = is_super_owner(user) or (
+        user.get("role") == "primary_owner" and bool(user.get("can_create_blog"))
+    )
     return {
         "role": user.get("role"),
         "is_super_owner": is_super_owner(user),
@@ -6457,6 +6515,8 @@ async def get_my_tier(user=Depends(require_user)):
         "is_owner_tier": is_owner_or_partner(user),
         "can_manage_partners": is_primary_or_super(user),
         "can_manage_primary_owners": is_super_owner(user),
+        "can_create_blog": can_blog,
+        "is_demo": bool(user.get("is_demo")),
     }
 
 
@@ -7674,13 +7734,21 @@ class ClinicSettingsPatch(BaseModel):
     social_youtube: Optional[str] = None
     social_whatsapp: Optional[str] = None
     external_blog_links: Optional[List[Dict[str, str]]] = None  # [{title,url}]
-    # Partner-permission toggles (controlled by primary_owner only)
+    # Partner-permission toggles (controlled by primary_owner only).
+    # `partner_can_edit_branding` is the legacy umbrella toggle (still
+    # honoured for backwards compat as a fallback). New granular flags
+    # below override it on a per-section basis.
     partner_can_edit_branding: Optional[bool] = None
     partner_can_edit_about_doctor: Optional[bool] = None
     partner_can_edit_blog: Optional[bool] = None
     partner_can_edit_videos: Optional[bool] = None
     partner_can_edit_education: Optional[bool] = None
     partner_can_manage_broadcasts: Optional[bool] = None
+    # Granular branding sub-toggles (Primary-Owner-only). Default True.
+    partner_can_edit_main_photo: Optional[bool] = None
+    partner_can_edit_cover_photo: Optional[bool] = None
+    partner_can_edit_clinic_info: Optional[bool] = None       # clinic_name + website
+    partner_can_edit_socials: Optional[bool] = None           # all social_* handles
 
 
 _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
@@ -7706,6 +7774,12 @@ _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
     "partner_can_edit_videos": True,
     "partner_can_edit_education": True,
     "partner_can_manage_broadcasts": True,
+    # Granular sub-toggles default to True (matches legacy "branding"
+    # umbrella) — primary_owner switches them off on a per-section basis.
+    "partner_can_edit_main_photo": True,
+    "partner_can_edit_cover_photo": True,
+    "partner_can_edit_clinic_info": True,
+    "partner_can_edit_socials": True,
 }
 
 
@@ -7739,18 +7813,33 @@ async def patch_clinic_settings(
     # primary_owner has unlocked for them. Primary/super always pass.
     if user.get("role") == "partner":
         cur = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
-        gates = {
-            "partner_can_edit_branding": ["main_photo_url", "cover_photo_url", "clinic_name", "clinic_website",
-                                           "social_facebook", "social_instagram", "social_twitter",
-                                           "social_linkedin", "social_youtube", "social_whatsapp"],
-            "partner_can_edit_about_doctor": ["doctor_name", "doctor_title", "doctor_tagline", "doctor_short_bio"],
-            "partner_can_edit_blog": ["external_blog_links"],
+        merged = {**_DEFAULT_CLINIC_SETTINGS, **cur}
+        # Helper: granular flag if explicitly set, else fall back to the
+        # legacy umbrella `partner_can_edit_branding` so existing data
+        # behaves identically until a primary_owner saves new toggles.
+        def gate(fine_key: str) -> bool:
+            v = merged.get(fine_key)
+            if v is None:
+                return bool(merged.get("partner_can_edit_branding"))
+            return bool(v)
+        gates: Dict[str, List[str]] = {
+            "partner_can_edit_main_photo":   ["main_photo_url"],
+            "partner_can_edit_cover_photo":  ["cover_photo_url"],
+            "partner_can_edit_clinic_info":  ["clinic_name", "clinic_website"],
+            "partner_can_edit_socials":      ["social_facebook", "social_instagram",
+                                               "social_twitter", "social_linkedin",
+                                               "social_youtube", "social_whatsapp"],
+            "partner_can_edit_about_doctor": ["doctor_name", "doctor_title",
+                                               "doctor_tagline", "doctor_short_bio"],
+            "partner_can_edit_blog":         ["external_blog_links"],
         }
-        for gate, fields in gates.items():
+        for gate_key, fields in gates.items():
             if any(k in payload for k in fields):
-                allowed = bool({**_DEFAULT_CLINIC_SETTINGS, **cur}.get(gate))
-                if not allowed:
-                    raise HTTPException(status_code=403, detail=f"Partners are not permitted to edit this section ({gate}). Ask the Primary Owner to enable it.")
+                if not gate(gate_key):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Partners are not permitted to edit this section ({gate_key}). Ask the Primary Owner to enable it.",
+                    )
         # Partners can NEVER toggle their own permissions.
         for k in list(payload.keys()):
             if k.startswith("partner_can_"):
@@ -7765,52 +7854,177 @@ async def patch_clinic_settings(
     return {"ok": True, "updated": len(payload)}
 
 
-# ── Demo Primary Owner ────────────────────────────────────────────
+# ── Demo accounts (Primary Owner + Patient) ───────────────────────
 class CreateDemoBody(BaseModel):
     email: str
     name: Optional[str] = None
+    role: Optional[str] = "primary_owner"  # "primary_owner" or "patient"
+    seed_sample_data: Optional[bool] = True  # patient only — pre-fill bookings/Rx/IPSS
+
+
+async def _seed_demo_patient_data(user_id: str, email: str, name: str) -> Dict[str, int]:
+    """Pre-populate the patient demo account with one fake booking,
+    one fake prescription, and one fake IPSS submission so the demo
+    "looks rich" the moment they sign in. Returns a count summary."""
+    now = datetime.now(timezone.utc)
+    phone = "+910000000001"
+    # Reg no — try to allocate via the helper if present; else fall
+    # back to a deterministic-ish value so the demo stays stable.
+    try:
+        reg_no = await allocate_reg_no(phone, name)  # type: ignore[name-defined]
+    except Exception:
+        reg_no = "001" + now.strftime("%d%m%y")
+
+    # 1) Booking — completed, day before yesterday so it lands in history.
+    booking_id = f"bk_demo_{uuid.uuid4().hex[:8]}"
+    booking = {
+        "booking_id": booking_id,
+        "user_id": user_id,
+        "registration_no": reg_no,
+        "patient_name": name,
+        "patient_phone": phone,
+        "patient_email": email,
+        "patient_age": 52,
+        "patient_gender": "Male",
+        "patient_address": "Demo address · for preview only",
+        "consultation_type": "in_clinic",
+        "preferred_date": (now - timedelta(days=2)).date().isoformat(),
+        "preferred_time": "10:30",
+        "symptoms": "Mild urinary urgency · sample data for demo preview.",
+        "status": "completed",
+        "created_at": (now - timedelta(days=3)).isoformat(),
+        "updated_at": now.isoformat(),
+        "is_demo_seed": True,
+    }
+    await db.bookings.insert_one(booking)
+
+    # 2) Prescription — linked to the same patient.
+    rx_id = f"rx_demo_{uuid.uuid4().hex[:8]}"
+    rx = {
+        "prescription_id": rx_id,
+        "user_id": user_id,
+        "registration_no": reg_no,
+        "patient_name": name,
+        "patient_phone": phone,
+        "patient_age": 52,
+        "patient_gender": "Male",
+        "diagnosis": "Benign Prostatic Hyperplasia (sample)",
+        "medications": [
+            {"name": "Tamsulosin", "dosage": "0.4 mg", "frequency": "Once at night", "duration": "30 days"},
+            {"name": "Solifenacin", "dosage": "5 mg", "frequency": "Once a day", "duration": "30 days"},
+        ],
+        "investigations_advised": ["Urine routine", "Uroflowmetry"],
+        "advice": "Avoid late-night fluids · review after 4 weeks. (DEMO sample — not real medical advice.)",
+        "follow_up_days": 30,
+        "doctor_name": "Demo Doctor",
+        "created_at": (now - timedelta(days=2)).isoformat(),
+        "is_demo_seed": True,
+    }
+    await db.prescriptions.insert_one(rx)
+
+    # 3) IPSS — sample score.
+    ipss_id = f"ipss_demo_{uuid.uuid4().hex[:8]}"
+    ipss = {
+        "ipss_id": ipss_id,
+        "user_id": user_id,
+        "registration_no": reg_no,
+        "patient_name": name,
+        "scores": {
+            "incomplete_emptying": 2, "frequency": 3, "intermittency": 1,
+            "urgency": 2, "weak_stream": 3, "straining": 1, "nocturia": 2,
+        },
+        "total_score": 14,
+        "qol_score": 3,
+        "severity": "moderate",
+        "submitted_at": (now - timedelta(days=5)).isoformat(),
+        "is_demo_seed": True,
+    }
+    await db.ipss_submissions.insert_one(ipss)
+
+    return {"bookings": 1, "prescriptions": 1, "ipss": 1, "registration_no": reg_no}
 
 
 @app.post("/api/admin/demo/create")
-async def create_demo_primary_owner(body: CreateDemoBody, user=Depends(require_super_owner)):
-    """Super-owner-only. Creates a primary_owner account with
-    `is_demo: true`. The flag causes every write endpoint to short-
-    circuit with a friendly 403 — the user can navigate the entire
-    UI but their submits are no-ops. Used for sales / onboarding
-    demos.
+async def create_demo_account(body: CreateDemoBody, user=Depends(require_super_owner)):
+    """Super-owner-only. Creates a demo account (`is_demo: true`) with
+    the requested role. The middleware blocks every write request from
+    demo accounts (regardless of role) — they can navigate the entire
+    UI but submits short-circuit with a friendly 403.
+
+    role:
+      • "primary_owner" (default) → demo for sales / staff onboarding.
+      • "patient"                  → demo of the patient experience.
+                                     If `seed_sample_data` (default true)
+                                     a fake booking / Rx / IPSS row are
+                                     inserted so the demo looks rich.
     """
     email_l = (body.email or "").strip().lower()
     if not email_l or "@" not in email_l:
         raise HTTPException(status_code=400, detail="Valid email required")
-    perms = {
-        "role": "primary_owner",
+    role = (body.role or "primary_owner").strip().lower()
+    if role not in {"primary_owner", "patient"}:
+        raise HTTPException(status_code=400, detail="role must be 'primary_owner' or 'patient'")
+    name = (body.name or email_l.split("@")[0].title())
+    perms: Dict[str, Any] = {
+        "role": role,
         "is_demo": True,
-        "name": body.name or email_l.split("@")[0].title(),
-        "can_approve_bookings": True,
-        "can_approve_broadcasts": True,
-        "can_send_personal_messages": True,
+        "name": name,
     }
+    if role == "primary_owner":
+        perms.update({
+            "can_approve_bookings": True,
+            "can_approve_broadcasts": True,
+            "can_send_personal_messages": True,
+        })
     # Upsert team_invites so future sign-ins keep the role + flag.
     await db.team_invites.update_one(
         {"email": email_l}, {"$set": {**perms, "email": email_l}}, upsert=True
     )
-    # If a user already exists, mark the live record too.
-    await db.users.update_one(
-        {"email": email_l}, {"$set": perms}, upsert=False
-    )
+    # If a user already exists, mark the live record too AND grab the
+    # existing user_id so we can tag seeded rows with it.
+    existing = await db.users.find_one({"email": email_l}, {"_id": 0, "user_id": 1})
+    user_id: Optional[str] = (existing or {}).get("user_id")
+    if existing:
+        await db.users.update_one({"email": email_l}, {"$set": perms})
+    elif role == "patient":
+        # For demo PATIENTS we want a stable user_id immediately so we
+        # can seed bookings / Rx / IPSS now (without waiting for the
+        # demo user to actually sign in). Insert a placeholder users
+        # row that real auth will update on first login.
+        user_id = f"u_demo_{uuid.uuid4().hex[:10]}"
+        await db.users.insert_one({
+            "user_id": user_id,
+            "email": email_l,
+            "name": name,
+            "role": "patient",
+            "is_demo": True,
+            "phone": "+910000000001",
+            "consent_medical": True,
+            "consent_terms": True,
+            "consent_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(timezone.utc),
+        })
+    seeded = None
+    if role == "patient" and body.seed_sample_data and user_id:
+        seeded = await _seed_demo_patient_data(user_id, email_l, name)
     try:
         await db.audit_log.insert_one({
             "ts": datetime.now(timezone.utc), "kind": "demo_created",
             "target_email": email_l, "actor_email": (user.get("email") or "").lower(),
+            "demo_role": role, "seeded": seeded,
         })
     except Exception:
         pass
-    return {"ok": True, "email": email_l, "is_demo": True}
+    return {"ok": True, "email": email_l, "role": role, "is_demo": True,
+            "user_id": user_id, "seeded": seeded}
 
 
 @app.delete("/api/admin/demo/{user_id}")
 async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_owner)):
-    """Revoke a demo account — demote to patient and clear is_demo."""
+    """Revoke a demo account — demote to patient and clear is_demo.
+    For patient demos we ALSO sweep up the seeded sample bookings /
+    prescriptions / IPSS rows so the user record + their "fake history"
+    disappear together."""
     target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -7822,7 +8036,15 @@ async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_own
     await db.users.update_one({"user_id": user_id}, {"$set": perms})
     await db.team_invites.update_many({"email": (target.get("email") or "").lower()},
                                       {"$set": perms})
-    return {"ok": True}
+    # Sweep seeded sample data (best-effort).
+    cleanup = {"bookings": 0, "prescriptions": 0, "ipss": 0}
+    try:
+        cleanup["bookings"] = (await db.bookings.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
+        cleanup["prescriptions"] = (await db.prescriptions.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
+        cleanup["ipss"] = (await db.ipss_submissions.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
+    except Exception:
+        pass
+    return {"ok": True, "cleanup": cleanup}
 
 
 @app.get("/api/admin/demo")

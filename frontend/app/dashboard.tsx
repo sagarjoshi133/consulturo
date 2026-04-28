@@ -389,7 +389,7 @@ export default function Dashboard() {
         { id: 'surgeries', label: 'Surgeries', icon: 'medkit', canSee: canPrescribe },
         { id: 'referrers', label: 'Referrers', icon: 'people-circle', canSee: true },
         { id: 'broadcasts', label: 'Broadcast', icon: 'megaphone', canSee: true },
-        { id: 'blog', label: 'Blog', icon: 'newspaper', canSee: canPrescribe },
+        { id: 'blog', label: 'Blog', icon: 'newspaper', canSee: tier.canCreateBlog },
         { id: 'team', label: 'Team', icon: 'people', canSee: allowTab('team') },
         { id: 'push', label: 'Notifs', icon: 'notifications', canSee: allowTab('push') },
         { id: 'homepage', label: 'Profile', icon: 'person-circle', canSee: isOwner },
@@ -397,7 +397,7 @@ export default function Dashboard() {
       ];
       return all.filter((t) => t.canSee).map(({ canSee, ...rest }) => rest);
     },
-    [canPrescribe, isOwner, allowTab, pendingCount]
+    [canPrescribe, isOwner, allowTab, pendingCount, tier.canCreateBlog]
   );
 
   // Keep the active tab pill centered both on tap and on swipe.

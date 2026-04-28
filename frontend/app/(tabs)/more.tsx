@@ -27,7 +27,7 @@ import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useAuth } from '../../src/auth';
 import { useI18n } from '../../src/i18n';
 import { useNotifications } from '../../src/notifications';
-import { useResponsive } from '../../src/responsive';
+import { useResponsive, getForcedView, setForcedView, type ForceView } from '../../src/responsive';
 
 const WHATSAPP = '+918155075669';
 const STAFF_ROLES = ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
@@ -68,6 +68,16 @@ export default function More() {
   // from the shared hook keeps every badge in sync.
   const { unread, personalUnread } = useNotifications();
   const { isWebDesktop } = useResponsive();
+  // View-mode override (web only): cycles auto → desktop → mobile.
+  // Hook-state so the pill label refreshes without a full reload when
+  // the user taps it.
+  const [forceMode, setForceMode] = React.useState<ForceView>(() => getForcedView());
+  const cycleViewMode = () => {
+    const order: ForceView[] = ['auto', 'desktop', 'mobile'];
+    const next = order[(order.indexOf(forceMode) + 1) % order.length];
+    setForceMode(next);
+    setForcedView(next);
+  };
 
   const isStaff = !!user && STAFF_ROLES.includes(user.role as string);
   // Owner-tier — super_owner, primary_owner, partner, or legacy
@@ -257,6 +267,31 @@ export default function More() {
     );
   }
   appItems.push({ icon: 'document-text', label: t('more.terms'), route: '/terms', testID: 'more-terms' });
+  // View mode toggle (web only) — cycle Auto / Desktop / Mobile so a
+  // user can preview either layout regardless of their actual viewport.
+  // The toggle ALSO honours the browser's "Request Desktop Site" UA
+  // automatically (handled inside useResponsive).
+  if (Platform.OS === 'web') {
+    const modeLabel: Record<ForceView, string> = {
+      auto: 'Auto',
+      desktop: 'Desktop',
+      mobile: 'Mobile',
+    };
+    const modeSub: Record<ForceView, string> = {
+      auto: 'Adapts to your device width',
+      desktop: 'Forced — multi-column shell on every screen',
+      mobile: 'Forced — single-column phone layout',
+    };
+    appItems.push({
+      icon: 'desktop',
+      label: 'View mode',
+      sub: modeSub[forceMode],
+      action: cycleViewMode,
+      testID: 'more-view-mode',
+      pill: modeLabel[forceMode],
+      pillColor: forceMode === 'desktop' ? COLORS.primary : forceMode === 'mobile' ? '#7C3AED' : '#6B7280',
+    });
+  }
   sections.push({ title: t('more.sectionApp') || 'App', items: appItems });
 
   // ABOUT (last) — kept for everyone. Two entries: About the Doctor
