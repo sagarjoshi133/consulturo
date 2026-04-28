@@ -17,6 +17,7 @@ import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton } from './components';
 import { TimeField } from './date-picker';
 import { UnavailabilitySection } from './unavailability-section';
+import { useResponsive } from './responsive';
 
 const DAYS = [
   { key: 'mon', label: 'Mon' },
@@ -44,6 +45,7 @@ export function AvailabilityPanel() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [activeDay, setActiveDay] = useState<DayKey>('mon');
+  const { isWebDesktop } = useResponsive();
 
   const load = useCallback(async () => {
     try {
@@ -172,26 +174,32 @@ export function AvailabilityPanel() {
 
         {!isOff && (
           <>
-            <SlotGroup
-              title="In-person (Clinic)"
-              color={COLORS.primary}
-              icon="medical"
-              slots={inSlots}
-              onChange={(i, k, v) => updateSlot(activeDay, 'in', i, k, v)}
-              onAdd={() => addSlot(activeDay, 'in')}
-              onRemove={(i) => removeSlot(activeDay, 'in', i)}
-              onApplyAll={() => applyToAll(activeDay, 'in')}
-            />
-            <SlotGroup
-              title="Online (WhatsApp)"
-              color={COLORS.whatsapp}
-              icon="logo-whatsapp"
-              slots={onSlots}
-              onChange={(i, k, v) => updateSlot(activeDay, 'on', i, k, v)}
-              onAdd={() => addSlot(activeDay, 'on')}
-              onRemove={(i) => removeSlot(activeDay, 'on', i)}
-              onApplyAll={() => applyToAll(activeDay, 'on')}
-            />
+            <View style={isWebDesktop ? { flexDirection: 'row', gap: 16 } : undefined}>
+              <View style={isWebDesktop ? { flex: 1 } : undefined}>
+                <SlotGroup
+                  title="In-person (Clinic)"
+                  color={COLORS.primary}
+                  icon="medical"
+                  slots={inSlots}
+                  onChange={(i, k, v) => updateSlot(activeDay, 'in', i, k, v)}
+                  onAdd={() => addSlot(activeDay, 'in')}
+                  onRemove={(i) => removeSlot(activeDay, 'in', i)}
+                  onApplyAll={() => applyToAll(activeDay, 'in')}
+                />
+              </View>
+              <View style={isWebDesktop ? { flex: 1 } : undefined}>
+                <SlotGroup
+                  title="Online (WhatsApp)"
+                  color={COLORS.whatsapp}
+                  icon="logo-whatsapp"
+                  slots={onSlots}
+                  onChange={(i, k, v) => updateSlot(activeDay, 'on', i, k, v)}
+                  onAdd={() => addSlot(activeDay, 'on')}
+                  onRemove={(i) => removeSlot(activeDay, 'on', i)}
+                  onApplyAll={() => applyToAll(activeDay, 'on')}
+                />
+              </View>
+            </View>
           </>
         )}
       </View>

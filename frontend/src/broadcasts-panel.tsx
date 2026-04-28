@@ -21,6 +21,7 @@ import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton, SecondaryButton } from './components';
 import { EmptyState } from './empty-state';
 import { displayDateLong, display12h } from './date';
+import { useResponsive } from './responsive';
 
 type BroadcastStatus = 'pending_approval' | 'approved' | 'sent' | 'rejected';
 type Broadcast = {
@@ -71,6 +72,7 @@ function formatDT(iso?: string | null) {
 }
 
 export function BroadcastsPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
+  const { isWebDesktop } = useResponsive();
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
 
@@ -303,8 +305,9 @@ export function BroadcastsPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
           testID="bc-empty"
         />
       ) : (
-        filtered.map((b) => (
-          <View key={b.broadcast_id} style={styles.card}>
+        <View style={isWebDesktop ? styles.bcGrid : undefined}>
+        {filtered.map((b) => (
+          <View key={b.broadcast_id} style={[styles.card, isWebDesktop && styles.cardDesktop]}>
             <View style={styles.cardTop}>
               <StatusPill status={b.status} />
               <Text style={styles.cardMeta}>
@@ -379,7 +382,8 @@ export function BroadcastsPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               )}
             </View>
           </View>
-        ))
+        ))}
+        </View>
       )}
 
       {/* Compose modal */}
@@ -572,6 +576,8 @@ const styles = StyleSheet.create({
   emptyText: { ...FONTS.body, color: COLORS.textSecondary, textAlign: 'center', marginTop: 10 },
 
   card: { backgroundColor: '#fff', padding: 10, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8 },
+  bcGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  cardDesktop: { width: '49%', marginBottom: 0 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   cardMeta: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.pill },

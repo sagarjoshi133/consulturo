@@ -22,6 +22,7 @@ import { useAuth } from '../../src/auth';
 import { useTier } from '../../src/tier';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { PrimaryButton, SecondaryButton } from '../../src/components';
+import { useResponsive } from '../../src/responsive';
 
 const CATEGORIES = ['Kidney Health', "Men's Health", "Women's Urology", 'Surgical Care', 'Patient Education', 'News', 'Urology'];
 
@@ -29,6 +30,7 @@ export default function AdminBlog() {
   const router = useRouter();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const { user } = useAuth();
+  const { isWebDesktop } = useResponsive();
   // Editorial gate (matches backend `require_blog_writer`):
   //   • super_owner — always allowed.
   //   • primary_owner — allowed only if `can_create_blog: true` (set
@@ -227,7 +229,7 @@ export default function AdminBlog() {
       </View>
 
       {mode === 'list' ? (
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        <ScrollView contentContainerStyle={[{ padding: 20, paddingBottom: 60 }, isWebDesktop && { maxWidth: 1100, width: '100%', alignSelf: 'center', padding: 24 }]}>
           {/* Filters */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 12, paddingRight: 20 }}>
             {([
@@ -272,7 +274,8 @@ export default function AdminBlog() {
               />
             </View>
           ) : (
-            displayedPosts.map((p) => {
+            <View style={isWebDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 12 } : undefined}>
+            {displayedPosts.map((p) => {
               const status = p.status || (p.published ? 'published' : 'draft');
               const statusColor =
                 status === 'published' ? COLORS.success :
@@ -281,7 +284,7 @@ export default function AdminBlog() {
                 COLORS.textSecondary;
               const canEditPost = isOwner || p.author_user_id === user?.user_id;
               return (
-                <View key={p.post_id} style={styles.postCard}>
+                <View key={p.post_id} style={[styles.postCard, isWebDesktop && { width: '49%', marginBottom: 0 }]}>
                   {p.cover ? <Image source={{ uri: p.cover }} style={styles.thumb} /> : <View style={[styles.thumb, { backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="newspaper" size={28} color={COLORS.primary} /></View>}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <View style={styles.postTags}>
@@ -333,12 +336,13 @@ export default function AdminBlog() {
                   </View>
                 </View>
               );
-            })
+            })}
+            </View>
           )}
         </ScrollView>
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={[{ padding: 20, paddingBottom: 60 }, isWebDesktop && { maxWidth: 860, width: '100%', alignSelf: 'center', padding: 28 }]} keyboardShouldPersistTaps="handled">
             <Text style={styles.lbl}>Cover Image</Text>
             <TouchableOpacity onPress={pickCover} style={styles.coverPicker} testID="admin-blog-pick-cover">
               {cover ? (

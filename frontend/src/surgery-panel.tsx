@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api, { API_BASE } from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton, SecondaryButton } from './components';
+import { useResponsive } from './responsive';
 import { displayDate, parseUIDate, todayUI, UI_DATE_PLACEHOLDER } from './date';
 import { DateField } from './date-picker';
 import { EmptyState } from './empty-state';
@@ -130,6 +131,7 @@ const SurgeryRow = React.memo(function SurgeryRow({
 });
 
 export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
+  const { isWebDesktop } = useResponsive();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [presets, setPresets] = useState<string[]>([]);
@@ -581,9 +583,15 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
         />
       )}
 
-      {inlineFiltered.map((s: any) => (
-        <SurgeryRow key={s.surgery_id} s={s} onEdit={openEdit} onDelete={remove} />
-      ))}
+      {inlineFiltered.length > 0 && (
+      <View style={isWebDesktop ? styles.sxGrid : undefined}>
+        {inlineFiltered.map((s: any) => (
+          <View key={s.surgery_id} style={isWebDesktop ? styles.sxGridItem : undefined}>
+            <SurgeryRow s={s} onEdit={openEdit} onDelete={remove} />
+          </View>
+        ))}
+      </View>
+      )}
 
       {!search.trim() && items.length > INLINE_LIMIT && (
         <TouchableOpacity
@@ -1213,6 +1221,8 @@ const styles = StyleSheet.create({
   hospChipText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 12 },
 
   card: { backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.md, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+  sxGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  sxGridItem: { width: '49%' },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   sxName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 15 },
   sxMeta: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },

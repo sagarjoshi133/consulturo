@@ -128,6 +128,14 @@ function ContentPager({
   const pagerRef = React.useRef<ScrollView | null>(null);
   const [width, setWidth] = React.useState(Dimensions.get('window').width);
   const activeIndex = Math.max(0, tabs.findIndex((x) => x.id === activeId));
+  // Desktop-aware inner padding & max-width so dashboard panels feel
+  // compact + centered on wide web viewports. Mobile keeps the
+  // existing tight 20px padding which is best for thumb use.
+  const { isWebDesktop } = useResponsive();
+  const panelPad = isWebDesktop
+    ? { paddingHorizontal: 28, paddingTop: 16, paddingBottom: 48 }
+    : { padding: 20, paddingBottom: 110 };
+  const panelMax = isWebDesktop ? 1120 : undefined;
   // Debounce swipe-driven tab updates so we only fire once per settle.
   const settleTimer = React.useRef<any>(null);
 
@@ -196,7 +204,7 @@ function ContentPager({
             <RNAnimated.ScrollView
               key={tb.id}
               style={{ width }}
-              contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
+              contentContainerStyle={panelPad}
               showsVerticalScrollIndicator={false}
               // 32ms (≈30 fps) is plenty for a slow header collapse
               // and keeps the JS thread free for everything else.
@@ -214,7 +222,13 @@ function ContentPager({
                 />
               }
             >
-              {renderPanel(tb.id)}
+              {panelMax ? (
+                <View style={{ width: '100%', maxWidth: panelMax, alignSelf: 'center' }}>
+                  {renderPanel(tb.id)}
+                </View>
+              ) : (
+                renderPanel(tb.id)
+              )}
             </RNAnimated.ScrollView>
           ))}
         </ScrollView>
@@ -297,6 +311,7 @@ export default function Dashboard() {
   // need the FAB lifted above the home indicator. Avoids the overlap bug.
   const fabInsets = useSafeAreaInsets();
   const fabBottomBase = Math.max(fabInsets.bottom, 0) + 24;
+  const { isWebDesktop } = useResponsive();
 
   // -- Collapsible hero on scroll --
   // The userCard sub-section collapses & fades out as the active panel
@@ -468,9 +483,9 @@ export default function Dashboard() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <LinearGradient colors={COLORS.heroGradient} style={styles.hero}>
+      <LinearGradient colors={COLORS.heroGradient} style={[styles.hero, isWebDesktop && styles.heroDesktop]}>
         <SafeAreaView edges={['top']}>
-          <View style={styles.topRow}>
+          <View style={[styles.topRow, isWebDesktop && { paddingTop: 0 }]}>
             <TouchableOpacity onPress={() => { if (router.canGoBack()) { router.back(); } else { router.replace('/' as any); } }} style={styles.backBtn} testID="dashboard-back">
               <Ionicons name="arrow-back" size={22} color="#fff" />
             </TouchableOpacity>
@@ -510,6 +525,7 @@ export default function Dashboard() {
               </TouchableOpacity>
             </View>
           </View>
+          {!isWebDesktop && (
           <RNAnimated.View
             style={{
               height: userCardHeight,
@@ -557,15 +573,16 @@ export default function Dashboard() {
               />
             </View>
           </RNAnimated.View>
+          )}
         </SafeAreaView>
       </LinearGradient>
 
-      <View style={styles.tabBarContainer} onLayout={(e) => { tabBarWidthRef.current = e.nativeEvent.layout.width; }}>
+      <View style={[styles.tabBarContainer, isWebDesktop && styles.tabBarContainerDesktop]} onLayout={(e) => { tabBarWidthRef.current = e.nativeEvent.layout.width; }}>
         <ScrollView
           ref={tabScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBarScroll}
+          contentContainerStyle={[styles.tabBarScroll, isWebDesktop && { paddingHorizontal: 24, gap: 6 }]}
           style={styles.tabBarWrap}
         >
           {tabs.map((tb, idx) => (
@@ -582,18 +599,18 @@ export default function Dashboard() {
               onLayout={(e) => {
                 tabPositions.current[tb.id] = e.nativeEvent.layout.x;
               }}
-              style={[styles.tabBtn, tab === tb.id && styles.tabBtnActive]}
+              style={[styles.tabBtn, isWebDesktop && styles.tabBtnDesktop, tab === tb.id && styles.tabBtnActive]}
               testID={`dashboard-tab-${tb.id}`}
             >
               <View>
-                <Ionicons name={tb.icon} size={16} color={tab === tb.id ? '#fff' : COLORS.primary} />
+                <Ionicons name={tb.icon} size={isWebDesktop ? 14 : 16} color={tab === tb.id ? '#fff' : COLORS.primary} />
                 {!!tb.badge && tb.badge > 0 && (
                   <View style={styles.tabBadge}>
                     <Text style={styles.tabBadgeText}>{tb.badge > 9 ? '9+' : tb.badge}</Text>
                   </View>
                 )}
               </View>
-              <Text style={[styles.tabText, tab === tb.id && { color: '#fff' }]}>{tb.label}</Text>
+              <Text style={[styles.tabText, isWebDesktop && { fontSize: 12 }, tab === tb.id && { color: '#fff' }]}>{tb.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -1996,6 +2013,7 @@ function EmptyStateLocal({ icon, title, sub }: { icon: any; title: string; sub: 
 
 const styles = StyleSheet.create({
   hero: { paddingHorizontal: 16, paddingBottom: 12, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
+  heroDesktop: { paddingHorizontal: 24, paddingBottom: 6, paddingTop: 6, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
@@ -2037,9 +2055,11 @@ const styles = StyleSheet.create({
   },
   fullAccessText: { ...FONTS.label, color: '#5C3D00', fontSize: 10, letterSpacing: 0.4 },
   tabBarContainer: { backgroundColor: COLORS.bg, paddingTop: 8, paddingBottom: 4 },
+  tabBarContainerDesktop: { paddingTop: 6, paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   tabBarWrap: { maxHeight: 56 },
   tabBarScroll: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
   tabBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 11, paddingHorizontal: 16, borderRadius: RADIUS.pill, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2, minWidth: 90 },
+  tabBtnDesktop: { paddingVertical: 7, paddingHorizontal: 12, minWidth: 0, gap: 5 },
   tabBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, shadowOpacity: 0.22, shadowRadius: 6 },
   tabText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 14 },
   statsRow: { flexDirection: 'row', gap: 6 },

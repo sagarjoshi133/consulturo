@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from './api';
 import { useAuth } from './auth';
 import { COLORS, FONTS, RADIUS } from './theme';
+import { useResponsive } from './responsive';
 
 type Referrer = {
   referrer_id: string;
@@ -44,6 +45,7 @@ export function ReferrersPanel() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
   const canDelete = isOwner || user?.role === 'doctor';
+  const { isWebDesktop, isWebWide } = useResponsive();
 
   const [items, setItems] = useState<Referrer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,8 +227,10 @@ export function ReferrersPanel() {
         </View>
       )}
 
+      {filtered.length > 0 && (
+      <View style={isWebDesktop ? styles.grid : undefined}>
       {filtered.map((r) => (
-        <View key={r.referrer_id} style={styles.card} testID={`ref-card-${r.referrer_id}`}>
+        <View key={r.referrer_id} style={[styles.card, isWebDesktop && (isWebWide ? styles.cardDesktop3 : styles.cardDesktop2)]} testID={`ref-card-${r.referrer_id}`}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{r.name}</Text>
@@ -274,6 +278,8 @@ export function ReferrersPanel() {
           </View>
         </View>
       ))}
+      </View>
+      )}
     </View>
   );
 }
@@ -327,6 +333,9 @@ const styles = StyleSheet.create({
   emptyText: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, textAlign: 'center' },
 
   card: { backgroundColor: '#fff', padding: 10, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  cardDesktop2: { width: '49%', marginBottom: 0 },
+  cardDesktop3: { width: '32.4%', marginBottom: 0 },
   name: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 14 },
   sub: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
   refCount: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start', backgroundColor: COLORS.primary + '14', paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.pill },

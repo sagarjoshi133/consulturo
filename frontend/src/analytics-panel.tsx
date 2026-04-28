@@ -4,6 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { formatIST } from './date';
+import { useResponsive } from './responsive';
 
 type Dashboard = {
   totals: {
@@ -44,6 +45,7 @@ export function AnalyticsPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<6 | 12>(12);
+  const { isWebDesktop } = useResponsive();
 
   const load = useCallback(async (r: 6 | 12 = range) => {
     try {
@@ -89,14 +91,25 @@ export function AnalyticsPanel() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(range); }} tintColor={COLORS.primary} />}
     >
       {/* --- KPI cards --- */}
-      <View style={styles.kpiRow}>
-        <KpiCard icon="calendar" color={COLORS.primary} label="Bookings" value={t.bookings} sub={`${t.confirmed_bookings} confirmed`} />
-        <KpiCard icon="medkit" color={COLORS.accent} label="Surgeries" value={t.surgeries} sub="Lifetime" />
-      </View>
-      <View style={styles.kpiRow}>
-        <KpiCard icon="document-text" color={COLORS.success} label="Prescriptions" value={t.prescriptions} sub="Issued" />
-        <KpiCard icon="people" color="#8B5CF6" label="Patients" value={t.patients} sub="Registered" />
-      </View>
+      {isWebDesktop ? (
+        <View style={[styles.kpiRow, { flexWrap: 'wrap' }]}>
+          <KpiCard icon="calendar" color={COLORS.primary} label="Bookings" value={t.bookings} sub={`${t.confirmed_bookings} confirmed`} />
+          <KpiCard icon="medkit" color={COLORS.accent} label="Surgeries" value={t.surgeries} sub="Lifetime" />
+          <KpiCard icon="document-text" color={COLORS.success} label="Prescriptions" value={t.prescriptions} sub="Issued" />
+          <KpiCard icon="people" color="#8B5CF6" label="Patients" value={t.patients} sub="Registered" />
+        </View>
+      ) : (
+        <>
+          <View style={styles.kpiRow}>
+            <KpiCard icon="calendar" color={COLORS.primary} label="Bookings" value={t.bookings} sub={`${t.confirmed_bookings} confirmed`} />
+            <KpiCard icon="medkit" color={COLORS.accent} label="Surgeries" value={t.surgeries} sub="Lifetime" />
+          </View>
+          <View style={styles.kpiRow}>
+            <KpiCard icon="document-text" color={COLORS.success} label="Prescriptions" value={t.prescriptions} sub="Issued" />
+            <KpiCard icon="people" color="#8B5CF6" label="Patients" value={t.patients} sub="Registered" />
+          </View>
+        </>
+      )}
 
       {/* --- Range toggle --- */}
       <View style={styles.rangeRow}>
@@ -115,79 +128,99 @@ export function AnalyticsPanel() {
         </View>
       </View>
 
-      <BarChart
-        data={data.monthly_bookings}
-        max={bookingsMax}
-        color={COLORS.primary}
-        labelFn={(d) => monthLabel(d.month)}
-        testIdPrefix="bk-bar"
-      />
+      {/* On desktop the 4 trend charts tile into a 2x2 grid for better
+          space efficiency; mobile keeps the stacked 1-col layout. */}
+      <View style={isWebDesktop ? styles.chartGrid : undefined}>
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <BarChart
+            data={data.monthly_bookings}
+            max={bookingsMax}
+            color={COLORS.primary}
+            labelFn={(d) => monthLabel(d.month)}
+            testIdPrefix="bk-bar"
+          />
+        </View>
 
-      {/* --- Surgeries trend --- */}
-      <Text style={styles.hdr}>Surgeries per month</Text>
-      <BarChart
-        data={data.monthly_surgeries}
-        max={surgeriesMax}
-        color={COLORS.accent}
-        labelFn={(d) => monthLabel(d.month)}
-        testIdPrefix="sx-bar"
-      />
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Surgeries per month</Text>
+          <BarChart
+            data={data.monthly_surgeries}
+            max={surgeriesMax}
+            color={COLORS.accent}
+            labelFn={(d) => monthLabel(d.month)}
+            testIdPrefix="sx-bar"
+          />
+        </View>
 
-      {/* --- Prescriptions trend --- */}
-      <Text style={styles.hdr}>Prescriptions per month</Text>
-      <BarChart
-        data={data.monthly_prescriptions}
-        max={rxMax}
-        color={COLORS.success}
-        labelFn={(d) => monthLabel(d.month)}
-        testIdPrefix="rx-bar"
-      />
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Prescriptions per month</Text>
+          <BarChart
+            data={data.monthly_prescriptions}
+            max={rxMax}
+            color={COLORS.success}
+            labelFn={(d) => monthLabel(d.month)}
+            testIdPrefix="rx-bar"
+          />
+        </View>
 
-      {/* --- Daily bookings (last 14 days) --- */}
-      <Text style={styles.hdr}>Last 14 days — daily bookings</Text>
-      <BarChart
-        data={data.daily_bookings}
-        max={dailyMax}
-        color="#8B5CF6"
-        labelFn={(d: any) => dayLabel(d.date)}
-        testIdPrefix="day-bar"
-      />
-
-      {/* --- Status breakdown --- */}
-      <Text style={styles.hdr}>Booking status</Text>
-      <View style={styles.stackBar}>
-        <Seg flex={sb.requested / statusTotal} color={COLORS.warning} />
-        <Seg flex={sb.confirmed / statusTotal} color={COLORS.success} />
-        <Seg flex={sb.cancelled / statusTotal} color={COLORS.accent} />
-      </View>
-      <View style={styles.legend}>
-        <Legend dot={COLORS.warning} label={`Pending · ${sb.requested}`} />
-        <Legend dot={COLORS.success} label={`Confirmed · ${sb.confirmed}`} />
-        <Legend dot={COLORS.accent} label={`Cancelled · ${sb.cancelled}`} />
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Last 14 days — daily bookings</Text>
+          <BarChart
+            data={data.daily_bookings}
+            max={dailyMax}
+            color="#8B5CF6"
+            labelFn={(d: any) => dayLabel(d.date)}
+            testIdPrefix="day-bar"
+          />
+        </View>
       </View>
 
-      {/* --- Mode breakdown --- */}
-      <Text style={styles.hdr}>Consultation mode</Text>
-      <View style={styles.stackBar}>
-        <Seg flex={data.mode_breakdown.online / modeTotal} color={COLORS.primary} />
-        <Seg flex={data.mode_breakdown.offline / modeTotal} color="#0EA5E9" />
+      {/* Booking status + Mode — 2-up grid on desktop */}
+      <View style={isWebDesktop ? styles.chartGrid : undefined}>
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Booking status</Text>
+          <View style={styles.stackBar}>
+            <Seg flex={sb.requested / statusTotal} color={COLORS.warning} />
+            <Seg flex={sb.confirmed / statusTotal} color={COLORS.success} />
+            <Seg flex={sb.cancelled / statusTotal} color={COLORS.accent} />
+          </View>
+          <View style={styles.legend}>
+            <Legend dot={COLORS.warning} label={`Pending · ${sb.requested}`} />
+            <Legend dot={COLORS.success} label={`Confirmed · ${sb.confirmed}`} />
+            <Legend dot={COLORS.accent} label={`Cancelled · ${sb.cancelled}`} />
+          </View>
+        </View>
+
+        <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Consultation mode</Text>
+          <View style={styles.stackBar}>
+            <Seg flex={data.mode_breakdown.online / modeTotal} color={COLORS.primary} />
+            <Seg flex={data.mode_breakdown.offline / modeTotal} color="#0EA5E9" />
+          </View>
+          <View style={styles.legend}>
+            <Legend dot={COLORS.primary} label={`Online · ${data.mode_breakdown.online}`} />
+            <Legend dot="#0EA5E9" label={`In-person · ${data.mode_breakdown.offline}`} />
+          </View>
+        </View>
       </View>
-      <View style={styles.legend}>
-        <Legend dot={COLORS.primary} label={`Online · ${data.mode_breakdown.online}`} />
-        <Legend dot="#0EA5E9" label={`In-person · ${data.mode_breakdown.offline}`} />
+
+      {/* Top lists — 3-up grid on desktop (wide screen), stacked on mobile */}
+      <View style={isWebDesktop ? styles.topGrid : undefined}>
+        <View style={isWebDesktop ? styles.topCell : undefined}>
+          <Text style={styles.hdr}>Top diagnoses</Text>
+          <TopList items={data.top_diagnoses} empty="No surgeries logged yet" color={COLORS.accent} />
+        </View>
+
+        <View style={isWebDesktop ? styles.topCell : undefined}>
+          <Text style={styles.hdr}>Top procedures</Text>
+          <TopList items={data.top_surgeries} empty="No surgeries logged yet" color={COLORS.primary} />
+        </View>
+
+        <View style={isWebDesktop ? styles.topCell : undefined}>
+          <Text style={styles.hdr}>Top referrers</Text>
+          <TopList items={data.top_referrers} empty="No referrer data yet" color={COLORS.success} />
+        </View>
       </View>
-
-      {/* --- Top diagnoses --- */}
-      <Text style={styles.hdr}>Top diagnoses</Text>
-      <TopList items={data.top_diagnoses} empty="No surgeries logged yet" color={COLORS.accent} />
-
-      {/* --- Top surgeries --- */}
-      <Text style={styles.hdr}>Top procedures</Text>
-      <TopList items={data.top_surgeries} empty="No surgeries logged yet" color={COLORS.primary} />
-
-      {/* --- Top referrers --- */}
-      <Text style={styles.hdr}>Top referrers</Text>
-      <TopList items={data.top_referrers} empty="No referrer data yet" color={COLORS.success} />
 
       <Text style={styles.footer}>Updated {formatIST(data.generated_at)}</Text>
     </ScrollView>
@@ -308,4 +341,11 @@ const styles = StyleSheet.create({
   topCount: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 12, minWidth: 22, textAlign: 'right' },
 
   footer: { ...FONTS.body, color: COLORS.textDisabled, fontSize: 10, textAlign: 'center', marginTop: 24 },
+
+  // Desktop grids — 2x2 charts and 3-up top lists. Each cell gets
+  // `flex` + min-width so narrow desktops wrap gracefully.
+  chartGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 },
+  chartCell: { flexGrow: 1, flexBasis: 360, minWidth: 320 },
+  topGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 },
+  topCell: { flexGrow: 1, flexBasis: 280, minWidth: 240 },
 });

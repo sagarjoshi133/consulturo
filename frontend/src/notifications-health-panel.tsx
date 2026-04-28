@@ -28,6 +28,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import api from './api';
+import { useResponsive } from './responsive';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { haptics } from './haptics';
 import { formatIST } from './date';
@@ -137,6 +138,7 @@ function formatTime(iso?: string) {
 }
 
 export function NotificationsHealthPanel() {
+  const { isWebDesktop } = useResponsive();
   const [data, setData] = React.useState<Diag | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -401,8 +403,9 @@ export function NotificationsHealthPanel() {
 
       {/* Staff tokens */}
       <Text style={styles.sectionTitle}>Staff devices ({data.users.length})</Text>
+      <View style={isWebDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 10 } : undefined}>
       {data.users.map((u) => (
-        <View key={u.user_id} style={styles.userCard}>
+        <View key={u.user_id} style={[styles.userCard, isWebDesktop && { width: '49%', marginBottom: 0 }]}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.userName} numberOfLines={1}>
               {u.name || u.email || u.user_id}
@@ -438,6 +441,7 @@ export function NotificationsHealthPanel() {
           </View>
         </View>
       ))}
+      </View>
 
       {/* Recent attempts */}
       <Text style={styles.sectionTitle}>Recent push attempts</Text>

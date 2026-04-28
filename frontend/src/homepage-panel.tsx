@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton, SecondaryButton } from './components';
+import { useResponsive } from './responsive';
 
 type Homepage = {
   doctor_photo_url: string;
@@ -40,6 +41,7 @@ type Homepage = {
 export function HomepagePanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { isWebDesktop } = useResponsive();
   const [doctorUrl, setDoctorUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const [doctorName, setDoctorName] = useState('');
@@ -198,7 +200,7 @@ export function HomepagePanel() {
   if (loading) return <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />;
 
   return (
-    <>
+    <View style={isWebDesktop ? { maxWidth: 860, width: '100%', alignSelf: 'center' } : undefined}>
       <Text style={styles.h1}>Profile & Clinic</Text>
       <Text style={styles.sub}>
         These fields appear on the patient home screen and in the prescription PDF header / footer.
@@ -485,7 +487,7 @@ export function HomepagePanel() {
           the doctor photo.
         </Text>
       </View>
-    </>
+    </View>
   );
 }
 

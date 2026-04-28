@@ -19,6 +19,7 @@ import { useFocusEffect } from 'expo-router';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton, SecondaryButton } from './components';
+import { useResponsive } from './responsive';
 
 type Role = { slug: string; label: string; category: 'doctor' | 'staff' | 'patient'; builtin?: boolean };
 
@@ -36,6 +37,7 @@ type Member = {
 };
 
 export function TeamPanelV2() {
+  const { isWebDesktop } = useResponsive();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -372,8 +374,9 @@ export function TeamPanelV2() {
       {members.length === 0 ? (
         <Text style={{ ...FONTS.body, color: COLORS.textSecondary, marginTop: 10 }}>No team members yet.</Text>
       ) : (
-        orderedMembers.map((m) => (
-          <View key={m.email} style={styles.tmCard}>
+        <View style={isWebDesktop ? styles.tmGrid : undefined}>
+        {orderedMembers.map((m) => (
+          <View key={m.email} style={[styles.tmCard, isWebDesktop && styles.tmCardDesktop]}>
             {m.picture ? (
               <Image source={{ uri: m.picture }} style={styles.tmAvatar} />
             ) : (
@@ -436,7 +439,8 @@ export function TeamPanelV2() {
               </View>
             )}
           </View>
-        ))
+        ))}
+        </View>
       )}
 
       {/* Edit modal */}
@@ -707,6 +711,8 @@ const styles = StyleSheet.create({
   note: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11, marginTop: 10, lineHeight: 16 },
 
   tmCard: { flexDirection: 'row', backgroundColor: '#fff', padding: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, alignItems: 'center' },
+  tmGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  tmCardDesktop: { width: '49%', marginBottom: 0 },
   tmAvatar: { width: 44, height: 44, borderRadius: 22 },
   tmName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 13 },
   tmEmail: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11 },
