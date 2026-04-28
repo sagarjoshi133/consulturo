@@ -224,7 +224,7 @@ function ContentPager({
 }
 import { displayDate, displayDateLong, display12h, parseUIDate, UI_DATE_PLACEHOLDER } from '../src/date';
 
-const STAFF = ['owner', 'doctor', 'assistant', 'reception', 'nursing'];
+const STAFF = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
 const ROLES = [
   { id: 'doctor', label: 'Doctor' },
   { id: 'assistant', label: 'Assistant' },

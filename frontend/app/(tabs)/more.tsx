@@ -30,7 +30,7 @@ import { useNotifications } from '../../src/notifications';
 import { useResponsive, getForcedView, setForcedView, type ForceView } from '../../src/responsive';
 
 const WHATSAPP = '+918155075669';
-const STAFF_ROLES = ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
+const STAFF_ROLES = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
 
 type MenuItem = {
   icon: any;
@@ -88,7 +88,13 @@ export default function More() {
     user?.role === 'primary_owner' ||
     user?.role === 'partner' ||
     user?.role === 'owner';
-  const isFullAccess = !!(user as any)?.dashboard_full_access;
+  // Dashboard full-access: all owner-tier roles default TRUE per the
+  // hierarchy SuperOwner > PrimaryOwner > Partner > Team. Super-owner
+  // can revoke for a specific primary_owner via Permission Manager —
+  // when revoked, /api/me/tier returns dashboard_full_access:false.
+  // Non-owner team members still rely on the explicit per-user prop.
+  const rawDfa = (user as any)?.dashboard_full_access;
+  const isFullAccess = isOwner ? (rawDfa !== false) : !!rawDfa;
 
   const confirmAndLogout = () => {
     const msg = 'Sign out of ConsultUro?';
