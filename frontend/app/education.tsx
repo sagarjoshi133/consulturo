@@ -8,6 +8,7 @@ import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { useI18n } from '../src/i18n';
 import LanguageDropdown from '../src/language-dropdown';
 import SmartSearch from '../src/smart-search';
+import { useResponsive } from '../src/responsive';
 
 // Cream background matching the custom illustration artwork so the
 // `resizeMode: 'contain'` letterboxing is visually seamless.
@@ -16,6 +17,11 @@ const ART_BG = '#FAF7F2';
 export default function Education() {
   const router = useRouter();
   const { lang, t } = useI18n();
+  const r = useResponsive();
+  // Desktop uses multi-column grid + tighter paddings / smaller hero
+  // so the page feels premium and compact instead of mobile-stretched.
+  const isDesktop = r.isWebDesktop;
+  const cols = r.isWebWide ? 3 : isDesktop ? 2 : 1;
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,9 +94,9 @@ export default function Education() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={COLORS.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Compact hero header */}
-        <View style={styles.heroWrap}>
-          <View style={styles.hero}>
+        {/* Compact hero header — tighter on desktop */}
+        <View style={[styles.heroWrap, isDesktop && styles.heroWrapDesktop]}>
+          <View style={[styles.hero, isDesktop && styles.heroDesktop]}>
             <View style={styles.heroIconCircle}>
               <Ionicons name="book" size={22} color="#fff" />
             </View>
@@ -106,7 +112,7 @@ export default function Education() {
         </View>
 
         {/* Search bar */}
-        <View style={styles.searchWrap}>
+        <View style={[styles.searchWrap, isDesktop && styles.searchWrapDesktop]}>
           <SmartSearch
             placeholder={searchPlaceholder}
             onDebouncedChange={setQuery}
@@ -127,16 +133,20 @@ export default function Education() {
             <Text style={styles.noResultsText}>{noResultsLabel}</Text>
           </View>
         ) : (
-          <View style={styles.listWrap}>
+          <View style={[styles.listWrap, isDesktop && styles.listWrapDesktop]}>
             {filtered.map((it) => (
               <TouchableOpacity
                 key={it.id}
                 onPress={() => router.push(`/education/${it.id}` as any)}
                 activeOpacity={0.85}
-                style={styles.card}
+                style={[
+                  styles.card,
+                  isDesktop && styles.cardDesktop,
+                  isDesktop && { width: `${Math.floor(100 / cols) - 1}%` },
+                ]}
                 testID={`education-${it.id}`}
               >
-                <View style={styles.imgFrame}>
+                <View style={[styles.imgFrame, isDesktop && styles.imgFrameDesktop]}>
                   <Image source={{ uri: it.cover }} style={styles.cardImg} resizeMode="contain" />
                 </View>
                 <View style={styles.cardBody}>
@@ -178,6 +188,14 @@ const styles = StyleSheet.create({
 
   /* Compact hero */
   heroWrap: { paddingHorizontal: 16, marginTop: 8, marginBottom: 12 },
+  heroWrapDesktop: {
+    paddingHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 10,
+    maxWidth: 1280,
+    alignSelf: 'center',
+    width: '100%',
+  },
   hero: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -185,6 +203,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.lg,
     padding: 14,
+  },
+  heroDesktop: {
+    padding: 10,
+    paddingHorizontal: 14,
+    gap: 10,
   },
   heroIconCircle: {
     width: 42,
@@ -214,6 +237,15 @@ const styles = StyleSheet.create({
 
   /* Compact list */
   listWrap: { paddingHorizontal: 16, gap: 10 },
+  listWrapDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 20,
+    maxWidth: 1280,
+    alignSelf: 'center',
+    width: '100%',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -228,12 +260,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  cardDesktop: {
+    minHeight: 88,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   imgFrame: {
     width: 104,
     aspectRatio: 4 / 3, // -> 78h when width=104
     backgroundColor: ART_BG,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  imgFrameDesktop: {
+    width: 84,
+    aspectRatio: 1,
   },
   cardImg: { width: '100%', height: '100%' },
   cardBody: { flex: 1, paddingVertical: 10, paddingHorizontal: 12, minWidth: 0 },
@@ -242,6 +283,13 @@ const styles = StyleSheet.create({
   chevron: { paddingRight: 12, paddingLeft: 2 },
   loading: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 40, textAlign: 'center' },
   searchWrap: { paddingHorizontal: 16, marginBottom: 12, gap: 6 },
+  searchWrapDesktop: {
+    paddingHorizontal: 20,
+    maxWidth: 1280,
+    alignSelf: 'center',
+    width: '100%',
+    marginBottom: 14,
+  },
   searchMeta: {
     ...FONTS.label,
     color: COLORS.textSecondary,

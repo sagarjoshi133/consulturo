@@ -468,6 +468,219 @@ UROLOGY_MEDICINES: List[Dict[str, Any]] = [
     # Antiretroviral (for HIV+ urology patients)
     {"name": "Tenofovir + Lamivudine + Efavirenz", "generic": "TLE", "brands": ["Viraday", "Trioday"], "category": "ART", "dosage": "1 tab FDC", "frequency": "HS", "duration": "30 days"},
     {"name": "Dolutegravir + Lamivudine + TDF", "generic": "DTG+3TC+TDF", "brands": ["Acriptega", "TLD"], "category": "ART", "dosage": "1 tab FDC", "frequency": "OD", "duration": "30 days"},
+
+    # ==================================================================
+    # SUPPLEMENTARY — Major Indian pharma brand coverage (Apr 2026)
+    # Ipca · Cipla · Sun Pharma · Intas · Lupin · Dr Reddy's · Mankind ·
+    # Overseas · Ignyx · Corona Remedies · Abbott · Zydus · Torrent ·
+    # Glenmark · Alkem · Micro Labs
+    # ==================================================================
+
+    # --- BPH · Alpha-blockers (extended brands) ---
+    {"name": "Tamsulosin 0.4 mg (extended brands)", "generic": "Tamsulosin", "brands": ["Urotone", "Flomax", "Tams", "Tamlet", "Tamdura", "Tamsol", "Prostamax"], "category": "Alpha-blocker", "dosage": "0.4 mg", "frequency": "HS", "duration": "30 days"},
+    {"name": "Silodosin 8 mg (extended brands)", "generic": "Silodosin", "brands": ["Silotrip", "Silodal", "Silopro", "Silogen", "Silovas", "Sildoflo", "Prosil"], "category": "Alpha-blocker", "dosage": "8 mg", "frequency": "OD", "duration": "30 days", "timing": "With dinner"},
+    {"name": "Alfuzosin SR 10 mg (extended brands)", "generic": "Alfuzosin", "brands": ["Alfusin-D", "Alfuzo", "Alphapress", "Alfoo", "Alface"], "category": "Alpha-blocker", "dosage": "10 mg", "frequency": "OD", "duration": "30 days"},
+
+    # --- BPH · Combos (extended brands) ---
+    {"name": "Tamsulosin + Dutasteride (0.4/0.5 mg)", "generic": "Tamsulosin+Dutasteride", "brands": ["Urimax-D", "Duodart", "Veltam-Plus", "Dynapres-T", "Dutalfa", "Dutaprost", "Urogenix-D", "Silopro-D"], "category": "BPH combo", "dosage": "1 cap", "frequency": "HS", "duration": "90 days"},
+    {"name": "Silodosin + Dutasteride (8/0.5 mg) (extended)", "generic": "Silodosin+Dutasteride", "brands": ["Silofast-D", "Silotrip-D", "Silodal-D", "Silopro-D"], "category": "BPH combo", "dosage": "1 cap", "frequency": "HS", "duration": "90 days"},
+    {"name": "Tamsulosin + Finasteride (0.4/5 mg)", "generic": "Tamsulosin+Finasteride", "brands": ["Urimax-F", "Finast-T", "Finox-T", "Fincar-T"], "category": "BPH combo", "dosage": "1 cap", "frequency": "HS", "duration": "90 days"},
+
+    # --- OAB · Antimuscarinics + β3 (extended brands) ---
+    {"name": "Solifenacin 5 mg (extended brands)", "generic": "Solifenacin", "brands": ["Vesicare", "Soligen", "Solitrol", "Prosoli", "Solitam", "Solidin", "Pro-Ves", "Solibid"], "category": "OAB", "dosage": "5 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Solifenacin 10 mg (extended)", "generic": "Solifenacin", "brands": ["Vesicare-10", "Soligen-10", "Solidin-10", "Solitam-10"], "category": "OAB", "dosage": "10 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Mirabegron 25 mg (extended brands)", "generic": "Mirabegron", "brands": ["Mirabeg", "Betmiga-25", "Miragen", "Mirasure", "Beta-Ig-25", "Mirado", "Mybetriq-25"], "category": "OAB", "dosage": "25 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Mirabegron 50 mg (extended brands)", "generic": "Mirabegron", "brands": ["Mirabeg-50", "Betmiga", "Miragen-50", "Beta-Ig", "Mybetriq"], "category": "OAB", "dosage": "50 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Solifenacin + Mirabegron (5/50 mg)", "generic": "Solifenacin+Mirabegron", "brands": ["Vesomni-M", "Betmiga-S"], "category": "OAB", "dosage": "1 tab", "frequency": "OD", "duration": "30 days", "instructions": "Combination for refractory OAB."},
+    {"name": "Imidafenacin 0.1 mg", "generic": "Imidafenacin", "brands": ["Staybla", "Uritos"], "category": "OAB", "dosage": "0.1 mg", "frequency": "BID", "duration": "30 days"},
+    {"name": "Vibegron 75 mg", "generic": "Vibegron", "brands": ["Gemtesa"], "category": "OAB", "dosage": "75 mg", "frequency": "OD", "duration": "30 days", "instructions": "β3-agonist; minimal anticholinergic burden."},
+
+    # --- ED / PDE5 (extended brands) ---
+    {"name": "Sildenafil 25 mg", "generic": "Sildenafil", "brands": ["Penegra-25", "Caverta-25", "Silagra-25", "Manforce-25", "Suhagra-25", "Edegra-25"], "category": "ED", "dosage": "25 mg", "frequency": "SOS", "duration": "PRN", "timing": "30-60 min before intercourse"},
+    {"name": "Sildenafil 50 mg (extended brands)", "generic": "Sildenafil", "brands": ["Penegra", "Caverta", "Silagra", "Manforce", "Suhagra", "Edegra", "Viagra"], "category": "ED", "dosage": "50 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Sildenafil 100 mg (extended brands)", "generic": "Sildenafil", "brands": ["Penegra-100", "Caverta-100", "Silagra-100", "Manforce-100", "Suhagra-100", "Viagra-100"], "category": "ED", "dosage": "100 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Tadalafil 10 mg (extended brands)", "generic": "Tadalafil", "brands": ["Tadacip-10", "Megalis-10", "Forzest-10", "Tazzle-10", "Sunfil-10", "Tadaflo-10"], "category": "ED", "dosage": "10 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Tadalafil 20 mg (extended brands)", "generic": "Tadalafil", "brands": ["Tadacip", "Megalis-20", "Forzest-20", "Tazzle-20", "Tadaflo", "Vidalista"], "category": "ED", "dosage": "20 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Vardenafil 10 mg", "generic": "Vardenafil", "brands": ["Vivanza-10", "Valif-10", "Zhewitra-10"], "category": "ED", "dosage": "10 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Vardenafil 20 mg (extended)", "generic": "Vardenafil", "brands": ["Vivanza", "Levitra", "Valif", "Zhewitra"], "category": "ED", "dosage": "20 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Avanafil 100 mg", "generic": "Avanafil", "brands": ["Stendra", "Avaforce-100"], "category": "ED", "dosage": "100 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Avanafil 200 mg", "generic": "Avanafil", "brands": ["Stendra-200", "Avaforce"], "category": "ED", "dosage": "200 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Udenafil 100 mg", "generic": "Udenafil", "brands": ["Zydena"], "category": "ED", "dosage": "100 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Sildenafil + Dapoxetine (50/30 mg)", "generic": "Sildenafil+Dapoxetine", "brands": ["Duratia-S", "Super P-Force", "Manforce-Staylong"], "category": "ED / PE", "dosage": "1 tab", "frequency": "SOS", "duration": "PRN", "instructions": "For ED with premature ejaculation."},
+    {"name": "Tadalafil + Dapoxetine (20/60 mg)", "generic": "Tadalafil+Dapoxetine", "brands": ["Super Vidalista", "Tadapox"], "category": "ED / PE", "dosage": "1 tab", "frequency": "SOS", "duration": "PRN"},
+
+    # --- Premature ejaculation ---
+    {"name": "Dapoxetine 30 mg", "generic": "Dapoxetine", "brands": ["Duratia-30", "Poxet-30", "Westoxetin-30", "Sustinex-30"], "category": "PE", "dosage": "30 mg", "frequency": "SOS", "duration": "PRN", "instructions": "1-3 h before sex; do not exceed once/24 h."},
+    {"name": "Dapoxetine 60 mg", "generic": "Dapoxetine", "brands": ["Duratia-60", "Poxet-60", "Sustinex-60"], "category": "PE", "dosage": "60 mg", "frequency": "SOS", "duration": "PRN"},
+    {"name": "Lidocaine-Prilocaine cream", "generic": "Lidocaine+Prilocaine", "brands": ["Prilox", "Numit", "EMLA", "Pricaine"], "category": "PE", "dosage": "Apply locally", "frequency": "SOS", "duration": "PRN", "instructions": "Apply 20 min before intercourse; wipe before sex."},
+
+    # --- Prostate cancer · Hormonal ---
+    {"name": "Bicalutamide 50 mg (extended)", "generic": "Bicalutamide", "brands": ["Calutide", "Bicalox", "Bicatero", "Bicalutide", "Casodex"], "category": "Oncology", "dosage": "50 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Bicalutamide 150 mg", "generic": "Bicalutamide", "brands": ["Calutide-150", "Bicalox-150"], "category": "Oncology", "dosage": "150 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Flutamide 250 mg", "generic": "Flutamide", "brands": ["Flutamid", "Drogenil"], "category": "Oncology", "dosage": "250 mg", "frequency": "TID", "duration": "30 days"},
+    {"name": "Nilutamide 150 mg", "generic": "Nilutamide", "brands": ["Nilandron"], "category": "Oncology", "dosage": "150 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Enzalutamide 40 mg", "generic": "Enzalutamide", "brands": ["Xtandi", "Bdenza"], "category": "Oncology", "dosage": "160 mg (4 caps)", "frequency": "OD", "duration": "30 days", "instructions": "For CRPC; monitor seizures."},
+    {"name": "Apalutamide 60 mg", "generic": "Apalutamide", "brands": ["Erleada"], "category": "Oncology", "dosage": "240 mg (4 tabs)", "frequency": "OD", "duration": "30 days"},
+    {"name": "Abiraterone 250 mg", "generic": "Abiraterone", "brands": ["Zytiga", "Abirapro", "Zybira", "Abirater"], "category": "Oncology", "dosage": "1000 mg (4 tabs)", "frequency": "OD", "duration": "30 days", "timing": "Empty stomach", "instructions": "Co-prescribe Prednisolone 5 mg BID."},
+    {"name": "Abiraterone 500 mg", "generic": "Abiraterone", "brands": ["Zytiga-500", "Abirapro-500"], "category": "Oncology", "dosage": "1000 mg (2 tabs)", "frequency": "OD", "duration": "30 days"},
+    {"name": "Darolutamide 300 mg", "generic": "Darolutamide", "brands": ["Nubeqa"], "category": "Oncology", "dosage": "600 mg (2 tabs)", "frequency": "BID", "duration": "30 days"},
+    {"name": "Leuprolide 3.75 mg Depot", "generic": "Leuprolide", "brands": ["Lupride", "Lupron Depot", "Lucrin Depot"], "category": "GnRH agonist", "dosage": "3.75 mg IM", "frequency": "Monthly", "duration": "3 months"},
+    {"name": "Leuprolide 11.25 mg Depot (3-mth)", "generic": "Leuprolide", "brands": ["Lupride-3M", "Lucrin 3-Month"], "category": "GnRH agonist", "dosage": "11.25 mg IM", "frequency": "Every 12 wk", "duration": "6 months"},
+    {"name": "Goserelin 3.6 mg (1-mth)", "generic": "Goserelin", "brands": ["Zoladex", "Goserin"], "category": "GnRH agonist", "dosage": "3.6 mg SC", "frequency": "Monthly", "duration": "3 months"},
+    {"name": "Goserelin 10.8 mg (3-mth)", "generic": "Goserelin", "brands": ["Zoladex LA", "Goserin-3M"], "category": "GnRH agonist", "dosage": "10.8 mg SC", "frequency": "Every 12 wk", "duration": "6 months"},
+    {"name": "Degarelix 80 mg", "generic": "Degarelix", "brands": ["Firmagon"], "category": "GnRH antagonist", "dosage": "80 mg SC", "frequency": "Monthly", "duration": "3 months", "instructions": "Loading 240 mg on day 0."},
+    {"name": "Triptorelin 3.75 mg", "generic": "Triptorelin", "brands": ["Decapeptyl", "Trip-M"], "category": "GnRH agonist", "dosage": "3.75 mg IM", "frequency": "Monthly", "duration": "3 months"},
+    {"name": "Relugolix 120 mg", "generic": "Relugolix", "brands": ["Orgovyx"], "category": "GnRH antagonist oral", "dosage": "120 mg (loading 360)", "frequency": "OD", "duration": "30 days"},
+
+    # --- Chemotherapy (urothelial / RCC / testicular) ---
+    {"name": "Gemcitabine 1 g IV", "generic": "Gemcitabine", "brands": ["Gemcite", "Gemita", "Gemtaz"], "category": "Chemo", "dosage": "1000 mg/m²", "frequency": "Weekly", "duration": "Cycle-based", "instructions": "Oncology protocol; part of GC for urothelial."},
+    {"name": "Cisplatin 50 mg IV", "generic": "Cisplatin", "brands": ["Cisplat", "Cytoplat"], "category": "Chemo", "dosage": "70 mg/m²", "frequency": "Cycle", "duration": "Cycle-based"},
+    {"name": "Pembrolizumab 100 mg IV", "generic": "Pembrolizumab", "brands": ["Keytruda"], "category": "Immunotherapy", "dosage": "200 mg IV", "frequency": "Every 3 wk", "duration": "Cycle-based"},
+    {"name": "Nivolumab 100 mg IV", "generic": "Nivolumab", "brands": ["Opdivo"], "category": "Immunotherapy", "dosage": "240 mg IV", "frequency": "Every 2 wk", "duration": "Cycle-based"},
+    {"name": "Sunitinib 50 mg", "generic": "Sunitinib", "brands": ["Sutent", "Sunib"], "category": "TKI", "dosage": "50 mg", "frequency": "OD", "duration": "4 wk on / 2 wk off", "instructions": "For advanced RCC."},
+    {"name": "Pazopanib 400 mg", "generic": "Pazopanib", "brands": ["Votrient", "Pazonib"], "category": "TKI", "dosage": "800 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Cabozantinib 40 mg", "generic": "Cabozantinib", "brands": ["Cabometyx"], "category": "TKI", "dosage": "40 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Axitinib 5 mg", "generic": "Axitinib", "brands": ["Inlyta"], "category": "TKI", "dosage": "5 mg", "frequency": "BID", "duration": "30 days"},
+    {"name": "BCG Intravesical 80 mg", "generic": "BCG", "brands": ["OncoTICE", "BCG-Vac", "ImmuCyst"], "category": "Intravesical", "dosage": "80 mg intravesical", "frequency": "Weekly", "duration": "6 wk induction + maintenance"},
+    {"name": "Mitomycin-C 40 mg", "generic": "Mitomycin", "brands": ["Mitozytrex", "Mitonco"], "category": "Intravesical", "dosage": "40 mg intravesical", "frequency": "Weekly", "duration": "6 wk"},
+
+    # --- Urinary tract antibiotics (expanded brand coverage) ---
+    {"name": "Nitrofurantoin 100 mg (extended brands)", "generic": "Nitrofurantoin", "brands": ["Martifur", "Niftas", "Nitrofur", "Uvamin", "Macrobid", "Nitrocap"], "category": "Antibiotic", "dosage": "100 mg", "frequency": "BID", "duration": "7 days", "timing": "With food"},
+    {"name": "Fosfomycin Trometamol 3 g sachet", "generic": "Fosfomycin", "brands": ["Urimax-F Sachet", "Fosfotrust", "Fosfocin", "Monurol"], "category": "Antibiotic", "dosage": "3 g sachet", "frequency": "Single dose", "duration": "1 day", "timing": "Empty stomach at bedtime", "instructions": "Dissolve in half glass water."},
+    {"name": "Pivmecillinam 200 mg", "generic": "Pivmecillinam", "brands": ["Penomax"], "category": "Antibiotic", "dosage": "200 mg", "frequency": "TID", "duration": "5 days"},
+    {"name": "Trimethoprim-Sulfamethoxazole DS", "generic": "Co-trimoxazole", "brands": ["Bactrim DS", "Septran DS", "Ciplin DS"], "category": "Antibiotic", "dosage": "160/800 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Ciprofloxacin 500 mg (extended)", "generic": "Ciprofloxacin", "brands": ["Cifran", "Ciplox", "Cipro", "Ciprobid", "Quintor"], "category": "Antibiotic", "dosage": "500 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Ciprofloxacin 1 g OD", "generic": "Ciprofloxacin", "brands": ["Cifran OD", "Ciprobid OD"], "category": "Antibiotic", "dosage": "1000 mg ER", "frequency": "OD", "duration": "7 days"},
+    {"name": "Levofloxacin 500 mg (extended)", "generic": "Levofloxacin", "brands": ["Levoflox", "Levoday", "Levodac", "Tavanic", "Glevo"], "category": "Antibiotic", "dosage": "500 mg", "frequency": "OD", "duration": "7 days"},
+    {"name": "Levofloxacin 750 mg", "generic": "Levofloxacin", "brands": ["Levoflox-750", "Glevo-750", "Levoday-750"], "category": "Antibiotic", "dosage": "750 mg", "frequency": "OD", "duration": "5 days"},
+    {"name": "Ofloxacin 200 mg", "generic": "Ofloxacin", "brands": ["Oflox", "Zanocin", "Zenflox"], "category": "Antibiotic", "dosage": "200 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Moxifloxacin 400 mg", "generic": "Moxifloxacin", "brands": ["Moxif", "Avelox", "Mahaflox"], "category": "Antibiotic", "dosage": "400 mg", "frequency": "OD", "duration": "7 days"},
+    {"name": "Amoxicillin-Clavulanate 625 mg", "generic": "Amoxicillin+Clav", "brands": ["Augmentin", "Clavam", "Moxikind-CV", "Mega-CV", "Amoxyclav"], "category": "Antibiotic", "dosage": "625 mg", "frequency": "TID", "duration": "7 days"},
+    {"name": "Amoxicillin-Clavulanate 1 g", "generic": "Amoxicillin+Clav", "brands": ["Augmentin 1g", "Clavam 1g", "Moxikind-CV 1g"], "category": "Antibiotic", "dosage": "1 g", "frequency": "BID", "duration": "7 days"},
+    {"name": "Cefixime 200 mg", "generic": "Cefixime", "brands": ["Taxim-O", "Cefix", "Zifi", "Mahacef", "Ceftas"], "category": "Antibiotic", "dosage": "200 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Cefixime-Ofloxacin", "generic": "Cefixime+Ofloxacin", "brands": ["Taxim-O Forte", "Zifi-OF", "Mahacef-OF"], "category": "Antibiotic", "dosage": "1 tab", "frequency": "BID", "duration": "5 days"},
+    {"name": "Cefuroxime 500 mg", "generic": "Cefuroxime", "brands": ["Ceftum", "Supacef", "Cefakind"], "category": "Antibiotic", "dosage": "500 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Cefadroxil 500 mg", "generic": "Cefadroxil", "brands": ["Odoxil", "Cedrox", "Droxyl"], "category": "Antibiotic", "dosage": "500 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Ceftriaxone 1 g IV/IM", "generic": "Ceftriaxone", "brands": ["Monocef", "Oframax", "Cefaxone", "Roxim", "Intacef"], "category": "Antibiotic", "dosage": "1 g IV", "frequency": "OD", "duration": "5 days"},
+    {"name": "Ceftriaxone-Sulbactam 1.5 g", "generic": "Ceftriaxone+Sulbactam", "brands": ["Monocef-SB", "Supacef-SB", "Xone-SB"], "category": "Antibiotic", "dosage": "1.5 g IV", "frequency": "BD", "duration": "5 days"},
+    {"name": "Cefoperazone-Sulbactam 1.5 g", "generic": "Cefoperazone+Sulbactam", "brands": ["Magnex", "Sulbacef", "Cefactam"], "category": "Antibiotic", "dosage": "1.5 g IV", "frequency": "BID", "duration": "5 days"},
+    {"name": "Piperacillin-Tazobactam 4.5 g", "generic": "Piperacillin+Tazobactam", "brands": ["Zosyn", "Pipzo", "Tazact", "Pipracil-TZ"], "category": "Antibiotic", "dosage": "4.5 g IV", "frequency": "Q8H", "duration": "7 days"},
+    {"name": "Meropenem 1 g IV", "generic": "Meropenem", "brands": ["Meronem", "Mecitem", "Meropen", "Merotrol"], "category": "Antibiotic", "dosage": "1 g IV", "frequency": "Q8H", "duration": "7 days"},
+    {"name": "Imipenem-Cilastatin 500 mg", "generic": "Imipenem+Cilastatin", "brands": ["Cilanem", "Primaxin", "Imecil"], "category": "Antibiotic", "dosage": "500 mg IV", "frequency": "Q6H", "duration": "7 days"},
+    {"name": "Ertapenem 1 g IV", "generic": "Ertapenem", "brands": ["Invanz"], "category": "Antibiotic", "dosage": "1 g IV", "frequency": "OD", "duration": "7 days"},
+    {"name": "Amikacin 500 mg IV", "generic": "Amikacin", "brands": ["Mikacin", "Amikin", "Amistar"], "category": "Antibiotic", "dosage": "500 mg IV", "frequency": "BID", "duration": "7 days", "instructions": "Monitor renal function."},
+    {"name": "Gentamicin 80 mg IV", "generic": "Gentamicin", "brands": ["Garamycin", "Genticyn"], "category": "Antibiotic", "dosage": "80 mg IV", "frequency": "TID", "duration": "5 days"},
+    {"name": "Doxycycline 100 mg", "generic": "Doxycycline", "brands": ["Doxy-1", "Doxt", "Minicycline"], "category": "Antibiotic", "dosage": "100 mg", "frequency": "BID", "duration": "7 days"},
+    {"name": "Azithromycin 500 mg", "generic": "Azithromycin", "brands": ["Azithral", "Azee", "Zithromax", "Zadro"], "category": "Antibiotic", "dosage": "500 mg", "frequency": "OD", "duration": "5 days"},
+    {"name": "Metronidazole 400 mg", "generic": "Metronidazole", "brands": ["Flagyl", "Metrogyl", "Aristogyl"], "category": "Antibiotic", "dosage": "400 mg", "frequency": "TID", "duration": "7 days"},
+
+    # --- Urinary analgesic / antispasmodic (extended) ---
+    {"name": "Phenazopyridine 100 mg", "generic": "Phenazopyridine", "brands": ["Pyridium", "Urispas-P", "AZO"], "category": "Urinary analgesic", "dosage": "100 mg", "frequency": "TID", "duration": "2 days", "instructions": "Orange-red urine expected; short-term only."},
+    {"name": "Hyoscine butylbromide 10 mg", "generic": "Hyoscine", "brands": ["Buscogast", "Buscopan", "Hyosine"], "category": "Antispasmodic", "dosage": "10 mg", "frequency": "TID", "duration": "5 days"},
+    {"name": "Drotaverine 80 mg", "generic": "Drotaverine", "brands": ["Drotin", "Drotagyl", "Deflazina"], "category": "Antispasmodic", "dosage": "80 mg", "frequency": "TID", "duration": "5 days"},
+    {"name": "Drotaverine + Mefenamic 80/250 mg", "generic": "Drotaverine+Mefenamic", "brands": ["Drotin-M", "Meftal-Spas"], "category": "Antispasmodic", "dosage": "1 tab", "frequency": "TID", "duration": "3 days", "instructions": "For renal colic adjunct."},
+    {"name": "Dicyclomine 10 mg", "generic": "Dicyclomine", "brands": ["Cyclopam", "Colimex", "Dicytel"], "category": "Antispasmodic", "dosage": "10 mg", "frequency": "TID", "duration": "3 days"},
+
+    # --- Pain / NSAIDs / Paracetamol (common in urology) ---
+    {"name": "Paracetamol 650 mg", "generic": "Paracetamol", "brands": ["Dolo-650", "Calpol-650", "Crocin Advance", "PCM-650", "Pacimol-650"], "category": "Analgesic", "dosage": "650 mg", "frequency": "TID", "duration": "3 days"},
+    {"name": "Aceclofenac 100 mg", "generic": "Aceclofenac", "brands": ["Zerodol", "Hifenac", "Aceclo"], "category": "Analgesic", "dosage": "100 mg", "frequency": "BID", "duration": "5 days", "timing": "After food"},
+    {"name": "Aceclofenac + Paracetamol", "generic": "Aceclofenac+PCM", "brands": ["Zerodol-P", "Hifenac-P", "Aceclo-Plus"], "category": "Analgesic", "dosage": "1 tab", "frequency": "BID", "duration": "5 days"},
+    {"name": "Diclofenac 50 mg", "generic": "Diclofenac", "brands": ["Voveran", "Reactine", "Dicloran"], "category": "Analgesic", "dosage": "50 mg", "frequency": "TID", "duration": "5 days"},
+    {"name": "Diclofenac SR 100 mg", "generic": "Diclofenac", "brands": ["Voveran-SR", "Dicloran-SR"], "category": "Analgesic", "dosage": "100 mg", "frequency": "BID", "duration": "5 days"},
+    {"name": "Ibuprofen 400 mg", "generic": "Ibuprofen", "brands": ["Brufen", "Combiflam (with PCM)", "Ibugesic"], "category": "Analgesic", "dosage": "400 mg", "frequency": "TID", "duration": "3 days"},
+    {"name": "Ketorolac 10 mg", "generic": "Ketorolac", "brands": ["Ketorol", "Ketanov", "Zorfen"], "category": "Analgesic", "dosage": "10 mg", "frequency": "QID", "duration": "5 days"},
+    {"name": "Ketorolac 30 mg IV/IM", "generic": "Ketorolac", "brands": ["Ketorol IV", "Ketanov"], "category": "Analgesic", "dosage": "30 mg IV/IM", "frequency": "Q6H", "duration": "2 days"},
+    {"name": "Etoricoxib 60 mg", "generic": "Etoricoxib", "brands": ["Etody", "Etoshine", "Nucoxia"], "category": "Analgesic", "dosage": "60 mg", "frequency": "OD", "duration": "5 days"},
+    {"name": "Etoricoxib 120 mg", "generic": "Etoricoxib", "brands": ["Etody-120", "Etoshine-120", "Nucoxia-120"], "category": "Analgesic", "dosage": "120 mg", "frequency": "OD", "duration": "3 days"},
+    {"name": "Tramadol 50 mg", "generic": "Tramadol", "brands": ["Ultracet", "Tramazac", "Contramal"], "category": "Analgesic", "dosage": "50 mg", "frequency": "Q6H", "duration": "3 days"},
+    {"name": "Tramadol + Paracetamol", "generic": "Tramadol+PCM", "brands": ["Ultracet", "Tramacad-P", "Acuvin"], "category": "Analgesic", "dosage": "1 tab", "frequency": "Q6H", "duration": "3 days"},
+    {"name": "Buprenorphine 0.2 mg SL", "generic": "Buprenorphine", "brands": ["Tidigesic", "Norspan"], "category": "Opioid", "dosage": "0.2 mg SL", "frequency": "Q8H", "duration": "PRN"},
+
+    # --- Hematuria / bleeding ---
+    {"name": "Tranexamic acid 500 mg (extended)", "generic": "Tranexamic acid", "brands": ["Pause", "Trapic", "Transamin", "Hemstop-500", "Clottix"], "category": "Hemostatic", "dosage": "500 mg", "frequency": "TID", "duration": "5 days"},
+    {"name": "Tranexamic acid 1 g", "generic": "Tranexamic acid", "brands": ["Pause-1000", "Trapic-MF", "Clottix-1G"], "category": "Hemostatic", "dosage": "1 g", "frequency": "TID", "duration": "3 days"},
+    {"name": "Tranexamic + Mefenamic", "generic": "Tranexamic+Mefenamic", "brands": ["Trapic-MF", "Pause-MF"], "category": "Hemostatic", "dosage": "1 tab", "frequency": "TID", "duration": "3 days"},
+    {"name": "Ethamsylate 500 mg", "generic": "Ethamsylate", "brands": ["Revici", "Styptocid", "K-Stat"], "category": "Hemostatic", "dosage": "500 mg", "frequency": "TID", "duration": "5 days"},
+
+    # --- Stone prevention / metabolic (extended) ---
+    {"name": "Potassium citrate SR 1080 mg", "generic": "Potassium citrate", "brands": ["Urikind-K10", "Alkasol", "Potrate-SR"], "category": "Stones", "dosage": "10 mEq", "frequency": "BID", "duration": "90 days"},
+    {"name": "Magnesium citrate + B6", "generic": "Mg-citrate+B6", "brands": ["Magocit", "Urocit-B6"], "category": "Stones", "dosage": "1 tab", "frequency": "OD", "duration": "30 days"},
+    {"name": "Thiopronin 100 mg (cystine)", "generic": "Thiopronin", "brands": ["Thiola"], "category": "Stones", "dosage": "100 mg", "frequency": "TID", "duration": "90 days", "instructions": "For cystinuria."},
+    {"name": "Captopril 25 mg (cystine)", "generic": "Captopril", "brands": ["Capoten", "Aceten"], "category": "Stones", "dosage": "25 mg", "frequency": "TID", "duration": "90 days"},
+    {"name": "Febuxostat 40 mg", "generic": "Febuxostat", "brands": ["Zurig", "Febuxa", "Febutaz"], "category": "Stones", "dosage": "40 mg", "frequency": "OD", "duration": "90 days"},
+    {"name": "Febuxostat 80 mg", "generic": "Febuxostat", "brands": ["Zurig-80", "Febuxa-80", "Febutaz-80"], "category": "Stones", "dosage": "80 mg", "frequency": "OD", "duration": "90 days"},
+
+    # --- Testosterone / andrology ---
+    {"name": "Testosterone undecanoate 1 g IM (Nebido)", "generic": "Testosterone", "brands": ["Nebido", "Testoviron"], "category": "Testosterone", "dosage": "1 g IM", "frequency": "Every 10-14 wk", "duration": "Long-term", "instructions": "Hypogonadism therapy; monitor PSA + Hb."},
+    {"name": "Testosterone enanthate 250 mg IM", "generic": "Testosterone", "brands": ["Testoviron Depot", "Cernos Depot"], "category": "Testosterone", "dosage": "250 mg IM", "frequency": "Every 2-3 wk", "duration": "Long-term"},
+    {"name": "Testosterone gel 1%", "generic": "Testosterone", "brands": ["Testogel", "Androgel", "Cernos Gel"], "category": "Testosterone", "dosage": "5 g (50 mg)", "frequency": "OD topical", "duration": "30 days"},
+    {"name": "Clomiphene citrate 25 mg", "generic": "Clomiphene", "brands": ["Clom", "Fertomid-25", "Ovofar-25"], "category": "Andrology", "dosage": "25 mg", "frequency": "OD", "duration": "90 days", "instructions": "Off-label for hypogonadism preserving fertility."},
+    {"name": "Tamoxifen 10 mg (gynecomastia)", "generic": "Tamoxifen", "brands": ["Nolvadex-10", "Tamodex-10"], "category": "Andrology", "dosage": "10 mg", "frequency": "OD", "duration": "60 days"},
+    {"name": "Anastrozole 1 mg", "generic": "Anastrozole", "brands": ["Arimidex", "Anazole"], "category": "Andrology", "dosage": "1 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "hCG 5000 IU IM", "generic": "hCG", "brands": ["Pregnyl", "HUCOG", "Corion"], "category": "Andrology", "dosage": "5000 IU IM", "frequency": "Every 3-5 days", "duration": "3 months"},
+
+    # --- Fertility (male) ---
+    {"name": "L-Carnitine + Acetyl-L-Carnitine + CoQ10", "generic": "Carnitine+ALC+CoQ10", "brands": ["Addyzoa", "Fertyl", "Aminoleban-H", "Spermotrend"], "category": "Male fertility", "dosage": "1 cap", "frequency": "BID", "duration": "90 days", "instructions": "Sperm-quality supplement; 3 months to re-assess."},
+    {"name": "Coenzyme Q10 200 mg", "generic": "Coenzyme Q10", "brands": ["CoQ-200", "Cogilife"], "category": "Male fertility", "dosage": "200 mg", "frequency": "OD", "duration": "90 days"},
+    {"name": "Lycopene + Multivitamin", "generic": "Lycopene+Multi", "brands": ["Lycostar", "Carotene-E", "Supradyn"], "category": "Male fertility", "dosage": "1 tab", "frequency": "OD", "duration": "90 days"},
+    {"name": "Zinc 50 mg + Folate", "generic": "Zinc+Folate", "brands": ["Zincovit", "Folzin"], "category": "Supplement", "dosage": "1 tab", "frequency": "OD", "duration": "90 days"},
+
+    # --- Nutraceuticals (common patient add-ons) ---
+    {"name": "Saw Palmetto 160 mg", "generic": "Saw palmetto", "brands": ["Prostate-Care", "Prostalin", "Prosta-Q"], "category": "BPH supplement", "dosage": "160 mg", "frequency": "BID", "duration": "90 days", "instructions": "Adjunct; evidence modest."},
+    {"name": "Cranberry 500 mg", "generic": "Cranberry", "brands": ["Cystoberry", "UritaPro", "Uri-care"], "category": "UTI prophylaxis", "dosage": "500 mg", "frequency": "OD", "duration": "90 days"},
+    {"name": "D-Mannose 2 g", "generic": "D-Mannose", "brands": ["UrtiAvoid", "CystexPlus", "Uridose"], "category": "UTI prophylaxis", "dosage": "2 g", "frequency": "OD", "duration": "90 days"},
+    {"name": "Cystone tablets (Himalaya)", "generic": "Herbal-litholytic", "brands": ["Cystone", "Calcury", "K-Stone"], "category": "Stones supplement", "dosage": "2 tabs", "frequency": "BID", "duration": "90 days"},
+    {"name": "Neeri syrup", "generic": "Herbal", "brands": ["Neeri (Aimil)", "Neeri-KFT"], "category": "Stones supplement", "dosage": "10 ml", "frequency": "BID", "duration": "30 days"},
+
+    # --- Sodium / alkalinizers (contrast induced prevention / metabolic) ---
+    {"name": "Sodium bicarbonate 500 mg", "generic": "Sodium bicarbonate", "brands": ["Sodamint", "Bical", "NaHCO3"], "category": "Alkalinizer", "dosage": "500 mg", "frequency": "TID", "duration": "14 days"},
+    {"name": "Disodium hydrogen citrate syrup", "generic": "Na-citrate", "brands": ["Cital", "Alkaurim"], "category": "Alkalinizer", "dosage": "10 ml", "frequency": "TID", "duration": "14 days", "timing": "After meals"},
+
+    # --- Renal / ESRD adjuncts ---
+    {"name": "Sevelamer 800 mg", "generic": "Sevelamer", "brands": ["Renvela", "Selam", "Sevmax"], "category": "Phosphate binder", "dosage": "800 mg", "frequency": "TID", "duration": "30 days"},
+    {"name": "Cinacalcet 30 mg", "generic": "Cinacalcet", "brands": ["Sensipar", "Cinacal"], "category": "Secondary HPT", "dosage": "30 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Calcitriol 0.25 mcg", "generic": "Calcitriol", "brands": ["Rocaltrol", "Calcirol D3"], "category": "Vit-D analogue", "dosage": "0.25 mcg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Iron sucrose 100 mg IV", "generic": "Iron sucrose", "brands": ["Orofer-S", "Venofer"], "category": "Iron", "dosage": "100 mg IV", "frequency": "Weekly", "duration": "3 doses"},
+    {"name": "Erythropoietin 4000 IU", "generic": "EPO", "brands": ["Eprex", "Ceriton", "Epofit"], "category": "ESA", "dosage": "4000 IU SC", "frequency": "Thrice weekly", "duration": "30 days"},
+
+    # --- Anticoagulation (peri-op / transplant) ---
+    {"name": "Enoxaparin 40 mg SC", "generic": "Enoxaparin", "brands": ["Clexane", "Lomoh", "Lupenox"], "category": "Anticoagulant", "dosage": "40 mg SC", "frequency": "OD", "duration": "7 days"},
+    {"name": "Rivaroxaban 10 mg", "generic": "Rivaroxaban", "brands": ["Xarelto", "Ribarix", "Rivasure"], "category": "Anticoagulant", "dosage": "10 mg", "frequency": "OD", "duration": "30 days"},
+    {"name": "Apixaban 5 mg", "generic": "Apixaban", "brands": ["Eliquis", "Apixafort", "Apixaban"], "category": "Anticoagulant", "dosage": "5 mg", "frequency": "BID", "duration": "30 days"},
+
+    # --- Immunosuppressants (renal transplant) ---
+    {"name": "Tacrolimus 0.5 mg", "generic": "Tacrolimus", "brands": ["Pangraf", "Tacroma", "Prograf"], "category": "Transplant immunosuppressant", "dosage": "0.5 mg", "frequency": "BID", "duration": "Long-term", "instructions": "Monitor trough levels."},
+    {"name": "Tacrolimus 1 mg", "generic": "Tacrolimus", "brands": ["Pangraf-1", "Tacroma-1", "Prograf-1"], "category": "Transplant immunosuppressant", "dosage": "1 mg", "frequency": "BID", "duration": "Long-term"},
+    {"name": "Mycophenolate mofetil 500 mg", "generic": "MMF", "brands": ["Mycept", "Cellcept", "Mofetyl", "Myfortic"], "category": "Transplant immunosuppressant", "dosage": "500 mg", "frequency": "BID", "duration": "Long-term"},
+    {"name": "Mycophenolate sodium 360 mg", "generic": "MPS", "brands": ["Myfortic"], "category": "Transplant immunosuppressant", "dosage": "360 mg", "frequency": "BID", "duration": "Long-term"},
+    {"name": "Everolimus 0.25 mg", "generic": "Everolimus", "brands": ["Certican", "Evertor"], "category": "Transplant immunosuppressant", "dosage": "0.25 mg", "frequency": "BID", "duration": "Long-term"},
+    {"name": "Prednisolone 5 mg (transplant)", "generic": "Prednisolone", "brands": ["Wysolone", "Omnacortil"], "category": "Transplant immunosuppressant", "dosage": "5 mg", "frequency": "OD", "duration": "Long-term", "timing": "After breakfast"},
+
+    # --- IV fluids / peri-op (frequently prescribed) ---
+    {"name": "Normal saline 0.9% 500 ml", "generic": "NaCl 0.9%", "brands": ["NS 500"], "category": "IV fluid", "dosage": "500 ml IV", "frequency": "As needed", "duration": "Peri-op"},
+    {"name": "Ringer's lactate 500 ml", "generic": "RL", "brands": ["RL 500"], "category": "IV fluid", "dosage": "500 ml IV", "frequency": "As needed", "duration": "Peri-op"},
+    {"name": "DNS 500 ml", "generic": "DNS", "brands": ["DNS 500"], "category": "IV fluid", "dosage": "500 ml IV", "frequency": "As needed", "duration": "Peri-op"},
+
+    # --- Antacids / PPIs (co-prescribed with NSAIDs / steroids) ---
+    {"name": "Pantoprazole 40 mg", "generic": "Pantoprazole", "brands": ["Pantop", "Pan-40", "Pantocid", "Pantosec"], "category": "PPI", "dosage": "40 mg", "frequency": "OD", "duration": "14 days", "timing": "Before breakfast"},
+    {"name": "Rabeprazole 20 mg", "generic": "Rabeprazole", "brands": ["Razo", "Rabicip", "Pariet"], "category": "PPI", "dosage": "20 mg", "frequency": "OD", "duration": "14 days"},
+    {"name": "Esomeprazole 40 mg", "generic": "Esomeprazole", "brands": ["Nexpro", "Esogard", "Esoz"], "category": "PPI", "dosage": "40 mg", "frequency": "OD", "duration": "14 days"},
+
+    # --- Antiemetic (chemo / post-op) ---
+    {"name": "Ondansetron 4 mg", "generic": "Ondansetron", "brands": ["Emeset", "Vomikind", "Zofer"], "category": "Antiemetic", "dosage": "4 mg", "frequency": "TID", "duration": "3 days"},
+    {"name": "Ondansetron 8 mg", "generic": "Ondansetron", "brands": ["Emeset-8", "Vomikind-8"], "category": "Antiemetic", "dosage": "8 mg", "frequency": "BID", "duration": "3 days"},
+    {"name": "Domperidone 10 mg", "generic": "Domperidone", "brands": ["Domstal", "Domperi", "Vomistop"], "category": "Antiemetic", "dosage": "10 mg", "frequency": "TID", "duration": "3 days"},
+    {"name": "Metoclopramide 10 mg", "generic": "Metoclopramide", "brands": ["Perinorm", "Reglan", "Emnorm"], "category": "Antiemetic", "dosage": "10 mg", "frequency": "TID", "duration": "3 days"},
+
+    # --- Laxatives (urology adjuncts) ---
+    {"name": "Lactulose 15 ml", "generic": "Lactulose", "brands": ["Duphalac", "Looz", "Cremaffin Plus"], "category": "Laxative", "dosage": "15 ml", "frequency": "HS", "duration": "14 days"},
+    {"name": "Bisacodyl 5 mg", "generic": "Bisacodyl", "brands": ["Dulcolax", "Laxoberry"], "category": "Laxative", "dosage": "5 mg", "frequency": "HS", "duration": "5 days"},
+    {"name": "Isabgol husk", "generic": "Isabgol", "brands": ["Sat Isabgol", "Naturolax"], "category": "Laxative", "dosage": "1 tsp", "frequency": "HS", "duration": "30 days", "instructions": "Mix in water/milk; drink immediately."},
+
+    # --- Vitamins (ED/fertility/transplant prophylaxis) ---
+    {"name": "Vitamin D3 60,000 IU", "generic": "Cholecalciferol", "brands": ["Calcirol", "Uprise-D3", "D-Rise"], "category": "Vitamin", "dosage": "60000 IU", "frequency": "Weekly", "duration": "8 weeks"},
+    {"name": "Vitamin B-complex", "generic": "B-complex", "brands": ["Becosules", "Neurobion Forte", "Methycobal"], "category": "Vitamin", "dosage": "1 cap", "frequency": "OD", "duration": "30 days"},
+    {"name": "Methylcobalamin 1500 mcg", "generic": "Methylcobalamin", "brands": ["Mecobal", "Nervijen-Plus", "Nurokind"], "category": "Vitamin", "dosage": "1500 mcg", "frequency": "OD", "duration": "30 days"},
 ]
 
 

@@ -954,7 +954,9 @@ async def require_doctor_or_full_access(user=Depends(require_user)) -> Dict[str,
 
 async def require_prescriber(user=Depends(require_user)) -> Dict[str, Any]:
     role = user.get("role")
-    if role in ["owner", "doctor"]:
+    # Full owner-tier (super_owner, primary_owner, partner, legacy owner) +
+    # doctor are all prescribers. Partners are clinical-equal to primary_owner.
+    if role in ["super_owner", "primary_owner", "owner", "partner", "doctor"]:
         return user
     # Custom roles tagged as "doctor" category also get prescriber powers
     custom = await db.role_labels.find_one({"slug": role, "category": "doctor"}, {"_id": 0})
@@ -966,7 +968,7 @@ async def require_prescriber(user=Depends(require_user)) -> Dict[str, Any]:
 async def is_prescriber(user: Dict[str, Any]) -> bool:
     """Helper — does this user have prescribe permission?"""
     role = user.get("role")
-    if role in ["owner", "doctor"]:
+    if role in ["super_owner", "primary_owner", "owner", "partner", "doctor"]:
         return True
     custom = await db.role_labels.find_one({"slug": role, "category": "doctor"}, {"_id": 0})
     return bool(custom)

@@ -136,7 +136,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   });
   items.push({ label: 'Diseases', icon: 'medical', route: '/diseases' });
   items.push({ label: 'Tools', icon: 'calculator', route: '/tools' });
-  items.push({ label: 'Education', icon: 'book', route: '/education' });
+  items.push({ label: t('more.education') || 'Patient Education', icon: 'book', route: '/education' });
   items.push({ label: 'Blog', icon: 'newspaper', route: '/blog' });
   items.push({ label: 'Videos', icon: 'play-circle', route: '/videos' });
   if (isStaff) {

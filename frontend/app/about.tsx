@@ -7,12 +7,19 @@ import { COLORS, FONTS, RADIUS, DOCTOR_PHOTO_URL } from '../src/theme';
 import { CollapsibleHero, useCollapsibleHeader } from '../src/collapsible-hero';
 import LanguageDropdown from '../src/language-dropdown';
 import { useI18n } from '../src/i18n';
+import { useResponsive } from '../src/responsive';
 
 export default function About() {
   const router = useRouter();
   const [info, setInfo] = useState<any>(null);
   const [overrides, setOverrides] = useState<any>(null);
-  const collapse = useCollapsibleHeader(320, 72);
+  const r = useResponsive();
+  // On desktop, cap the hero at a much shorter height so the page
+  // feels premium instead of mobile-stretched. Content also centers
+  // in a 960-wide column.
+  const heroHeight = r.isWebDesktop ? 200 : 320;
+  const heroCollapsed = r.isWebDesktop ? 60 : 72;
+  const collapse = useCollapsibleHeader(heroHeight, heroCollapsed);
   const { t, lang } = useI18n();
 
   useEffect(() => {
@@ -63,7 +70,16 @@ export default function About() {
       <Animated.ScrollView
         onScroll={collapse.onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{ padding: 20, paddingTop: 320 + 12, paddingBottom: 100 }}
+        contentContainerStyle={[
+          { padding: 20, paddingTop: heroHeight + 12, paddingBottom: 100 },
+          r.isWebDesktop && {
+            maxWidth: 960,
+            alignSelf: 'center',
+            width: '100%',
+            padding: 16,
+            paddingTop: heroHeight + 10,
+          } as any,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Tagline card */}
