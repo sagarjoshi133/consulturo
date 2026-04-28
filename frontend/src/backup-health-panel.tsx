@@ -12,6 +12,7 @@ import { format, parseISO } from 'date-fns';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { Skeleton } from './skeleton';
+import { useResponsive } from './responsive';
 
 type Archive = {
   name: string;
@@ -64,6 +65,7 @@ export function BackupHealthPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isWebDesktop } = useResponsive();
 
   const load = useCallback(async () => {
     setError(null);
@@ -118,11 +120,13 @@ export function BackupHealthPanel() {
         </View>
       ) : data ? (
         <>
+          <View style={isWebDesktop ? { flexDirection: 'row', gap: 14, marginTop: 8 } : undefined}>
           {/* Card 1 — local dumps */}
           <View
             style={[
               styles.card,
               { borderColor: lastBackupHealthy ? COLORS.success + '55' : COLORS.warning + '66' },
+              isWebDesktop && { flex: 1, marginBottom: 0 },
             ]}
             testID="backup-local-card"
           >
@@ -166,6 +170,7 @@ export function BackupHealthPanel() {
                   ? COLORS.success + '55'
                   : COLORS.accent + '66',
               },
+              isWebDesktop && { flex: 1, marginBottom: 0 },
             ]}
             testID="backup-mirror-card"
           >
@@ -232,13 +237,15 @@ export function BackupHealthPanel() {
               </View>
             )}
           </View>
+          </View>
 
           {/* Recent archives */}
           {data.local.recent.length > 0 && (
             <>
               <Text style={[styles.sectionLabel, { marginTop: 18 }]}>Recent archives</Text>
+              <View style={isWebDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 10 } : undefined}>
               {data.local.recent.map((a) => (
-                <View key={a.name} style={styles.row} testID={`backup-row-${a.name}`}>
+                <View key={a.name} style={[styles.row, isWebDesktop && { width: '49%' }]} testID={`backup-row-${a.name}`}>
                   <Ionicons name="archive-outline" size={18} color={COLORS.primary} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowName} numberOfLines={1}>{a.name}</Text>
@@ -248,6 +255,7 @@ export function BackupHealthPanel() {
                   </View>
                 </View>
               ))}
+              </View>
             </>
           )}
         </>

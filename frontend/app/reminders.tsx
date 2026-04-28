@@ -36,6 +36,7 @@ import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { DateField, TimeField } from '../src/date-picker';
 import { parseUIDate } from '../src/date';
 import { useAuth } from '../src/auth';
+import { useResponsive } from '../src/responsive';
 import {
   Reminder,
   RepeatKind,
@@ -67,6 +68,7 @@ export default function RemindersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { isWebDesktop } = useResponsive();
 
   const isStaff = !!user && ['owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes((user.role as string) || '');
 
@@ -126,7 +128,7 @@ export default function RemindersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <LinearGradient colors={COLORS.heroGradient} style={[styles.hero, { paddingTop: insets.top + 6 }]}>
+      <LinearGradient colors={COLORS.heroGradient} style={[styles.hero, { paddingTop: insets.top + 6 }, isWebDesktop && { paddingTop: 12, paddingBottom: 10 }]}>
         <View style={styles.headRow}>
           <TouchableOpacity onPress={() => goBackSafe(router)} style={styles.iconBtn} testID="reminders-back">
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -140,7 +142,7 @@ export default function RemindersScreen() {
       </LinearGradient>
 
       {/* Tabs */}
-      <View style={styles.tabsRow}>
+      <View style={[styles.tabsRow, isWebDesktop && { maxWidth: 960, width: '100%', alignSelf: 'center', paddingHorizontal: 24 }]}>
         {(['upcoming', 'past', 'all'] as const).map((k) => {
           const active = filter === k;
           const cnt = counts[k];
@@ -168,7 +170,7 @@ export default function RemindersScreen() {
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 110 + insets.bottom }}
+          contentContainerStyle={[{ padding: 16, paddingBottom: 110 + insets.bottom }, isWebDesktop && { maxWidth: 960, width: '100%', alignSelf: 'center', padding: 24, paddingBottom: 60 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         >
           {filtered.length === 0 ? (
@@ -182,7 +184,8 @@ export default function RemindersScreen() {
               </Text>
             </View>
           ) : (
-            filtered.map((r) => {
+            <View style={isWebDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 12 } : undefined}>
+            {filtered.map((r) => {
               const past = isPast(new Date(r.when_iso));
               const tagMeta = r.role_tag ? TAG_META[r.role_tag] : null;
               return (
@@ -190,7 +193,7 @@ export default function RemindersScreen() {
                   key={r.id}
                   onPress={() => setEditing(r)}
                   activeOpacity={0.78}
-                  style={[styles.card, past && r.repeat === 'none' && styles.cardPast]}
+                  style={[styles.card, past && r.repeat === 'none' && styles.cardPast, isWebDesktop && { width: '49%', marginBottom: 0 }]}
                   testID={`reminder-${r.id}`}
                 >
                   <View style={[styles.alarmIcon, past && r.repeat === 'none' ? { backgroundColor: COLORS.textDisabled + '22' } : null]}>
@@ -231,7 +234,8 @@ export default function RemindersScreen() {
                   </TouchableOpacity>
                 </TouchableOpacity>
               );
-            })
+            })}
+            </View>
           )}
         </ScrollView>
       )}

@@ -34,6 +34,7 @@ import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import OwnersPanel from '../src/owners-panel';
+import { useResponsive } from '../src/responsive';
 
 type Section = {
   key: string;
@@ -50,6 +51,7 @@ export default function PermissionManager() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { isWebDesktop } = useResponsive();
   // Owner-tier gate (primary_owner OR partner OR super_owner OR
   // legacy "owner"). Partners now reach this screen because their
   // privilege envelope matches a primary_owner's everywhere except
@@ -177,7 +179,7 @@ export default function PermissionManager() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <LinearGradient colors={COLORS.heroGradient} style={[styles.hero, { paddingTop: insets.top + 6 }]}>
+      <LinearGradient colors={COLORS.heroGradient} style={[styles.hero, { paddingTop: insets.top + 6 }, isWebDesktop && { paddingTop: 12, paddingBottom: 10 }]}>
         <View style={styles.headRow}>
           <TouchableOpacity onPress={() => goBackSafe(router)} style={styles.iconBtn} testID="perm-mgr-back">
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -195,7 +197,7 @@ export default function PermissionManager() {
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 + insets.bottom }}
+          contentContainerStyle={[{ padding: 16, paddingBottom: 40 + insets.bottom }, isWebDesktop && { maxWidth: 1120, width: '100%', alignSelf: 'center', padding: 24 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         >
           {/* Owners & Partners — surfaced FIRST because they are the
@@ -205,12 +207,13 @@ export default function PermissionManager() {
               partner). */}
           <OwnersPanel />
 
+          <View style={isWebDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 } : undefined}>
           {sections.map((s) => (
             <TouchableOpacity
               key={s.key}
               onPress={s.onPress}
               activeOpacity={0.78}
-              style={styles.card}
+              style={[styles.card, isWebDesktop && { width: '49%', marginBottom: 0 }]}
               testID={`perm-mgr-${s.key}`}
             >
               <View style={[styles.cardIcon, { backgroundColor: s.color + '14' }]}>
@@ -229,6 +232,7 @@ export default function PermissionManager() {
               <Ionicons name="chevron-forward" size={18} color={COLORS.textDisabled} />
             </TouchableOpacity>
           ))}
+          </View>
 
           <View style={styles.footnote}>
             <Ionicons name="information-circle" size={14} color={COLORS.textSecondary} />
