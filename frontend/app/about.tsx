@@ -11,14 +11,45 @@ import { useI18n } from '../src/i18n';
 export default function About() {
   const router = useRouter();
   const [info, setInfo] = useState<any>(null);
+  const [overrides, setOverrides] = useState<any>(null);
   const collapse = useCollapsibleHeader(320, 72);
   const { t, lang } = useI18n();
 
   useEffect(() => {
     api.get('/doctor', { params: { lang } }).then((r) => setInfo(r.data)).catch(() => {});
+    // Pull clinic_settings — primary_owner / partner edits override
+    // the hard-coded /doctor data. This is what makes the About-Doctor
+    // section adaptable per clinic (so future Dr Mehta sees their own
+    // profile here without a backend change).
+    api.get('/clinic-settings').then((r) => setOverrides(r.data)).catch(() => {});
   }, [lang]);
 
   if (!info) return null;
+
+  // Merge: clinic-settings wins for each non-empty field.
+  const merged = info;
+  if (overrides) {
+    if (overrides.doctor_name) merged.name = overrides.doctor_name;
+    if (overrides.doctor_title) merged.title = overrides.doctor_title;
+    if (overrides.doctor_tagline) merged.tagline = overrides.doctor_tagline;
+    if (overrides.doctor_short_bio) merged.short_bio = overrides.doctor_short_bio;
+    if (overrides.main_photo_url) merged.photo = overrides.main_photo_url;
+    if (overrides.cover_photo_url) merged.cover = overrides.cover_photo_url;
+    if (overrides.clinic_website) merged.website = overrides.clinic_website;
+    // Social handles — exposed via the existing `socials` shape
+    const socials: Record<string, string> = { ...(merged.socials || {}) };
+    for (const [k, sk] of [
+      ['facebook', 'social_facebook'],
+      ['instagram', 'social_instagram'],
+      ['twitter', 'social_twitter'],
+      ['linkedin', 'social_linkedin'],
+      ['youtube', 'social_youtube'],
+      ['whatsapp', 'social_whatsapp'],
+    ] as const) {
+      if (overrides[sk]) socials[k] = overrides[sk];
+    }
+    merged.socials = socials;
+  }
 
   const goBack = () => {
     if (router.canGoBack()) router.back();

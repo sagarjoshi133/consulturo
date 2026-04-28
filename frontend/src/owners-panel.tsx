@@ -51,22 +51,29 @@ export default function OwnersPanel() {
   const [loading, setLoading] = useState(false);
   const [partnerEmail, setPartnerEmail] = useState('');
   const [primaryEmail, setPrimaryEmail] = useState('');
+  const [demos, setDemos] = useState<Person[]>([]);
+  const [demoEmail, setDemoEmail] = useState('');
+  const [demoName, setDemoName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!tier.isOwnerTier) return;
     setLoading(true);
     try {
-      const [pa, po] = await Promise.all([
+      const [pa, po, dm] = await Promise.all([
         api.get('/admin/partners').catch(() => ({ data: { items: [] } })),
         api.get('/admin/primary-owners').catch(() => ({ data: { items: [] } })),
+        tier.isSuperOwner
+          ? api.get('/admin/demo').catch(() => ({ data: { items: [] } }))
+          : Promise.resolve({ data: { items: [] } }),
       ]);
       setPartners(Array.isArray(pa.data?.items) ? pa.data.items : []);
       setPrimaryOwners(Array.isArray(po.data?.items) ? po.data.items : []);
+      setDemos(Array.isArray((dm as any).data?.items) ? (dm as any).data.items : []);
     } finally {
       setLoading(false);
     }
-  }, [tier.isOwnerTier]);
+  }, [tier.isOwnerTier, tier.isSuperOwner]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -275,6 +282,86 @@ export default function OwnersPanel() {
           ))
         )}
       </View>
+
+      {/* ── DEMO PRIMARY OWNERS — super_owner only ── */}
+      {tier.isSuperOwner && (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Ionicons name="film" size={18} color="#D97706" />
+            <Text style={styles.sectionTitle}>Demo Primary Owners</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{demos.length}</Text>
+            </View>
+          </View>
+          <Text style={styles.sectionSub}>
+            Create read-only Primary Owner accounts for sales / onboarding demos. The user can navigate the entire app but every write is blocked server-side. Useful when showcasing ConsultUro to prospective clinics.
+          </Text>
+          <View style={styles.addRow}>
+            <TextInput
+              value={demoEmail}
+              onChangeText={setDemoEmail}
+              placeholder="demo-email@example.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.input}
+            />
+          </View>
+          <View style={styles.addRow}>
+            <TextInput
+              value={demoName}
+              onChangeText={setDemoName}
+              placeholder="Display name (optional)"
+              style={styles.input}
+            />
+            <TouchableOpacity
+              onPress={async () => {
+                const email = demoEmail.trim().toLowerCase();
+                if (!email || !email.includes('@')) { alertX('Invalid email'); return; }
+                setBusy(true);
+                try {
+                  await api.post('/admin/demo/create', { email, name: demoName.trim() || undefined });
+                  setDemoEmail(''); setDemoName('');
+                  await loadAll();
+                  alertX('Demo created', `${email} is now a read-only Primary Owner.`);
+                } catch (e: any) {
+                  alertX('Failed', e?.response?.data?.detail || 'Could not create demo');
+                } finally { setBusy(false); }
+              }}
+              style={[styles.addBtn, { backgroundColor: '#D97706' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.addBtnText}>Create Demo</Text>
+            </TouchableOpacity>
+          </View>
+          {demos.length === 0 ? (
+            <Text style={styles.empty}>No demo accounts yet.</Text>
+          ) : (
+            demos.map((p) => (
+              <PersonRow
+                key={p.user_id || p.email}
+                p={p}
+                actionLabel="Revoke"
+                onAction={() => {
+                  if (!p.user_id) return;
+                  confirmX(
+                    'Revoke Demo Account?',
+                    `${p.email} will be demoted to a regular patient account.`,
+                    async () => {
+                      setBusy(true);
+                      try {
+                        await api.delete(`/admin/demo/${p.user_id}`);
+                        await loadAll();
+                      } finally { setBusy(false); }
+                    },
+                    true,
+                  );
+                }}
+              />
+            ))
+          )}
+        </View>
+      )}
     </View>
   );
 }

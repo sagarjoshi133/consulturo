@@ -26,6 +26,7 @@ import { initSentry } from '../src/sentry';
 import { COLORS } from '../src/theme';
 import OfflineBanner from '../src/offline-banner';
 import { WebShell } from '../src/web-shell';
+import { DemoBanner } from '../src/demo-banner';
 
 // Initialise error monitoring once on cold start.
 initSentry();
@@ -95,6 +96,7 @@ function RootNav() {
 
   return (
     <>
+      <DemoBanner />
       <WebShell>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.bg } }}>
           <Stack.Screen name="login" />
@@ -128,6 +130,8 @@ function RootNav() {
           <Stack.Screen name="help" />
           <Stack.Screen name="privacy" />
           <Stack.Screen name="terms" />
+          <Stack.Screen name="branding" />
+          <Stack.Screen name="about-app" />
         </Stack>
       </WebShell>
       <PhoneGate />

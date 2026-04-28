@@ -138,6 +138,16 @@ export default function More() {
         route: '/permission-manager' as any,
         testID: 'more-perm-mgr',
       });
+      // Editable clinic branding & About-Doctor section. Visible to
+      // primary_owner and partner. Partners are gated server-side
+      // per-section by the partner_can_edit_* toggles.
+      adminItems.push({
+        icon: 'color-palette',
+        label: 'Clinic Branding & About Doctor',
+        sub: 'Photos, social links, doctor profile, clinic settings',
+        route: '/branding' as any,
+        testID: 'more-branding',
+      });
     }
     // Backups now sit AFTER Permission Manager per latest spec.
     if (isOwner || isFullAccess) {
@@ -249,11 +259,14 @@ export default function More() {
   appItems.push({ icon: 'document-text', label: t('more.terms'), route: '/terms', testID: 'more-terms' });
   sections.push({ title: t('more.sectionApp') || 'App', items: appItems });
 
-  // ABOUT (last) — kept for everyone.
+  // ABOUT (last) — kept for everyone. Two entries: About the Doctor
+  // (clinic-specific, editable per primary owner) and About the
+  // ConsultUro App (platform branding — patient-vs-team variant).
   sections.push({
     title: t('more.sectionAbout') || 'About',
     items: [
-      { icon: 'information-circle', label: t('more.aboutDoctor') || 'About Dr. Sagar Joshi', sub: t('more.aboutDoctorSub') || 'Credentials, experience, clinic', route: '/about', testID: 'more-about' },
+      { icon: 'information-circle', label: t('more.aboutDoctor') || 'About the Doctor', sub: t('more.aboutDoctorSub') || 'Credentials, experience, clinic', route: '/about', testID: 'more-about' },
+      { icon: 'medical', label: 'About ConsultUro App', sub: isStaff ? 'Practice & branding highlights' : 'How this app helps you', route: '/about-app' as any, testID: 'more-about-app' },
     ],
   });
 

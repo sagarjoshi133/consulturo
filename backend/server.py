@@ -7575,6 +7575,240 @@ async def prostate_volume_delete(reading_id: str, user=Depends(require_user)):
     return {"ok": True, "deleted": reading_id}
 
 
+# ══════════════════════════════════════════════════════════════════
+# Plan-B Phase-2: Clinic Branding · Demo Mode · Partner Permissions
+# ══════════════════════════════════════════════════════════════════
+
+class ClinicSettingsPatch(BaseModel):
+    """All fields optional — only provided keys are written. Free-text
+    fields are length-capped to keep documents reasonable.
+    """
+    main_photo_url: Optional[str] = None     # data: URI or external URL
+    cover_photo_url: Optional[str] = None
+    doctor_name: Optional[str] = None        # e.g. "Dr Ajay Mehta"
+    doctor_title: Optional[str] = None       # e.g. "Consultant Urologist"
+    doctor_tagline: Optional[str] = None
+    doctor_short_bio: Optional[str] = None
+    clinic_name: Optional[str] = None
+    clinic_website: Optional[str] = None
+    social_facebook: Optional[str] = None
+    social_instagram: Optional[str] = None
+    social_twitter: Optional[str] = None
+    social_linkedin: Optional[str] = None
+    social_youtube: Optional[str] = None
+    social_whatsapp: Optional[str] = None
+    external_blog_links: Optional[List[Dict[str, str]]] = None  # [{title,url}]
+    # Partner-permission toggles (controlled by primary_owner only)
+    partner_can_edit_branding: Optional[bool] = None
+    partner_can_edit_about_doctor: Optional[bool] = None
+    partner_can_edit_blog: Optional[bool] = None
+    partner_can_edit_videos: Optional[bool] = None
+    partner_can_edit_education: Optional[bool] = None
+    partner_can_manage_broadcasts: Optional[bool] = None
+
+
+_DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
+    "_id": "default",
+    "doctor_name": "Dr. Sagar Joshi",
+    "doctor_title": "Consultant Urologist & Laparoscopic Surgeon",
+    "doctor_tagline": "Restoring health, dignity, and confidence — one patient at a time.",
+    "doctor_short_bio": "DrNB Urology · MS General Surgery · MBBS · 10+ years of clinical practice.",
+    "clinic_name": "ConsultUro · Dr. Sagar Joshi's Urology Practice",
+    "clinic_website": "https://www.drsagarjoshi.com",
+    "main_photo_url": "",
+    "cover_photo_url": "",
+    "social_facebook": "",
+    "social_instagram": "",
+    "social_twitter": "",
+    "social_linkedin": "",
+    "social_youtube": "",
+    "social_whatsapp": "",
+    "external_blog_links": [],
+    "partner_can_edit_branding": True,
+    "partner_can_edit_about_doctor": True,
+    "partner_can_edit_blog": True,
+    "partner_can_edit_videos": True,
+    "partner_can_edit_education": True,
+    "partner_can_manage_broadcasts": True,
+}
+
+
+@app.get("/api/clinic-settings")
+async def get_clinic_settings():
+    """Public read — patients also use this to render About Doctor and
+    branding without auth. Falls back to hard-coded defaults if no
+    document exists yet."""
+    doc = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
+    out = {**_DEFAULT_CLINIC_SETTINGS, **doc}
+    out.pop("_id", None)
+    return out
+
+
+@app.patch("/api/clinic-settings")
+async def patch_clinic_settings(
+    body: ClinicSettingsPatch,
+    user=Depends(require_owner),
+):
+    """Owner-tier write. Partners are gated per-field via the
+    partner_can_edit_* toggles below — partners receive 403 if they
+    try to modify a field whose toggle is off."""
+    # Cap free-text payloads to ~2 MB each (data: URIs of photos
+    # included). Anything bigger is almost certainly a UI bug.
+    payload = body.model_dump(exclude_unset=True)
+    for k in ("main_photo_url", "cover_photo_url"):
+        v = payload.get(k)
+        if isinstance(v, str) and len(v) > 6_000_000:  # ~6 MB safety cap
+            raise HTTPException(status_code=413, detail=f"{k} too large")
+    # Partner-permission gating: a partner can only modify fields the
+    # primary_owner has unlocked for them. Primary/super always pass.
+    if user.get("role") == "partner":
+        cur = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
+        gates = {
+            "partner_can_edit_branding": ["main_photo_url", "cover_photo_url", "clinic_name", "clinic_website",
+                                           "social_facebook", "social_instagram", "social_twitter",
+                                           "social_linkedin", "social_youtube", "social_whatsapp"],
+            "partner_can_edit_about_doctor": ["doctor_name", "doctor_title", "doctor_tagline", "doctor_short_bio"],
+            "partner_can_edit_blog": ["external_blog_links"],
+        }
+        for gate, fields in gates.items():
+            if any(k in payload for k in fields):
+                allowed = bool({**_DEFAULT_CLINIC_SETTINGS, **cur}.get(gate))
+                if not allowed:
+                    raise HTTPException(status_code=403, detail=f"Partners are not permitted to edit this section ({gate}). Ask the Primary Owner to enable it.")
+        # Partners can NEVER toggle their own permissions.
+        for k in list(payload.keys()):
+            if k.startswith("partner_can_"):
+                payload.pop(k, None)
+    if not payload:
+        return {"ok": True, "updated": 0}
+    await db.clinic_settings.update_one(
+        {"_id": "default"},
+        {"$set": {**payload, "_id": "default", "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True, "updated": len(payload)}
+
+
+# ── Demo Primary Owner ────────────────────────────────────────────
+class CreateDemoBody(BaseModel):
+    email: str
+    name: Optional[str] = None
+
+
+@app.post("/api/admin/demo/create")
+async def create_demo_primary_owner(body: CreateDemoBody, user=Depends(require_super_owner)):
+    """Super-owner-only. Creates a primary_owner account with
+    `is_demo: true`. The flag causes every write endpoint to short-
+    circuit with a friendly 403 — the user can navigate the entire
+    UI but their submits are no-ops. Used for sales / onboarding
+    demos.
+    """
+    email_l = (body.email or "").strip().lower()
+    if not email_l or "@" not in email_l:
+        raise HTTPException(status_code=400, detail="Valid email required")
+    perms = {
+        "role": "primary_owner",
+        "is_demo": True,
+        "name": body.name or email_l.split("@")[0].title(),
+        "can_approve_bookings": True,
+        "can_approve_broadcasts": True,
+        "can_send_personal_messages": True,
+    }
+    # Upsert team_invites so future sign-ins keep the role + flag.
+    await db.team_invites.update_one(
+        {"email": email_l}, {"$set": {**perms, "email": email_l}}, upsert=True
+    )
+    # If a user already exists, mark the live record too.
+    await db.users.update_one(
+        {"email": email_l}, {"$set": perms}, upsert=False
+    )
+    try:
+        await db.audit_log.insert_one({
+            "ts": datetime.now(timezone.utc), "kind": "demo_created",
+            "target_email": email_l, "actor_email": (user.get("email") or "").lower(),
+        })
+    except Exception:
+        pass
+    return {"ok": True, "email": email_l, "is_demo": True}
+
+
+@app.delete("/api/admin/demo/{user_id}")
+async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_owner)):
+    """Revoke a demo account — demote to patient and clear is_demo."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target.get("is_demo"):
+        raise HTTPException(status_code=400, detail="Not a demo account")
+    perms = {"role": "patient", "is_demo": False,
+             "can_approve_bookings": False, "can_approve_broadcasts": False,
+             "can_send_personal_messages": False}
+    await db.users.update_one({"user_id": user_id}, {"$set": perms})
+    await db.team_invites.update_many({"email": (target.get("email") or "").lower()},
+                                      {"$set": perms})
+    return {"ok": True}
+
+
+@app.get("/api/admin/demo")
+async def list_demo_accounts(user=Depends(require_super_owner)):
+    items: List[Dict[str, Any]] = []
+    async for u in db.users.find({"is_demo": True}, {"_id": 0}):
+        items.append({"user_id": u.get("user_id"), "email": u.get("email"),
+                      "name": u.get("name"), "role": u.get("role"),
+                      "picture": u.get("picture")})
+    return {"items": items}
+
+
+# Helper for write-endpoints to call: raises 403 for demo accounts.
+def block_if_demo(user: Dict[str, Any]) -> None:
+    """Drop into any write endpoint to 403 demo accounts. Returns
+    silently for everyone else."""
+    if user.get("is_demo"):
+        raise HTTPException(
+            status_code=403,
+            detail="Demo mode — actions are disabled in this preview account.",
+        )
+
+
+# ── Super-owner platform stats (dashboard refactor) ───────────────
+@app.get("/api/admin/platform-stats")
+async def platform_stats(user=Depends(require_super_owner)):
+    """One-shot summary used by the super-owner dashboard."""
+    import asyncio
+    [primary_count, partner_count, staff_count, patient_count,
+     bookings_30d, rx_30d, demo_count] = await asyncio.gather(
+        db.users.count_documents({"role": "primary_owner"}),
+        db.users.count_documents({"role": "partner"}),
+        db.users.count_documents({"role": {"$in": ["doctor", "assistant", "reception", "nursing"]}}),
+        db.users.count_documents({"role": "patient"}),
+        db.bookings.count_documents({"created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}}),
+        db.prescriptions.count_documents({"created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}}),
+        db.users.count_documents({"is_demo": True}),
+    )
+    return {
+        "primary_owners": primary_count,
+        "partners": partner_count,
+        "staff": staff_count,
+        "patients": patient_count,
+        "bookings_last_30d": bookings_30d,
+        "prescriptions_last_30d": rx_30d,
+        "demo_accounts": demo_count,
+    }
+
+
+@app.get("/api/admin/audit-log")
+async def get_audit_log(limit: int = 50, user=Depends(require_owner)):
+    """Recent role-change / demo / sensitive events. Visible to the
+    entire owner-tier so primary_owners and partners can review who
+    promoted whom and when."""
+    rows: List[Dict[str, Any]] = []
+    async for r in db.audit_log.find({}, {"_id": 0}).sort("ts", -1).limit(int(limit)):
+        if isinstance(r.get("ts"), datetime):
+            r["ts"] = r["ts"].isoformat()
+        rows.append(r)
+    return {"items": rows}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
