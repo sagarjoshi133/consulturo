@@ -296,6 +296,9 @@ export default function OwnersPanel() {
               placeholder="email@example.com"
               autoCapitalize="none"
               keyboardType="email-address"
+              returnKeyType="send"
+              onSubmitEditing={promotePartner}
+              blurOnSubmit={false}
               style={styles.input}
               testID="promote-partner-input"
             />
