@@ -9191,3 +9191,63 @@ agent_communication_2026_04_28_session3:
       No frontend changes. No DB schema migrations beyond the cleanup
       (data-only). Awaiting user to confirm the issue is resolved on
       their end before moving onto next backlog item.
+
+  - agent: main
+    message: |
+      [availability ↔ booking sync — root-cause fix + new business rules]
+
+      User report: "Availability section is not in sync with booking" +
+      "Allow patient to select beyond current time" + "Allow up to 5
+      patients per 30-min slot (overbooking)".
+
+      RCA — issue 1 root cause:
+        /api/availability/slots and /api/availability/doctors filtered
+        prescribers by role IN ["owner","doctor"] only. Dr. Sagar Joshi
+        is `primary_owner` and his saved availability (08:00-13:00 +
+        16:00-20:00) was therefore IGNORED. The endpoint fell back to
+        a stale `doctor.test@consulturo.app` doctor account with
+        default availability (10:00-13:00 + 17:00-20:00) — which is
+        why patients saw 6 slots instead of the 18 the doctor
+        configured.
+
+      Fix set (all in server.py):
+        1. New constant `PRESCRIBER_AVAILABILITY_ROLES` = [owner,
+           doctor, primary_owner, partner]. Both endpoints updated.
+        2. New constant `MAX_BOOKINGS_PER_SLOT` = 5 (env-overridable).
+        3. /api/availability/slots:
+             • Replaces the single booked-times set with a
+               `booked_counts` dict.
+             • Excludes a slot from `slots[]` only when count >= 5.
+             • Adds `booked_counts`, `max_per_slot`, `full_slots` to
+               the response (additive — frontend unchanged).
+             • Same-day cutoff dropped the +15-minute buffer; uses
+               `<` instead of `<=` so a slot is offered up to its
+               actual start minute.
+        4. New helper `_unavailability_block_reason(date, time)` that
+           returns a human-friendly reason if the slot intersects an
+           unavailability rule (single-date OR recurring weekly,
+           all-day OR time-range).
+        5. POST /api/bookings:
+             • Replaces the 1-clash check with a count-based capacity
+               check (5 max). Returns 409 with explanatory message.
+             • Adds the unavailability check at write time so a hand-
+               crafted request can't slip through (closes Issue 3 at
+               the boundary).
+        6. PATCH /api/bookings/{id} (reschedule path) — same
+           capacity + unavailability checks as POST.
+
+      Frontend: NO CHANGES required. The Book screen and reschedule
+      modal already consume `data.slots` only. Saved-availability
+      changes by the doctor now appear immediately after save (no
+      cache, the slot endpoint reads on every call).
+
+      Verified end-to-end via /tmp/test_avail.py (6/6 pass):
+        • Sagar's 08-13 + 16-20 (=18 slots) now reflected on Book.
+        • 6th booking at the same slot → 409 with cap message.
+        • Slot becomes excluded from `slots[]` only after 5 bookings.
+        • 4th booking at a slot with 3 existing → 200 (overbook OK).
+        • All-day unavailability → empty slots + reason; POST → 409.
+        • Time-range unavailability → only in-window slots stripped;
+          out-of-window POST → 200; in-window POST → 409.
+
+      No mocks. Real DB writes. Awaiting user verification.

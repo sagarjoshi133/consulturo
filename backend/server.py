@@ -93,6 +93,19 @@ STAFF_ROLES = [
 OWNER_TIER_ROLES = {"super_owner", "primary_owner", "owner", "partner"}
 PRIMARY_TIER_ROLES = {"super_owner", "primary_owner", "owner"}
 
+# Roles whose Practice → Availability schedule is consulted when
+# generating bookable slots for the patient Book screen. Includes
+# `primary_owner` and `partner` (which were missed earlier and caused
+# the "saved availability not in sync with Book page" bug — slots fell
+# back to a stale default for an orphan doctor account).
+PRESCRIBER_AVAILABILITY_ROLES = ["owner", "doctor", "primary_owner", "partner"]
+
+# Hard cap on concurrent bookings per (date, time, mode) slot. Walk-ins
+# and overbooks are explicitly allowed up to this limit (a 30-minute
+# slot can accept up to 5 patients) to match how the clinic actually
+# runs OPDs. Configurable via env so a future tier could relax it.
+MAX_BOOKINGS_PER_SLOT = int(os.environ.get("MAX_BOOKINGS_PER_SLOT", "5"))
+
 
 def is_owner_or_partner(user: Dict[str, Any]) -> bool:
     """True for every role that has 'full clinic admin' powers
@@ -2718,15 +2731,32 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
             },
         )
 
-    # Slot conflict: another patient has already booked this date+time+mode
-    clash = await db.bookings.find_one({
+    # Per-slot capacity: allow up to MAX_BOOKINGS_PER_SLOT patients per
+    # (date, time, mode). Overbooking is explicitly supported up to the
+    # cap (clinic OPDs run that way); only reject when the cap is hit.
+    slot_count = await db.bookings.count_documents({
         "booking_date": payload.booking_date,
         "booking_time": payload.booking_time,
         "mode": payload.mode,
         "status": {"$in": ["requested", "confirmed"]},
     })
-    if clash:
-        raise HTTPException(status_code=409, detail="This slot is no longer available. Please pick another time.")
+    if slot_count >= MAX_BOOKINGS_PER_SLOT:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This slot is full ({MAX_BOOKINGS_PER_SLOT} bookings already). Please pick another time.",
+        )
+
+    # Honour the doctor's holiday / unavailability rules at WRITE time
+    # too — the slot listing already filters them, but a hand-crafted
+    # POST could otherwise still slip through.
+    block_reason = await _unavailability_block_reason(
+        payload.booking_date, payload.booking_time
+    )
+    if block_reason:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Doctor unavailable on this date/time. {block_reason}",
+        )
 
     # Reject past slots (always evaluated in IST so the clock is consistent
     # with the doctor's clinic timezone, regardless of where the request
@@ -3071,19 +3101,30 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
     if body.booking_time and body.booking_time != existing["booking_time"]:
         updates["booking_time"] = body.booking_time
 
-    # Conflict check if rescheduling to a new date/time
+    # Conflict + capacity check if rescheduling to a new date/time.
+    # Same rules as POST: allow up to MAX_BOOKINGS_PER_SLOT bookings
+    # per (date, time, mode), and honour any unavailability rule.
     if "booking_date" in updates or "booking_time" in updates:
         new_date = updates.get("booking_date", existing["booking_date"])
         new_time = updates.get("booking_time", existing["booking_time"])
-        clash = await db.bookings.find_one({
+        slot_count = await db.bookings.count_documents({
             "booking_id": {"$ne": booking_id},
             "booking_date": new_date,
             "booking_time": new_time,
             "mode": existing.get("mode"),
             "status": {"$in": ["requested", "confirmed"]},
         })
-        if clash:
-            raise HTTPException(status_code=409, detail=f"Another booking already holds {new_date} {new_time}.")
+        if slot_count >= MAX_BOOKINGS_PER_SLOT:
+            raise HTTPException(
+                status_code=409,
+                detail=f"That slot is full ({MAX_BOOKINGS_PER_SLOT} bookings already at {new_date} {new_time}).",
+            )
+        block_reason = await _unavailability_block_reason(new_date, new_time)
+        if block_reason:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Doctor unavailable on {new_date} {new_time}. {block_reason}",
+            )
 
     if body.status and body.status != existing["status"]:
         if body.status not in ["confirmed", "completed", "cancelled", "rejected"]:
@@ -4514,9 +4555,11 @@ async def set_my_availability(body: DayAvailabilityBody, user=Depends(require_pr
 @app.get("/api/availability/doctors")
 async def list_doctor_availability():
     """Public list of doctors' weekly schedules (for patient booking UI)."""
-    # All staff with prescriber role
+    # Includes primary_owner / partner so a clinic where the chief is a
+    # primary_owner (e.g. sagar.joshi133@gmail.com) doesn't silently
+    # disappear from the patient-facing roster.
     prescribers = await db.users.find(
-        {"role": {"$in": ["owner", "doctor"]}}, {"_id": 0}
+        {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}}, {"_id": 0}
     ).to_list(length=50)
     out = []
     for p in prescribers:
@@ -4537,6 +4580,50 @@ def _slot_to_minutes(slot: str) -> int:
         return int(h) * 60 + int(m)
     except Exception:
         return 0
+
+
+async def _unavailability_block_reason(
+    booking_date: str, booking_time: str
+) -> Optional[str]:
+    """Return a human-readable reason if the (date, time) intersects an
+    unavailability rule (single-date or recurring-weekly). Returns None
+    when the slot is free of any rule. Used by POST /api/bookings and
+    PATCH /api/bookings/{id} so writes honour the same rules as the
+    public slot listing — closing the gap where a hand-crafted request
+    could sneak through despite the slot being hidden.
+    """
+    try:
+        d = datetime.strptime(booking_date, "%Y-%m-%d")
+    except ValueError:
+        return None
+    weekday = d.weekday()
+    rules = await db.unavailabilities.find(
+        {
+            "$or": [
+                {"date": booking_date},
+                {"recurring_weekly": True, "day_of_week": weekday},
+            ]
+        },
+        {"_id": 0},
+    ).to_list(length=100)
+    if not rules:
+        return None
+    # All-day rules block everything.
+    for rule in rules:
+        if bool(rule.get("all_day", True)):
+            return rule.get("reason") or "Doctor unavailable on this day."
+    # Time-range rules block when the slot starts inside the window.
+    m = _slot_to_minutes(booking_time or "")
+    for rule in rules:
+        if rule.get("all_day"):
+            continue
+        s = _slot_to_minutes(rule.get("start_time", ""))
+        e = _slot_to_minutes(rule.get("end_time", ""))
+        if e <= s:
+            continue
+        if s <= m < e:
+            return rule.get("reason") or "Doctor unavailable during the requested hours."
+    return None
 
 
 @app.get("/api/availability/slots")
@@ -4564,7 +4651,8 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
     # account hours and shows slots the real doctor didn't actually select.
     # Strategy: prefer users who have a saved availability document. If none
     # exist, fall back to the default set (one doctor, first-time boot).
-    doctors_q: Dict[str, Any] = {"role": {"$in": ["owner", "doctor"]}}
+    # Includes primary_owner / partner — see PRESCRIBER_AVAILABILITY_ROLES.
+    doctors_q: Dict[str, Any] = {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}}
     if user_id:
         doctors_q["user_id"] = user_id
 
@@ -4608,7 +4696,11 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
                 slots_set.add(f"{hh:02d}:{mm:02d}")
                 t += 30
 
-    # Exclude already booked slots (requested + confirmed) for the same date & mode
+    # Aggregate booking counts per slot (allow up to MAX_BOOKINGS_PER_SLOT
+    # patients per 30-min slot — overbooking is explicitly supported up to
+    # the cap because the clinic runs OPDs that way). Status whitelist is
+    # the same as before: requested + confirmed both reserve a seat.
+    booked_counts: Dict[str, int] = {}
     booked_cursor = db.bookings.find(
         {
             "booking_date": date,
@@ -4617,11 +4709,18 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
         },
         {"_id": 0, "booking_time": 1},
     )
-    booked_times = {b["booking_time"] async for b in booked_cursor if b.get("booking_time")}
+    async for b in booked_cursor:
+        t = b.get("booking_time")
+        if t:
+            booked_counts[t] = booked_counts.get(t, 0) + 1
+    # A slot is "full" only when it has reached the hard cap.
+    full_times = {t for t, c in booked_counts.items() if c >= MAX_BOOKINGS_PER_SLOT}
 
-    # Same-day filtering — never offer a slot that has already passed in IST.
-    # We add a 15-minute lead so the patient can still reach the clinic if
-    # they tap "Confirm" right away.
+    # Same-day filtering — never offer a slot whose start time has
+    # already passed in IST. The previous +15 minute lead is REMOVED
+    # at user request: patients may grab a slot up to its actual start
+    # minute. (POST /api/bookings still has a small 5-minute leniency
+    # for clock skew / network round-trip.)
     try:
         from zoneinfo import ZoneInfo  # py3.9+
         ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
@@ -4630,16 +4729,16 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
         ist_now = datetime.now()
     past_times: set = set()
     if d.date() == ist_now.date():
-        cutoff_minutes = ist_now.hour * 60 + ist_now.minute + 15
+        cutoff_minutes = ist_now.hour * 60 + ist_now.minute
         for s in list(slots_set):
             try:
                 hh, mm = s.split(":")
-                if int(hh) * 60 + int(mm) <= cutoff_minutes:
+                if int(hh) * 60 + int(mm) < cutoff_minutes:
                     past_times.add(s)
             except Exception:
                 continue
 
-    slots = sorted(slots_set - booked_times - past_times)
+    slots = sorted(slots_set - full_times - past_times)
 
     # ── Unavailability filter ────────────────────────────────────────────
     # Block dates/time-ranges marked unavailable by the doctor. Supports
@@ -4691,7 +4790,15 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
         "mode": mode,
         "day": day_key,
         "slots": slots,
-        "booked_slots": sorted(booked_times),
+        # Per-slot occupancy ("HH:MM" → count). Useful for the UI to
+        # render badges like "3/5". Includes both partially-booked and
+        # full slots for context.
+        "booked_counts": booked_counts,
+        "max_per_slot": MAX_BOOKINGS_PER_SLOT,
+        # `full_slots` carries slots dropped from `slots` because the
+        # cap is reached. `booked_slots` is kept for legacy callers.
+        "full_slots": sorted(full_times),
+        "booked_slots": sorted(booked_counts.keys()),
         "past_slots": sorted(past_times),
         "unavailable_reason": unavail_reason,
     }
