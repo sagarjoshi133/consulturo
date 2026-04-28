@@ -369,10 +369,26 @@ export default function NotesScreen() {
             const reminderPast = hasReminder && isPast(new Date(n.reminder_at!));
             const chipLabels = (n.labels || []).slice(0, 3);
             const extraLabels = (n.labels || []).length - chipLabels.length;
-            // Hide raw image data URIs from the card snippet.
+            // Hide raw image data URIs from the card snippet AND strip
+            // common markdown syntax (#, **, *, _, `, >, lists, links)
+            // so the preview reads as clean plain text rather than the
+            // raw `# heading` / `**bold**` markers the editor saves.
+            // Full rendering still happens in the note detail view.
             const cleanBody = (n.body || '')
               .replace(/!\[[^\]]*\]\(data:image\/[a-zA-Z]+;base64,[^)\s]+\)/g, '🖼️ image')
               .replace(/\[image:[a-zA-Z0-9_]+\]/g, '🖼️ image')
+              // Strip markdown: headings, emphasis, blockquote, list bullets, code, links.
+              .replace(/^#{1,6}\s+/gm, '')                                  // # / ## headings
+              .replace(/^\s*>\s+/gm, '')                                    // > blockquote
+              .replace(/^\s*[-*+]\s+/gm, '• ')                              // bullet lists
+              .replace(/^\s*\d+\.\s+/gm, '')                                // numbered lists
+              .replace(/\*\*([^*]+)\*\*/g, '$1')                            // **bold**
+              .replace(/__([^_]+)__/g, '$1')                                // __bold__
+              .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2')                    // *italic*
+              .replace(/(^|[^_])_([^_\n]+)_/g, '$1$2')                      // _italic_
+              .replace(/`([^`]+)`/g, '$1')                                  // `inline code`
+              .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')                      // [text](url) -> text
+              .replace(/\n{3,}/g, '\n\n')                                   // collapse extra blank lines
               .trim();
             return (
               <TouchableOpacity

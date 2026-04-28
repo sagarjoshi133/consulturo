@@ -150,22 +150,22 @@ export default function OwnersPanel() {
     );
   };
 
-  const demotePrimary = (p: Person) => {
+  const deletePrimary = (p: Person) => {
     if (!p.user_id) return;
     if (p.role === 'super_owner') {
-      alertX('Not allowed', 'The Super Owner cannot be demoted from this screen.');
+      alertX('Not allowed', 'The Super Owner cannot be removed from this screen.');
       return;
     }
     confirmX(
-      'Demote Primary Owner?',
-      `${p.name || p.email} will be demoted from Primary Owner to a regular Doctor role. All admin powers will be revoked immediately.`,
+      'Delete Primary Owner?',
+      `${p.name || p.email} will be removed as a Primary Owner of the platform. Their clinical workflow inside the clinic is unaffected — internal team demotions/promotions are managed by the clinic itself.`,
       async () => {
         setBusy(true);
         try {
           await api.delete(`/admin/primary-owners/${p.user_id}`);
           await loadAll();
         } catch (e: any) {
-          alertX('Failed', e?.response?.data?.detail || 'Could not demote primary owner');
+          alertX('Failed', e?.response?.data?.detail || 'Could not delete primary owner');
         } finally {
           setBusy(false);
         }
@@ -225,8 +225,8 @@ export default function OwnersPanel() {
             <PersonRow
               key={p.user_id || p.email}
               p={p}
-              actionLabel={tier.canManagePrimaryOwners && p.role !== 'super_owner' ? 'Demote' : undefined}
-              onAction={() => demotePrimary(p)}
+              actionLabel={tier.canManagePrimaryOwners && p.role !== 'super_owner' ? 'Delete' : undefined}
+              onAction={() => deletePrimary(p)}
               dashboardToggle={
                 tier.isSuperOwner
                   ? {

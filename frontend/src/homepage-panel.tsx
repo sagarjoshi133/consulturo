@@ -21,6 +21,7 @@ import { PrimaryButton, SecondaryButton } from './components';
 type Homepage = {
   doctor_photo_url: string;
   cover_photo_url: string;
+  doctor_name?: string;
   tagline: string;
   clinic_name?: string;
   clinic_address?: string;
@@ -41,6 +42,7 @@ export function HomepagePanel() {
   const [saving, setSaving] = useState(false);
   const [doctorUrl, setDoctorUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [doctorName, setDoctorName] = useState('');
   const [tagline, setTagline] = useState('');
   const [clinicName, setClinicName] = useState('');
   const [clinicAddress, setClinicAddress] = useState('');
@@ -63,6 +65,7 @@ export function HomepagePanel() {
       const { data } = await api.get('/settings/homepage');
       setDoctorUrl(data?.doctor_photo_url || '');
       setCoverUrl(data?.cover_photo_url || '');
+      setDoctorName(data?.doctor_name || '');
       setTagline(data?.tagline || '');
       setClinicName(data?.clinic_name || '');
       setClinicAddress(data?.clinic_address || '');
@@ -93,6 +96,7 @@ export function HomepagePanel() {
       await api.patch('/settings/homepage', {
         doctor_photo_url: doctorUrl.trim(),
         cover_photo_url: coverUrl.trim(),
+        doctor_name: doctorName.trim(),
         tagline: tagline.trim(),
         clinic_name: clinicName.trim(),
         clinic_address: clinicAddress.trim(),
@@ -118,6 +122,7 @@ export function HomepagePanel() {
     const doIt = () => {
       setDoctorUrl('');
       setCoverUrl('');
+      setDoctorName('');
       setTagline('');
       setClinicName('');
       setClinicAddress('');
@@ -222,7 +227,7 @@ export function HomepagePanel() {
                 </View>
               )}
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.previewDocName}>Dr. Sagar Joshi</Text>
+                <Text style={styles.previewDocName}>{doctorName || 'Dr. Sagar Joshi'}</Text>
                 <Text style={styles.previewDocSpec}>Consultant Urologist</Text>
                 <Text style={styles.previewDocSub} numberOfLines={2}>
                   {tagline || 'Laparoscopic & Transplant Surgeon'}
@@ -232,6 +237,17 @@ export function HomepagePanel() {
           </LinearGradient>
         </View>
       </View>
+
+      <Text style={styles.fieldLabel}>Doctor display name</Text>
+      <TextInput
+        value={doctorName}
+        onChangeText={setDoctorName}
+        placeholder="e.g. Dr. Sagar Joshi"
+        placeholderTextColor={COLORS.textDisabled}
+        style={styles.input}
+        testID="home-doctor-name"
+        maxLength={80}
+      />
 
       <Text style={styles.fieldLabel}>Main doctor photo URL</Text>
       <TextInput

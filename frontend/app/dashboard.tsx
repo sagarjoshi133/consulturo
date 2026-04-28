@@ -406,7 +406,7 @@ export default function Dashboard() {
         { id: 'blog', label: 'Blog', icon: 'newspaper', canSee: tier.canCreateBlog },
         { id: 'team', label: 'Team', icon: 'people', canSee: allowTab('team') },
         { id: 'push', label: 'Notifs', icon: 'notifications', canSee: allowTab('push') },
-        { id: 'homepage', label: 'Profile', icon: 'person-circle', canSee: isOwner },
+        { id: 'homepage', label: 'Settings', icon: 'cog', canSee: isOwner },
         { id: 'backups', label: 'Backups', icon: 'cloud-upload', canSee: allowTab('backups') },
       ];
       return all.filter((t) => t.canSee).map(({ canSee, ...rest }) => rest);

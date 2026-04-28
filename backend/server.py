@@ -728,6 +728,7 @@ class RoleLabelBody(BaseModel):
 class HomepageSettingsBody(BaseModel):
     doctor_photo_url: Optional[str] = None
     cover_photo_url: Optional[str] = None
+    doctor_name: Optional[str] = None  # display name shown on home hero (e.g. "Dr. Sagar Joshi")
     tagline: Optional[str] = None
     clinic_name: Optional[str] = None
     clinic_address: Optional[str] = None
@@ -6877,6 +6878,7 @@ async def messages_lookup_by_phone(phone: str = "", user=Depends(require_user)):
 
 DEFAULT_DOCTOR_PHOTO = "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/6ng2cxnu_IMG_20260421_191126.jpg"
 DEFAULT_COVER_PHOTO = "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/68qb2iws_1710790362938%20%281%29.jpg"
+DEFAULT_DOCTOR_NAME = "Dr. Sagar Joshi"
 DEFAULT_TAGLINE = "Consultant Urologist · Laparoscopic & Transplant Surgeon"
 DEFAULT_CLINIC_NAME = "Sterling Hospitals"
 DEFAULT_CLINIC_ADDRESS = "Opd 5, Mahi, Ground floor, Sterling Hospital, Racecourse Road, Vadodara"
@@ -6895,6 +6897,7 @@ async def get_homepage_settings() -> Dict[str, Any]:
     defaults = {
         "doctor_photo_url": DEFAULT_DOCTOR_PHOTO,
         "cover_photo_url": DEFAULT_COVER_PHOTO,
+        "doctor_name": DEFAULT_DOCTOR_NAME,
         "tagline": DEFAULT_TAGLINE,
         "clinic_name": DEFAULT_CLINIC_NAME,
         "clinic_address": DEFAULT_CLINIC_ADDRESS,
@@ -6934,6 +6937,7 @@ async def settings_homepage_update(body: HomepageSettingsBody, user=Depends(requ
     defaults_map = {
         "doctor_photo_url": DEFAULT_DOCTOR_PHOTO,
         "cover_photo_url": DEFAULT_COVER_PHOTO,
+        "doctor_name": DEFAULT_DOCTOR_NAME,
         "tagline": DEFAULT_TAGLINE,
         "clinic_name": DEFAULT_CLINIC_NAME,
         "clinic_address": DEFAULT_CLINIC_ADDRESS,

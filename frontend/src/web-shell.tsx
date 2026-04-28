@@ -103,9 +103,12 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, signOut } = useAuth();
-  const { unread, personalUnread } = useNotifications();
+  const { unread, personalUnread, items: notifs, markRead, markAllRead } = useNotifications();
   const { t, lang, setLang } = useI18n();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  // Notification dropdown popover (desktop). Click bell → toggle.
+  // Auto-closes on outside-click via a transparent overlay layer.
+  const [bellOpen, setBellOpen] = React.useState(false);
 
   const isStaff = !!user && STAFF_ROLES.has((user.role as string) || '');
   const isOwner = ['super_owner', 'primary_owner', 'owner', 'partner'].includes((user?.role as string) || '');
@@ -149,7 +152,12 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   if (isOwner) {
     items.push({ label: 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
   }
-  items.push({ label: 'About', icon: 'information-circle', route: '/about' });
+  // About is split into two entries on desktop so both screens are
+  // reachable from the sidebar (mirrors the More-tab structure on
+  // mobile). User feedback: "About ConsultUro App" was not visible
+  // on desktop because there was only one generic "About" link.
+  items.push({ label: 'About Doctor', icon: 'person-circle', route: '/about' });
+  items.push({ label: 'About App', icon: 'information-circle', route: '/about-app' });
 
   // Active route detection — match exact OR prefix for nested routes.
   const isActive = (route: string) => {
@@ -348,14 +356,34 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
             </TouchableOpacity>
           )}
           {user && (
-            <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.topbarBtn}>
-              <Ionicons name="notifications" size={18} color={COLORS.primary} />
-              {unread > 0 && (
-                <View style={styles.topbarBadge}>
-                  <Text style={styles.topbarBadgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
-                </View>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                onPress={() => setBellOpen((v) => !v)}
+                style={[styles.topbarBtn, bellOpen && { backgroundColor: COLORS.primary + '15' }]}
+                accessibilityLabel="Notifications"
+                testID="web-topbar-bell"
+              >
+                <Ionicons name="notifications" size={18} color={COLORS.primary} />
+                {unread > 0 && (
+                  <View style={styles.topbarBadge}>
+                    <Text style={styles.topbarBadgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {bellOpen && (
+                <NotificationPopover
+                  items={(notifs || []).slice(0, 12)}
+                  unread={unread}
+                  onClose={() => setBellOpen(false)}
+                  onMarkRead={markRead}
+                  onMarkAllRead={markAllRead}
+                  onViewAll={() => {
+                    setBellOpen(false);
+                    router.push('/notifications' as any);
+                  }}
+                />
               )}
-            </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -370,6 +398,212 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     </View>
   );
 }
+
+
+/**
+ * Compact desktop notification popover. Renders below the topbar bell
+ * button with a transparent overlay that closes the panel on any
+ * outside click. Shows up to 12 most-recent notifications with mark-
+ * read tap and a "Mark all read" / "View all" footer.
+ */
+function NotificationPopover({
+  items,
+  unread,
+  onClose,
+  onMarkRead,
+  onMarkAllRead,
+  onViewAll,
+}: {
+  items: Array<any>;
+  unread: number;
+  onClose: () => void;
+  onMarkRead: (id: string) => Promise<void> | void;
+  onMarkAllRead: () => Promise<void> | void;
+  onViewAll: () => void;
+}) {
+  // ESC key + outside click both close the popover. We listen on the
+  // window because React Native's Pressable won't catch DOM events.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const fmt = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const diffMin = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD < 7) return `${diffD}d ago`;
+    return d.toLocaleDateString();
+  };
+
+  return (
+    <>
+      {/* invisible click-catcher so any click outside closes the popover */}
+      <TouchableOpacity
+        onPress={onClose}
+        activeOpacity={1}
+        style={popoverStyles.overlay}
+      />
+      <View style={popoverStyles.panel} testID="web-notif-popover">
+        <View style={popoverStyles.header}>
+          <Text style={popoverStyles.title}>Notifications</Text>
+          {unread > 0 && (
+            <View style={popoverStyles.unreadPill}>
+              <Text style={popoverStyles.unreadPillText}>{unread} new</Text>
+            </View>
+          )}
+        </View>
+        <ScrollView
+          style={popoverStyles.list}
+          contentContainerStyle={{ paddingBottom: 4 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {items.length === 0 ? (
+            <View style={popoverStyles.empty}>
+              <Ionicons name="checkmark-done-circle-outline" size={32} color={COLORS.textDisabled} />
+              <Text style={popoverStyles.emptyTxt}>No notifications</Text>
+            </View>
+          ) : items.map((n) => (
+            <TouchableOpacity
+              key={n.notif_id || n.id}
+              style={[popoverStyles.row, !n.read && popoverStyles.rowUnread]}
+              activeOpacity={0.78}
+              onPress={() => {
+                if (!n.read) onMarkRead(n.notif_id || n.id);
+              }}
+            >
+              {!n.read && <View style={popoverStyles.unreadDot} />}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={popoverStyles.rowTitle} numberOfLines={1}>{n.title || 'Notification'}</Text>
+                {!!n.body && (
+                  <Text style={popoverStyles.rowBody} numberOfLines={2}>{n.body}</Text>
+                )}
+                <Text style={popoverStyles.rowTs}>{fmt(n.created_at)}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={popoverStyles.footer}>
+          <TouchableOpacity
+            onPress={() => { onMarkAllRead(); }}
+            style={popoverStyles.footerBtn}
+            disabled={unread === 0}
+          >
+            <Ionicons name="checkmark-done" size={14} color={unread === 0 ? COLORS.textDisabled : COLORS.primary} />
+            <Text style={[popoverStyles.footerBtnText, unread === 0 && { color: COLORS.textDisabled }]}>
+              Mark all read
+            </Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={onViewAll}
+            style={[popoverStyles.footerBtn, { backgroundColor: COLORS.primary }]}
+          >
+            <Text style={[popoverStyles.footerBtnText, { color: '#fff' }]}>View all</Text>
+            <Ionicons name="arrow-forward" size={14} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </>
+  );
+}
+
+
+const popoverStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: -800,
+    right: -2000,
+    bottom: -2000,
+    left: -2000,
+    width: 4000,
+    height: 4000,
+    backgroundColor: 'transparent',
+    zIndex: 998,
+  },
+  panel: {
+    position: 'absolute',
+    top: 44,
+    right: 0,
+    width: 360,
+    maxHeight: 480,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
+    zIndex: 999,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+    gap: 8,
+  },
+  title: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
+  unreadPill: {
+    backgroundColor: COLORS.accent + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  unreadPillText: { fontSize: 11, color: COLORS.accent, fontWeight: '700' },
+  list: { maxHeight: 360 },
+  row: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  rowUnread: { backgroundColor: COLORS.primary + '08' },
+  unreadDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: COLORS.accent,
+    marginTop: 6,
+  },
+  rowTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  rowBody: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  rowTs: { fontSize: 11, color: COLORS.textDisabled, marginTop: 4 },
+  empty: { padding: 30, alignItems: 'center', gap: 8 },
+  emptyTxt: { fontSize: 12, color: COLORS.textSecondary },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+    gap: 6,
+    backgroundColor: '#FAFBFC',
+  },
+  footerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  footerBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+});
+
 
 const styles = StyleSheet.create({
   root: {
@@ -519,10 +753,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'column',
     backgroundColor: COLORS.bg,
-    ...Platform.select({
-      web: { overflow: 'hidden' },
-      default: {},
-    }),
+    // Removed `overflow: hidden` on web so the absolute-positioned
+    // notification popover (anchored under the topbar bell) renders
+    // ABOVE the page content. The contentScroller below has its own
+    // scroll and stays visually contained.
   },
   topbar: {
     height: DESKTOP.topbarHeight,
@@ -533,6 +767,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: '#fff',
+    // Web-only: allow the absolute-positioned notification popover to
+    // render OUTSIDE the topbar bounds. Without this, the dropdown is
+    // clipped by `main`'s overflow:hidden so nothing appears on click.
+    ...Platform.select({ web: { overflow: 'visible' as any, zIndex: 50 }, default: {} }),
   },
   topbarTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 15 },
   topbarBtn: {

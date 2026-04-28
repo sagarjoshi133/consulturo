@@ -37,7 +37,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [homepage, setHomepage] = useState<{ doctor_photo_url: string; cover_photo_url: string; tagline: string } | null>(null);
+  const [homepage, setHomepage] = useState<{ doctor_photo_url: string; cover_photo_url: string; doctor_name?: string; tagline: string } | null>(null);
   // True until the first /diseases /blog /videos /homepage round-trip completes.
   // Drives the skeleton placeholders so the home doesn't look "blank" on cold start.
   const [firstLoad, setFirstLoad] = useState(true);
@@ -132,6 +132,24 @@ export default function Home() {
                   <Text style={styles.brand}>ConsultUro</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {/* Desktop hero — premium "Book Consultation" pill in
+                      the empty right side. On mobile we keep the
+                      original action cluster (lang/bell/inbox/avatar)
+                      and the secondary CTA card lower down. */}
+                  {isWebDesktop && (
+                    <TouchableOpacity
+                      onPress={() => router.push('/(tabs)/book')}
+                      style={styles.heroBookBtn}
+                      activeOpacity={0.85}
+                      testID="home-hero-book"
+                    >
+                      <Ionicons name="calendar" size={16} color="#0E7C8B" />
+                      <Text style={styles.heroBookText}>{t('home.bookConsultation')}</Text>
+                      <View style={styles.heroBookArrow}>
+                        <Ionicons name="arrow-forward" size={14} color="#fff" />
+                      </View>
+                    </TouchableOpacity>
+                  )}
                   {/* On desktop web (sidebar + topbar provide these),
                       we hide the in-hero action cluster to remove
                       duplication and reclaim header space. The mobile
@@ -204,7 +222,7 @@ export default function Home() {
                   style={styles.doctorPhoto}
                 />
                 <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text style={styles.doctorName}>Dr. Sagar Joshi</Text>
+                  <Text style={styles.doctorName}>{homepage?.doctor_name || 'Dr. Sagar Joshi'}</Text>
                   <Text style={styles.doctorSpec}>{t('home.consultantUrologist')}</Text>
                   <Text style={styles.doctorSubtitle}>
                     {lang === 'en' ? (homepage?.tagline || t('home.doctorTagline')) : t('home.doctorTagline')}
@@ -248,13 +266,16 @@ export default function Home() {
           ))}
         </View>
 
-        {/* CTA Card */}
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => router.push('/(tabs)/book')}
-          style={{ marginHorizontal: 20, marginTop: 8 }}
-          testID="home-book-consultation-card"
-        >
+        {/* CTA Card — mobile / mobile-web only. On desktop the same
+            "Book Consultation" CTA lives in the hero header to fill
+            the empty right side and avoid duplication. */}
+        {!isWebDesktop && (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => router.push('/(tabs)/book')}
+            style={{ marginHorizontal: 20, marginTop: 8 }}
+            testID="home-book-consultation-card"
+          >
           <LinearGradient
             colors={['#0E7C8B', '#16A6B8']}
             start={{ x: 0, y: 0 }}
@@ -277,6 +298,7 @@ export default function Home() {
             />
           </LinearGradient>
         </TouchableOpacity>
+        )}
 
         {/* Section: Explore Conditions */}
         <View style={styles.section}>
@@ -575,6 +597,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /* Premium hero "Book Consultation" pill — desktop only.
+     Sits in the empty right side of the hero header instead of the
+     full-width CTA card so the page reads tighter on a 1440-px web
+     viewport. */
+  heroBookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingLeft: 14,
+    paddingRight: 6,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  heroBookText: {
+    color: '#0E7C8B',
+    fontFamily: FONTS.h2.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  heroBookArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#0E7C8B',
     alignItems: 'center',
     justifyContent: 'center',
   },
