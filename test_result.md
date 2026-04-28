@@ -9146,3 +9146,48 @@ agent_communication_2026_04_28_session3:
       No console errors or red screens observed during the run. Sidebar
       structure, section persistence, view-mode cycling, and active
       highlighting are all regression-clean.
+
+  - agent: main
+    message: |
+      [orphan-invite cleanup + idempotent unique-index codification]
+
+      User reported a "duplicate" Primary Owner for sagar.joshi133@gmail.com
+      and asked that such duplication never happen again. RCA:
+        • db.users had exactly 1 row for that email (no real duplicate).
+        • db.team_invites had a stub row {email, can_create_blog:true} with
+          NO role / name / is_demo. The stub was created by older versions
+          of /api/admin/primary-owners/{id}/blog-perm and
+          /dashboard-perm doing upsert=True even when no invite existed.
+          Such stubs can surface as "ghost" entries in any future endpoint
+          that lists pending invites — root cause of the perception bug.
+
+      Fixes (server.py):
+        1. Patched both blog-perm and dashboard-perm endpoints to
+           upsert=False (mirror only, never create stubs).
+        2. New startup hook _ensure_unique_indexes_and_cleanup_orphans:
+             • Codifies unique partial indexes on users.email,
+               users.phone, team_invites.email so a fresh DB also
+               enforces them (previously only via one-off operator
+               script). Idempotent — checks list_indexes() and skips
+               creation when any of the known names already exists.
+             • Sweeps team_invites rows whose email matches a live user
+               AND have no role / no name / not flagged is_demo. Run
+               on every boot, conservative criteria.
+        3. list_primary_owners now dedupes by lowercase email defensively
+           (redundant with the unique index but safe on legacy snapshots).
+
+      Verified locally:
+        • [cleanup] orphan team_invites removed: 1 (the stub for
+          sagar.joshi133@gmail.com).
+        • GET /api/admin/primary-owners returns exactly 2 items
+          (sagar.joshi133 primary_owner + app.consulturo super_owner).
+        • All three unique indexes present in DB.
+        • Backend startup is now warning-free (no IndexOptionsConflict).
+
+      Files: /app/backend/server.py (4 edits — startup hook,
+      blog-perm upsert flag, dashboard-perm upsert flag,
+      list_primary_owners dedupe).
+
+      No frontend changes. No DB schema migrations beyond the cleanup
+      (data-only). Awaiting user to confirm the issue is resolved on
+      their end before moving onto next backlog item.

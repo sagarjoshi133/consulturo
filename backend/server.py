@@ -371,6 +371,74 @@ async def _migrate_owner_to_primary_owner() -> None:
 
 
 @app.on_event("startup")
+async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
+    """Idempotent: codifies the unique constraints on users.email /
+    users.phone / team_invites.email so a fresh DB re-creation also
+    enforces them (previously they were only created via a one-off
+    operator script). Also sweeps orphan `team_invites` rows that have
+    no `role` set and where the same email already exists as a live
+    user — these stubs were silently created by older versions of the
+    blog-perm / dashboard-perm endpoints (now patched to upsert=False)
+    and showed up as "ghost" duplicate Primary Owners in the UI.
+    """
+    try:
+        # Skip create_index calls when an index with the desired name
+        # already exists — MongoDB raises IndexOptionsConflict on
+        # cosmetic spec differences (e.g. $type ordering) even when
+        # the operator-created index already enforces what we want.
+        existing_users = set()
+        async for idx in db.users.list_indexes():
+            existing_users.add(idx.get("name"))
+        existing_invites = set()
+        async for idx in db.team_invites.list_indexes():
+            existing_invites.add(idx.get("name"))
+        if "users_email_unique" not in existing_users:
+            await db.users.create_index(
+                "email", unique=True, name="users_email_unique",
+                partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
+            )
+        if "users_phone_unique" not in existing_users:
+            await db.users.create_index(
+                "phone", unique=True, name="users_phone_unique",
+                partialFilterExpression={"phone": {"$gt": "", "$type": "string"}},
+            )
+        if not (existing_invites & {"invites_email_unique", "team_invites_email_unique"}):
+            await db.team_invites.create_index(
+                "email", unique=True, name="invites_email_unique",
+                partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
+            )
+    except Exception as e:
+        # Index already exists with a different spec, or another race —
+        # log and continue. Operators can drop+recreate manually if
+        # this ever surfaces.
+        print(f"[indexes] ensure_unique_indexes warning: {e}")
+
+    # Orphan-invite sweep — only delete rows that are clearly stubs
+    # (no role, not flagged as demo, and the email already maps to a
+    # live user). Conservative on purpose: never delete rows with
+    # role/is_demo/name set, even if the user already exists.
+    try:
+        emails_with_user = set()
+        async for u in db.users.find({}, {"email": 1, "_id": 0}):
+            em = (u.get("email") or "").lower().strip()
+            if em:
+                emails_with_user.add(em)
+        if emails_with_user:
+            res = await db.team_invites.delete_many({
+                "email": {"$in": list(emails_with_user)},
+                "$and": [
+                    {"$or": [{"role": {"$exists": False}}, {"role": None}, {"role": ""}]},
+                    {"$or": [{"is_demo": {"$exists": False}}, {"is_demo": False}, {"is_demo": None}]},
+                    {"$or": [{"name": {"$exists": False}}, {"name": None}, {"name": ""}]},
+                ],
+            })
+            if getattr(res, "deleted_count", 0):
+                print(f"[cleanup] orphan team_invites removed: {res.deleted_count}")
+    except Exception as e:
+        print(f"[cleanup] orphan team_invites sweep failed: {e}")
+
+
+@app.on_event("startup")
 async def _start_reminder_loop():
     import asyncio
 
@@ -6458,7 +6526,17 @@ async def list_primary_owners(user=Depends(require_owner)):
     super-owner UI can render an "Active since X" tag and a
     Suspend/Resume button per row."""
     rows: List[Dict[str, Any]] = []
+    seen_emails: set = set()
     async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
+        # Defensive dedupe — the unique email index should make this
+        # impossible, but a legacy snapshot or a race during migration
+        # could still surface duplicates. Render at most one card per
+        # email (case-insensitive).
+        em_key = (u.get("email") or "").lower().strip()
+        if em_key and em_key in seen_emails:
+            continue
+        if em_key:
+            seen_emails.add(em_key)
         dfa_raw = u.get("dashboard_full_access")
         dfa = (dfa_raw is not False) if u.get("role") in {"primary_owner", "super_owner"} else bool(dfa_raw)
         # `created_at` may be missing on rows that pre-date the field —
@@ -6548,8 +6626,15 @@ async def set_primary_owner_blog_perm(
     # Persist on team_invites too so the flag survives sign-out / sign-in.
     email_l = (target.get("email") or "").lower()
     if email_l:
+        # NOTE: upsert=False — we must NOT auto-create a stub team_invites
+        # row that only carries the `can_create_blog` flag (no role, no
+        # name). Such stubs surface later as "ghost" pending invites and
+        # were the root cause of the duplicate Primary Owner perception
+        # for sagar.joshi133@gmail.com. The flag is already persisted on
+        # the live `users` row above; mirroring onto an existing invite
+        # is best-effort only.
         await db.team_invites.update_one(
-            {"email": email_l}, {"$set": {"can_create_blog": val}}, upsert=True
+            {"email": email_l}, {"$set": {"can_create_blog": val}}, upsert=False
         )
     try:
         await db.audit_log.insert_one({
@@ -6584,8 +6669,9 @@ async def set_primary_owner_dashboard_perm(
     )
     email_l = (target.get("email") or "").lower()
     if email_l:
+        # See blog-perm above — same rationale: never upsert a stub.
         await db.team_invites.update_one(
-            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=True
+            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=False
         )
     try:
         await db.audit_log.insert_one({
