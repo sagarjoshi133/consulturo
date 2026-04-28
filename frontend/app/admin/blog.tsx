@@ -19,17 +19,25 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import api from '../../src/api';
 import { useAuth } from '../../src/auth';
+import { useTier } from '../../src/tier';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { PrimaryButton, SecondaryButton } from '../../src/components';
 
 const CATEGORIES = ['Kidney Health', "Men's Health", "Women's Urology", 'Surgical Care', 'Patient Education', 'News', 'Urology'];
 
-const STAFF = ['owner', 'doctor'];
-
 export default function AdminBlog() {
   const router = useRouter();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const { user } = useAuth();
+  // Editorial gate (matches backend `require_blog_writer`):
+  //   • super_owner — always allowed.
+  //   • primary_owner — allowed only if `can_create_blog: true` (set
+  //     via PATCH /api/admin/primary-owners/{id}/blog-perm by super-
+  //     owner).
+  // Everyone else (partner / doctor / staff / patient) is denied here
+  // AND on the backend so unauthorised attempts can never succeed.
+  const tier = useTier();
+  const canEdit = !!user && tier.canCreateBlog;
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'list' | 'compose'>(edit ? 'compose' : 'list');
@@ -44,7 +52,11 @@ export default function AdminBlog() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pending_review' | 'published' | 'draft' | 'rejected' | 'mine'>('all');
 
-  const isOwner = user?.role === 'owner';
+  // Editorial-power flag — anyone who passes the gate auto-publishes
+  // (matches the backend behaviour after the editorial-gate refactor:
+  // there's no longer a "pending review" workflow because authoring
+  // is now editor-only).
+  const isOwner = canEdit;
 
   const reset = () => {
     setPostId(null);
@@ -86,7 +98,7 @@ export default function AdminBlog() {
     }, [load])
   );
 
-  if (!user || !STAFF.includes(user.role as string)) {
+  if (!canEdit) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
         <View style={styles.topBar}>
@@ -97,7 +109,14 @@ export default function AdminBlog() {
         </View>
         <View style={styles.empty}>
           <Ionicons name="shield-checkmark" size={54} color={COLORS.textDisabled} />
-          <Text style={styles.emptyTitle}>Staff access only</Text>
+          <Text style={styles.emptyTitle}>
+            {tier.loading ? 'Loading…' : 'Editorial access required'}
+          </Text>
+          {!tier.loading && (
+            <Text style={[styles.emptyTitle, { fontSize: 13, marginTop: 8, fontWeight: '400', textAlign: 'center', paddingHorizontal: 24 }]}>
+              Blog editing is restricted to the Super Owner. Ask the Super Owner to grant blog access from the Permission Manager.
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -260,7 +279,7 @@ export default function AdminBlog() {
                 status === 'pending_review' ? COLORS.warning :
                 status === 'rejected' ? COLORS.accent :
                 COLORS.textSecondary;
-              const canEdit = isOwner || p.author_user_id === user?.user_id;
+              const canEditPost = isOwner || p.author_user_id === user?.user_id;
               return (
                 <View key={p.post_id} style={styles.postCard}>
                   {p.cover ? <Image source={{ uri: p.cover }} style={styles.thumb} /> : <View style={[styles.thumb, { backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="newspaper" size={28} color={COLORS.primary} /></View>}
@@ -280,7 +299,7 @@ export default function AdminBlog() {
                     <Text style={styles.postDate}>{format(new Date(p.created_at), 'dd-MM-yyyy')}</Text>
                     {p.review_note ? <Text style={styles.reviewNote}>Review note: {p.review_note}</Text> : null}
                     <View style={styles.postActions}>
-                      {canEdit && (
+                      {canEditPost && (
                         <TouchableOpacity onPress={() => edit_(p)} style={styles.actBtn} testID={`admin-blog-edit-${p.post_id}`}>
                           <Ionicons name="create-outline" size={14} color={COLORS.primary} />
                           <Text style={styles.actText}>Edit</Text>
@@ -304,7 +323,7 @@ export default function AdminBlog() {
                           <Text style={[styles.actText, { color: COLORS.textSecondary }]}>Unpublish</Text>
                         </TouchableOpacity>
                       )}
-                      {canEdit && (
+                      {canEditPost && (
                         <TouchableOpacity onPress={() => remove(p)} style={[styles.actBtn, { borderColor: COLORS.accent }]} testID={`admin-blog-del-${p.post_id}`}>
                           <Ionicons name="trash-outline" size={14} color={COLORS.accent} />
                           <Text style={[styles.actText, { color: COLORS.accent }]}>Delete</Text>
