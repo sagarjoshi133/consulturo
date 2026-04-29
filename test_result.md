@@ -11298,3 +11298,102 @@ backend_phase5_clinical_smoke_2026_04_29:
       • Final server.py target: <1500 lines (just middleware,
         startup hooks, exception handlers, app instance, router
         registrations).
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 6 (Services + Cleanup)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Files created
+    • services/__init__.py
+    • services/reg_no.py   (86 lines) — _normalize_phone,
+                                       allocate_reg_no,
+                                       get_or_set_reg_no
+    • services/email.py    (64 lines) — _send_email (Resend wrapper,
+                                       includes `import resend as
+                                       _resend; _resend.api_key=…`)
+    • services/telegram.py (41 lines) — notify_telegram (httpx-based,
+                                       reads TELEGRAM_OWNER_CHAT_ID
+                                       with fallback to legacy
+                                       TELEGRAM_CHAT_ID)
+
+  Files changed
+    • /app/backend/server.py
+        - 3662 → 3099 lines (−563 this phase, includes the −450
+          dead DISEASES drop).
+        - Each extracted helper replaced with
+          `from services.X import name  # (extracted)` so every
+          existing `from server import _send_email` etc. keeps
+          resolving to the canonical implementation.
+        - Removed dead inline `DISEASES = [...]` (~450 lines —
+          unreferenced after Phase 2 extracted the routes;
+          disease_content.py is the canonical trilingual source).
+
+  Bugs caught + fixed during Phase 6 smoke
+    1. services/email.py initially missed the `import resend as
+       _resend; _resend.api_key = …` block (lived 60+ lines apart
+       from the function in server.py). Caused 500 on
+       /api/auth/otp/request. Fixed.
+    2. services/telegram.py used wrong env-var name
+       (TELEGRAM_CHAT_ID vs canonical TELEGRAM_OWNER_CHAT_ID) and
+       wrong HTTP client (requests vs canonical httpx). Caused 500
+       on POST /api/bookings (which fires telegram on create).
+       Fixed with httpx + dual env-var fallback.
+
+  Backend smoke (deep_testing_backend_v2)
+    25/25 PASS post-fix. Auth OTP flow + booking create both
+    succeed end-to-end with reg_no auto-allocation.
+
+  ════════════════════════════════════════════════════════════════
+  CUMULATIVE MODULARIZATION SUMMARY (Phase 1-6)
+  ════════════════════════════════════════════════════════════════
+                          server.py          Δ
+    Original (Phase 0):   8879 lines        baseline
+    After Phase 1:        8548 lines        −331 (models / db / auth_deps)
+    After Phase 2:        8239 lines        −309 (4 leaf routers)
+    After Phase 3:        7471 lines        −768 (11 routers, 38 routes)
+    After Phase 4:        5316 lines      −2155 (10 routers, 68 routes)
+    After Phase 5:        3662 lines      −1654 (10 routers, 39 routes)
+    After Phase 6:        3099 lines        −563 (services + dead code)
+    ──────────────────────────────────────────────────
+    Total reduction:                       −5780 lines (−65.1%)
+
+  New module layout under /app/backend/
+    db.py             (22)   Mongo client + db handle
+    auth_deps.py      (74)   Role helpers + lazy require_* re-exports
+    models.py        (442)   49 Pydantic schemas (auto-extracted)
+    routers/         (5921 lines / 36 modules / 145 endpoints)
+        diseases, doctor, profile, clinic_settings,
+        health, calculators, education, consent, medicines,
+        notes, availability, ipss, referrers, patients, tools,
+        me_tier, settings_homepage, blog, push, notifications,
+        broadcasts, messaging, team, admin_owners, auth,
+        bookings, prescriptions, surgeries, records, export,
+        analytics, render, rx_verify, admin_extras, api_root
+    services/        (200 lines / 3 modules)
+        reg_no, email, telegram
+    server.py       (3099)   Orchestrator: app instance, middleware,
+                              startup hooks, router registrations,
+                              and the leftover helpers (push,
+                              blog, booking-reminder loop,
+                              auth-callback HTML, etc.) that still
+                              await Phase 7 polish.
+
+  Optional Phase 7 (future, low priority)
+    • Extract remaining services from server.py: notifications
+      dispatch (push), blog HTML helpers, booking-reminder loop,
+      auth-callback page builder, PDF warm-up.
+    • Tighten the 2 pre-existing gating issues (prescriptions
+      DELETE legacy `role==owner` literal; admin/audit-log
+      require_owner→require_super_owner).
+    • Drop the lazy re-export pattern in auth_deps.py once all
+      routers explicitly import their dependencies.
+
+  Foundation is ready for the user's NEXT BIG TASK:
+    Multi-Tenant Architecture (clinic_id schema + URL slug routing
+    `/c/<slug>` + query scopes + data migration). The clean
+    domain-segregated routers/ + services/ structure makes adding
+    a `clinic_id` filter mechanical rather than archaeological.
