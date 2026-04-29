@@ -76,8 +76,17 @@ export default function NewPrescription() {
   const isEdit = !!editId;
   const isFromBooking = !!bookingId && !isEdit;
 
-  // Role helpers — controls which buttons render.
-  const isPrescriber = user?.role === 'owner' || user?.role === 'doctor';
+  // Role / permission helpers — controls which sections render & save flow.
+  // Hierarchy: Primary Owner & Partner = full access (all fields unlocked).
+  // Other team members (Doctor / Nursing / Reception / Assistant / etc.)
+  // get clinical-section access ONLY when the Primary Owner / Partner has
+  // explicitly enabled their `can_prescribe` flag in the Permission
+  // Manager → Team Roles & Access screen.
+  const isOwnerOrPartner =
+    user?.role === 'primary_owner' ||
+    user?.role === 'partner' ||
+    user?.role === 'owner'; // legacy alias
+  const isPrescriber = isOwnerOrPartner || !!user?.can_prescribe;
 
   // ---- Patient Details
   const [patientName, setPatientName] = useState('');

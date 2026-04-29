@@ -81,6 +81,16 @@ export type ClinicSettings = {
   doctor_degrees?: string;
   doctor_reg_no?: string;
   signature_url?: string;
+  // Letterhead — banner image (data URI / URL) that REPLACES the
+  // entire app-logo / clinic-name / contact-info header strip on
+  // every page of the Rx PDF when `use_letterhead` is true.
+  letterhead_image_b64?: string;
+  use_letterhead?: boolean;
+  // Per-clinic editable copy for the "Patient Education" tips card
+  // and the "Need Help?" mini-card. Both accept simple HTML; falls
+  // back to the built-in defaults when null/empty.
+  patient_education_html?: string;
+  need_help_html?: string;
 };
 
 const escapeHtml = (s?: string | number) =>
@@ -133,6 +143,13 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   const degrees = (settings.doctor_degrees || 'MBBS · MS · DrNB (Urology)').trim();
   const drReg = (settings.doctor_reg_no || 'G-53149').trim();
   const signatureUrl = (settings.signature_url || '').trim();
+
+  // Letterhead — when enabled by primary_owner in the Branding panel,
+  // the supplied banner image REPLACES the entire app-logo + clinic-
+  // name + contact strip at the top of the page. Falls back to the
+  // built-in branded header when not enabled or the image is empty.
+  const letterheadEnabled = !!(settings.use_letterhead && (settings.letterhead_image_b64 || '').trim());
+  const letterheadSrc = letterheadEnabled ? String(settings.letterhead_image_b64 || '').trim() : '';
   const patientReg = rx.registration_no || '';
 
   const ageSex = [rx.patient_age || '', rx.patient_gender || ''].filter((x) => String(x).trim()).join(' / ');
@@ -677,11 +694,75 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     line-height:1.5;
     position:relative; z-index:1;
   }
+
+  /* ---- Letterhead (custom banner) ---------------------------------- */
+  /* Replaces the .head + .brand strip when use_letterhead is on. We
+     constrain the height so any aspect ratio fits gracefully — tall
+     banners get scaled down, wide banners fill the column. */
+  .letterhead{
+    width:100%;
+    margin: 0 0 6px 0;
+    text-align:center;
+    border-bottom: 1px solid #DCE3E6;
+    padding-bottom: 6px;
+  }
+  .letterhead img{
+    max-width: 100%;
+    max-height: 36mm;       /* ~ enough for a real letterhead banner   */
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  /* Compact meta strip rendered just below the letterhead so Date /
+     Time / Rx ID / Ref-by stay accessible even when the custom
+     letterhead doesn't include those fields. */
+  .metaStrip{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content: space-between;
+    gap: 6px 12px;
+    font-size: 9px;
+    color: #5E7C81;
+    border-bottom: 1px solid #ECF1F2;
+    padding: 2px 0 4px;
+    margin: 0 0 6px;
+  }
+  .metaStrip b{ color:#1A2E35; }
+
+  /* ---- ConsultUro brand stamp — shown on every page ---------------- */
+  /* Sits inside the page-level dashed footer. In screen + print
+     modes it rides along with `.foot`. For multi-page Rx, the .page
+     element is duplicated by the renderer so the stamp repeats on
+     every page automatically. */
+  .consulturo-stamp{
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 8.5px;
+    color: #0A5E6B;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .consulturo-stamp .cu-dot{
+    width: 8px; height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #0E7C8B, #15B8C7);
+    box-shadow: 0 0 0 2px rgba(14,124,139,0.18);
+  }
+  .consulturo-stamp .cu-text{ color:#0A5E6B; }
+  .consulturo-stamp .cu-tag{ color:#5E7C81; font-weight: 500; text-transform: none; letter-spacing: 0; }
 </style></head>
 <body>
 <div class="page">
   <div class="watermark">ConsultUro</div>
 
+  ${letterheadEnabled ? `
+  <div class="letterhead">
+    <img src="${escapeHtml(letterheadSrc)}" alt="Letterhead"/>
+  </div>` : `
   <div class="head">
     <div class="brand">
       <img src="${LOGO_URL}"/>
@@ -699,7 +780,15 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
       ${rx.ref_doctor ? `<div class="line"><b>Ref. by:</b> ${escapeHtml(rx.ref_doctor)}</div>` : ''}
       <div class="line"><b>Rx ID:</b> <span style="font-family:monospace;font-size:9.5px;">${escapeHtml(rx.prescription_id)}</span></div>
     </div>
-  </div>
+  </div>`}
+
+  ${letterheadEnabled ? `
+  <div class="metaStrip">
+    <span><b>Date:</b> ${escapeHtml(visitDisplay)}</span>
+    <span><b>Time:</b> ${escapeHtml(timeStr)}</span>
+    ${rx.ref_doctor ? `<span><b>Ref. by:</b> ${escapeHtml(rx.ref_doctor)}</span>` : ''}
+    <span><b>Rx ID:</b> <span style="font-family:monospace;">${escapeHtml(rx.prescription_id)}</span></span>
+  </div>` : ''}
 
   <div class="pd">
     <div><div class="k">Patient</div><div class="v">${escapeHtml(rx.patient_name) || '—'}</div></div>
@@ -763,19 +852,37 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   <div class="foot">
     Digitally generated &amp; signed prescription · ${escapeHtml(clinicName)} · ${escapeHtml(clinicAddr)}<br/>
     Signed: <b>${escapeHtml(nowStamp)}</b> · Verify at <b>${escapeHtml(verifyUrl)}</b> · Not valid without clinician stamp.
+    <div class="consulturo-stamp">
+      <span class="cu-dot"></span>
+      <span class="cu-text">ConsultUro</span>
+      <span class="cu-tag">· Generated on ConsultUro Platform</span>
+    </div>
   </div>
 </div>
 </body></html>`;
 }
 
-/** Load latest homepage settings (cached per call). */
+/** Load latest homepage + clinic settings (merged) so the Rx renderer
+ *  has access to BOTH the homepage doctor/clinic strip and the new
+ *  Branding-panel-managed Letterhead / Patient-Education / Need-Help
+ *  customisations stored in `clinic_settings`. Either endpoint can fail
+ *  independently — we degrade gracefully.
+ */
 export async function loadClinicSettings(): Promise<ClinicSettings> {
-  try {
-    const { data } = await api.get('/settings/homepage');
-    return data || {};
-  } catch {
-    return {};
-  }
+  const [hp, cs] = await Promise.all([
+    api.get('/settings/homepage').then((r) => r.data || {}).catch(() => ({})),
+    api.get('/clinic-settings').then((r) => r.data || {}).catch(() => ({})),
+  ]);
+  // homepage settings already include the canonical clinic_name /
+  // clinic_phone / doctor_degrees fields. clinic-settings adds the
+  // letterhead, use_letterhead, patient_education_html, need_help_html
+  // (and a parallel clinic_name; homepage wins if both set).
+  return { ...cs, ...hp,
+    letterhead_image_b64: cs.letterhead_image_b64 || hp.letterhead_image_b64,
+    use_letterhead: cs.use_letterhead ?? hp.use_letterhead,
+    patient_education_html: cs.patient_education_html || hp.patient_education_html,
+    need_help_html: cs.need_help_html || hp.need_help_html,
+  };
 }
 
 // Opens the Rx HTML in a new browser tab. Used by both Print and PDF actions

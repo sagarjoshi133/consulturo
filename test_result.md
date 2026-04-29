@@ -836,6 +836,86 @@ metadata:
     - "PDF page bottom padding bumped 14mm → 22mm so the footer line + sign block sit comfortably above page edge."
     - "Broadcast pipeline VERIFIED end-to-end (18/19 backend tests PASS): create → approve → send → broadcast_inbox per-user records → in-app notifications. Push fan-out path is real but 0 tokens registered in test = sent_count 0."
 
+backend_letterhead_smoke_2026_04_29:
+  - task: "Letterhead UI iteration — backend smoke (clinic-settings new fields, /auth/me, /admin/primary-owner-analytics)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          Smoke test post-frontend-only Letterhead UI iteration. Backend
+          UNCHANGED for this iteration; goal was to confirm no regression
+          to the previously-deployed Letterhead schema. Run via
+          /app/backend_test_letterhead_smoke.py against the public
+          EXPO_PUBLIC_BACKEND_URL (https://urology-pro.preview.emergentagent.com/api).
+          OUTCOME: 28/31 assertions PASS. The 3 "FAIL" lines are
+          field-presence checks for can_prescribe/can_manage_surgeries/
+          can_manage_availability on /auth/me, which the review brief
+          explicitly allows to be absent for owner-tier (frontend treats
+          owner as full-access regardless). Net: ALL REVIEW REQUIREMENTS
+          MET. ✅
+
+          1. GET /api/clinic-settings (public, no auth) → 200 ✅
+             Payload contains all 4 new Letterhead fields with correct
+             empty/default values:
+               • letterhead_image_b64: ""           (str, present)
+               • use_letterhead:        False       (bool, present)
+               • patient_education_html: ""         (str, present)
+               • need_help_html:        ""          (str, present)
+             Pre-snapshot showed all 4 in clean default state already.
+
+          2. PATCH /api/clinic-settings (Primary Owner — owner token
+             test_session_1776770314741, sagar.joshi133@gmail.com) → 200
+             with body {ok:true, updated:4}. ✅
+             Sent payload:
+               letterhead_image_b64 = "data:image/jpeg;base64,iVBORw0K…"
+               use_letterhead       = true
+               patient_education_html = "<ul><li>Test</li></ul>"
+               need_help_html       = "📞 +91 9000000000"
+             Subsequent GET confirmed exact persistence of all 4 fields
+             (string equality on letterhead_image_b64 incl. emoji in
+             need_help_html). ✅
+             Reset PATCH (empty strings + use_letterhead=false) → 200,
+             follow-up GET confirmed all 4 fields back to empty/false.
+             No prod data pollution. ✅
+
+          3. GET /api/auth/me (Primary Owner) → 200 with
+             role:"primary_owner". ✅
+             Response keys observed:
+               can_approve_bookings, can_approve_broadcasts,
+               can_create_blog, can_send_personal_messages, created_at,
+               dashboard_full_access (false), dashboard_tabs,
+               effective_owner (false), email, name, phone, phone_digits,
+               picture, role, user_id.
+             can_prescribe / can_manage_surgeries / can_manage_availability
+             keys are NOT in the response — they're stored on the user
+             document only when explicitly set on a team-member invite
+             (server.py:678-686). For role=primary_owner they're absent
+             (== falsy on the frontend), which exactly matches the
+             review brief's allowance ("may default to false for
+             primary_owner … OK if the user role itself is primary_owner
+             — frontend will treat owner-tier as full-access regardless
+             of the flag values"). No regression.
+
+          4. GET /api/admin/primary-owner-analytics (super_owner) → 200
+             ✅. Seeded a 24h SO session for app.consulturo@gmail.com
+             (user_f4556817bf29) — token test_so_session_smoke_<ts>
+             via mongosh, ran the GET, then deleted the seed session
+             during cleanup (sessions_deleted=1, no DB pollution).
+             Response is a list of primary_owner analytics rows
+             (>=1 row returned for the existing primary_owner). No 5xx,
+             no auth bypass.
+
+          End state: clinic_settings.letterhead_image_b64="",
+          use_letterhead=false, patient_education_html="",
+          need_help_html="" — exactly the pre-test state. SO test
+          session purged.
+
 test_plan:
   current_focus:
     - "FRONTEND REGRESSION + NEW FEATURE PASS — Verify the UI on both DESKTOP (≥1280px) and MOBILE (390x844) using primary_owner credentials (token: test_session_1776770314741, email sagar.joshi133@gmail.com). Required tests: (1) DESKTOP SIDEBAR — confirm sections render in order Account → Dashboard → Practice → Administration → Explore → App → About. Account/Dashboard/Practice expanded by default; Administration/Explore/App/About collapsed by default. Tapping a section header toggles its items and persists across reload. View mode pill in App section cycles Auto/Desktop/Mobile and triggers a layout refresh. (2) DESKTOP HOME (/) — for staff (primary_owner), the hero shows 3 quick-action pills: Bookings · Consult · Prescription which navigate to dashboard tabs. Patients still see the single 'Book Consultation' pill. (3) MOBILE HOME (/) — for clinical roles (primary_owner / partner / doctor), the second quick-action card shows 'Consult' (medkit) instead of 'WhatsApp'. Tapping it goes to /dashboard?tab=consultations. (4) MOBILE MORE TAB — sections render in order Account → Dashboard → Practice → Administration → Explore → App → About with same default-collapsed behavior. Tapping a section title toggles its rows. (5) APPOINTMENT PAGE (/bookings/[id]) — Communication card buttons (Call/WhatsApp/Message) NEVER overflow or wrap to 2 lines on a 360px viewport. Single-line truncation works. (6) DASHBOARD BOOKINGS TAB — booking card action row (Call·WhatsApp·Copy·Confirm·Reschedule·Reject·Message) wraps gracefully — NO buttons spilling outside the card edge. (7) PROFILE → SHORTCUTS row labelled 'Inbox' (was 'Notifications') routes to /inbox. (8) PERMISSION MANAGER → DEMO ACCOUNTS — as super_owner, after creating a demo via OwnersPanel, the demo (signed_in:false) appears immediately in the list with a 'Revoke' button. (9) PERMISSION MANAGER → PARTNERS — as primary_owner, after promoting an email to partner, that pending entry appears with '(pending sign-in)' suffix and a 'Revoke' button. Revoke removes it. (10) i18n — toggle language EN→HI→GU; sidebar section headers and item labels translate (Administration → प्रशासन / વ્યવસ્થાપન; Consults → कंसल्ट्स / કન્સલ્ટ્સ; etc). (11) PRESCRIPTION PDF — verify the patient summary band shows 5 distinct cells: Patient · Age/Sex · Phone · Visit · Reg. No. with no overlaps. Login with token test_session_1776770314741 (already extended 7 days)."
@@ -9678,3 +9758,105 @@ agent_communication_2026_04_28_session3:
         - Home page renders ConsultUro brand card (no Dr. Sagar)
         - /admin/primary-owner-analytics loads with per-owner cards
         - Analytics chart grid is now uniformly aligned
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Letterhead UI + Prescription Permission Hierarchy
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Summary
+    - Built the missing Branding-panel UI for the previously
+      backend-only Letterhead + Editable Patient-Education / Need-Help
+      feature (handoff resume point).
+    - Wired the Rx PDF renderer to actually consume `clinic-settings`
+      (it was only fetching `/settings/homepage` before, so even though
+      the schema existed, the new fields never reached the renderer).
+    - Implemented the user-requested permission gate on the
+      Prescription / Start-Consultation form so that Primary Owner &
+      Partner have ALL fields unlocked, and other team members get
+      clinical sections only when `can_prescribe` is enabled by an
+      owner via the Permission Manager.
+    - Added a permanent ConsultUro brand stamp inside the dashed
+      footer (lives on every printed page automatically because the
+      page element repeats on multi-page Rx).
+
+  Files changed
+    • /app/frontend/src/branding-panel.tsx
+        - New "Prescription Letterhead" section with image picker
+          (5:1 banner crop, 0.9 quality, ~700KB soft cap), use-
+          letterhead toggle, multiline custom Patient-Education /
+          Need-Help text fields. Inline "Remove letterhead"
+          destructive button.
+    • /app/frontend/src/rx-pdf.ts
+        - ClinicSettings type extended with letterhead_image_b64 /
+          use_letterhead / patient_education_html / need_help_html.
+        - loadClinicSettings() now merges /settings/homepage AND
+          /clinic-settings so the renderer sees both data sources.
+        - Conditional rendering: letterhead image REPLACES the
+          .head + .brand strip when toggle is on; a compact
+          metaStrip preserves Date/Time/Ref/Rx-ID under the banner.
+        - .foot block now has a `consulturo-stamp` row with a small
+          gradient dot + "Generated on ConsultUro Platform" caption.
+        - New CSS classes: .letterhead, .metaStrip, .consulturo-stamp.
+    • /app/frontend/src/auth.tsx
+        - User type now includes can_prescribe /
+          can_manage_surgeries / can_manage_availability so screens
+          can read them without re-fetching /api/me/tier.
+    • /app/frontend/app/prescriptions/new.tsx
+        - isPrescriber rewritten: primary_owner | partner | owner =
+          full unlock; other team members unlock only when
+          user.can_prescribe is true. Removes the legacy "doctor →
+          auto-Rx" assumption.
+
+  Backend
+    - No backend changes in this iteration — schema, defaults, and
+      the PATCH handler were already in place from the previous
+      session.
+
+  Verification
+    - GET /api/clinic-settings now returns letterhead_image_b64,
+      use_letterhead, patient_education_html, need_help_html (empty
+      defaults).
+    - Expo bundles cleanly; welcome screen renders.
+
+  Awaiting user
+    - Log in as Primary Owner, open Branding panel, upload a real
+      letterhead and confirm:
+        a) Letterhead replaces the default header on the Rx PDF
+        b) "Generated on ConsultUro Platform" stamp appears on
+           every page
+        c) Custom Patient-Education and Need-Help text override
+           the built-in defaults.
+    - Test prescription form gating by inviting a non-owner team
+      member with can_prescribe=false and confirming they CANNOT
+      see Examination / Investigations / Diagnosis / Medication
+      sections.
+
+
+agent_communication_2026_04_29_letterhead_smoke:
+  - agent: "testing"
+    message: |
+      Letterhead UI iteration backend smoke test complete (2026-04-29).
+      Backend code unchanged in this iteration; goal was to confirm no
+      schema regression. ALL REVIEW REQUIREMENTS MET.
+      • GET /api/clinic-settings (public, no auth) exposes the 4 new
+        fields (letterhead_image_b64, use_letterhead,
+        patient_education_html, need_help_html) with correct
+        empty/default values.
+      • PATCH /api/clinic-settings as primary_owner (owner token) sets
+        all 4 fields (incl. tiny data:image/jpeg;base64 letterhead,
+        emoji-bearing need_help_html); GET confirms exact persistence;
+        reset PATCH restores all to empty/false. No prod data pollution.
+      • GET /api/auth/me (primary_owner) → 200 role=primary_owner.
+        can_prescribe / can_manage_surgeries / can_manage_availability
+        keys are ABSENT from the response (frontend treats absent as
+        falsy, owner-tier full-access regardless) — explicitly allowed
+        by the review brief.
+      • GET /api/admin/primary-owner-analytics as super_owner → 200,
+        returns analytics row(s). Seeded a 24h SO session via mongosh
+        and deleted it during cleanup.
+      Test runner: /app/backend_test_letterhead_smoke.py against
+      https://urology-pro.preview.emergentagent.com/api.

@@ -86,19 +86,38 @@ export default function BrandingPanel() {
     await save(out);
   };
 
-  const pickImage = async (key: 'main_photo_url' | 'cover_photo_url') => {
+  const pickImage = async (key: 'main_photo_url' | 'cover_photo_url' | 'letterhead_image_b64') => {
     const r = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!r.granted) { Alert.alert('Permission needed'); return; }
+    // Letterhead is a wide banner that replaces the entire prescription
+    // header strip — a 5:1 (banner) crop reads best in our A4 layout.
+    // Main = square avatar, Cover = 16:9 hero photo.
+    const aspect: [number, number] =
+      key === 'cover_photo_url' ? [16, 9]
+      : key === 'letterhead_image_b64' ? [5, 1]
+      : [1, 1];
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: key === 'cover_photo_url' ? [16, 9] : [1, 1],
-      quality: 0.7,
+      aspect,
+      // Letterheads need higher fidelity for text/logo crispness in
+      // the printed PDF — bump quality vs. the avatar/cover photos.
+      quality: key === 'letterhead_image_b64' ? 0.9 : 0.7,
       base64: true,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     const dataUri = a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri;
+    // Soft size guard for letterhead — keeps the clinic_settings doc
+    // from ballooning. ~700 KB lets a 5:1 banner at decent quality
+    // through; anything larger is almost certainly an unoptimised
+    // photograph rather than a real letterhead.
+    if (key === 'letterhead_image_b64' && dataUri.length > 700_000) {
+      const proceed = Platform.OS === 'web'
+        ? window.confirm('This letterhead image is large (>700 KB). Crisp printing is fine, but PDF size will grow. Continue?')
+        : true;
+      if (!proceed) return;
+    }
     set(key, dataUri);
     await save({ [key]: dataUri });
   };
@@ -191,6 +210,114 @@ export default function BrandingPanel() {
         </>
       )}
 
+      {/* Prescription Letterhead — branding for the Rx PDF. Visible to
+          full owner-tier (super_owner / primary_owner / partner). The
+          letterhead, when enabled, REPLACES the entire app-logo /
+          clinic-name / contact strip at the top of every Rx page. The
+          two text fields override the default Patient Education and
+          Need Help blocks rendered inside the PDF. */}
+      {(!tier.isPartner || s.partner_can_edit_branding !== false) && (
+        <>
+          <Text style={styles.sectionTitle}>Prescription Letterhead</Text>
+          <Text style={styles.help}>
+            Upload a banner image (recommended ~5:1 ratio — e.g. 1500 × 300 px).
+            When the toggle below is on, this image will REPLACE the default
+            clinic header at the top of every prescription. A permanent
+            "Generated on ConsultUro Platform" footer is always preserved.
+          </Text>
+
+          <TouchableOpacity
+            onPress={() => pickImage('letterhead_image_b64')}
+            style={styles.letterheadBox}
+            testID="branding-pick-letterhead"
+          >
+            {s.letterhead_image_b64 ? (
+              <Image source={{ uri: s.letterhead_image_b64 }} style={styles.letterheadImg} resizeMode="contain" />
+            ) : (
+              <View style={[styles.letterheadImg, styles.photoEmpty]}>
+                <Ionicons name="document-attach" size={28} color={COLORS.textSecondary} />
+                <Text style={styles.photoLabel}>Tap to upload letterhead</Text>
+              </View>
+            )}
+            <Text style={styles.photoCaption}>
+              {s.letterhead_image_b64 ? 'Tap to replace' : 'Tap to choose image'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>Use letterhead on Rx PDF</Text>
+              <Text style={[styles.help, { marginTop: 2, marginBottom: 0 }]}>
+                When off, the default branded header is used.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                const v = !s.use_letterhead;
+                set('use_letterhead', v);
+                save({ use_letterhead: v });
+              }}
+              style={[styles.toggle, !!s.use_letterhead && styles.toggleOn]}
+              testID="branding-toggle-letterhead"
+            >
+              <View style={[styles.toggleDot, !!s.use_letterhead && styles.toggleDotOn]} />
+            </TouchableOpacity>
+          </View>
+
+          {s.letterhead_image_b64 ? (
+            <TouchableOpacity
+              onPress={() => {
+                const doClear = () => { set('letterhead_image_b64', ''); save({ letterhead_image_b64: '', use_letterhead: false }); set('use_letterhead', false); };
+                if (Platform.OS === 'web') {
+                  if (window.confirm('Remove the current letterhead image?')) doClear();
+                } else {
+                  Alert.alert('Remove letterhead?', 'This clears the uploaded banner image.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Remove', style: 'destructive', onPress: doClear },
+                  ]);
+                }
+              }}
+              style={styles.dangerInlineBtn}
+              testID="branding-clear-letterhead"
+            >
+              <Ionicons name="trash" size={14} color="#B91C1C" />
+              <Text style={styles.dangerInlineBtnText}>Remove letterhead</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 18 }]}>Patient Education (Rx PDF)</Text>
+          <Text style={styles.help}>
+            Custom education tips shown on every prescription. Plain text or
+            simple HTML (e.g. &lt;ul&gt;&lt;li&gt;...&lt;/li&gt;&lt;/ul&gt;).
+            Leave blank to keep the built-in defaults.
+          </Text>
+          <TextInput
+            style={[styles.input, { minHeight: 90, textAlignVertical: 'top' }]}
+            value={s.patient_education_html || ''}
+            onChangeText={(v) => set('patient_education_html', v)}
+            placeholder="• Hydrate · 2–3 L water/day&#10;• Bladder discipline — void by clock&#10;• Diet — low salt, less spicy"
+            placeholderTextColor={COLORS.textDisabled}
+            multiline
+            testID="branding-patient-edu"
+          />
+
+          <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 18 }]}>Need Help? (Rx PDF)</Text>
+          <Text style={styles.help}>
+            Replaces the default contact / hours block on every prescription.
+            Leave blank to use the auto-generated phone &amp; clinic info.
+          </Text>
+          <TextInput
+            style={[styles.input, { minHeight: 90, textAlignVertical: 'top' }]}
+            value={s.need_help_html || ''}
+            onChangeText={(v) => set('need_help_html', v)}
+            placeholder="📞 +91 81550 75669&#10;🏥 ConsultUro · Vadodara&#10;🕐 Mon–Sat · 10 AM – 8 PM"
+            placeholderTextColor={COLORS.textDisabled}
+            multiline
+            testID="branding-need-help"
+          />
+        </>
+      )}
+
       {/* Partner toggles — only primary_owner/super_owner see these */}
       {(tier.isPrimaryOwner || tier.isSuperOwner) && (
         <>
@@ -280,4 +407,36 @@ const styles = StyleSheet.create({
   toggleDotOn: { transform: [{ translateX: 20 }] },
   saveBtn: { marginTop: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 10, backgroundColor: COLORS.primary },
   saveBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Manrope_700Bold' },
+
+  // Letterhead picker
+  letterheadBox: {
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: Platform.OS === 'web' ? 'dashed' : 'solid',
+    padding: 10,
+    marginBottom: 8,
+  },
+  letterheadImg: {
+    width: '100%',
+    aspectRatio: 5,
+    borderRadius: 8,
+    backgroundColor: COLORS.bg,
+  },
+  dangerInlineBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: '#FEE2E2',
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  dangerInlineBtnText: { color: '#B91C1C', fontSize: 11, fontFamily: 'Manrope_700Bold' },
 });

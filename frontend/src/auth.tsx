@@ -17,6 +17,12 @@ export interface User {
   effective_owner?: boolean;
   can_approve_bookings?: boolean;
   can_approve_broadcasts?: boolean;
+  /** Granted by primary_owner / partner — unlocks Rx, medicine catalog, reg-no override */
+  can_prescribe?: boolean;
+  /** Granted by primary_owner / partner — unlocks Surgeries module write actions */
+  can_manage_surgeries?: boolean;
+  /** Granted by primary_owner / partner — unlocks Availability schedule edits */
+  can_manage_availability?: boolean;
 }
 
 interface AuthState {
