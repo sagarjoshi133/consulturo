@@ -1165,40 +1165,44 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
     if (Platform.OS === 'web') {
-      // Web Download must produce an actual file in the user's
-      // Downloads folder — NOT pop the browser's print dialog. So
-      // we go through the backend renderer (slow but real PDF).
-      // Print + Share continue to use the fast iframe.print() path
-      // because their UX is not "save a file silently".
-      if (!window.confirm(`Download ${filename}?`)) return;
+      // Web Download flow:
+      //   1. Try backend WeasyPrint → real PDF in Downloads folder.
+      //   2. If anything goes wrong (mobile network blip, blob parse,
+      //      backend cold-start), SILENTLY fall through to the
+      //      iframe-print dialog — the user picks "Save as PDF" and
+      //      still ends up with the same file. NO error alerts in
+      //      between (the "Could not generate PDF" / "PDF service
+      //      is unavailable" alerts were the bug we just fixed).
+      let downloadedViaBackend = false;
       try {
         const { blob } = await fetchPdfFromBackend(html);
-        if (!blob) throw new Error('No PDF blob received');
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
-        }, 4000);
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
+          }, 4000);
+          downloadedViaBackend = true;
+        }
       } catch (e: any) {
-        // Last-resort fallback: open the print dialog via iframe so
-        // the user can choose "Save as PDF" from the browser's own
-        // print sheet. We deliberately AVOID writing the HTML into a
-        // top-level window or alerting the raw error — both modes
-        // were visibly leaking the Rx template HTML to the screen
-        // earlier.
-        const reason = safeMsg(e, 'network error');
-        showWebAlert(
-          `PDF service is unavailable (${reason}). Falling back to the browser print dialog — choose "Save as PDF" to download the file.`,
-        );
+        // Log for diagnosis only — never surface as an alert.
+        // eslint-disable-next-line no-console
+        console.error('[rx-pdf v3] backend PDF unavailable, falling back to print dialog:', e);
+      }
+      if (!downloadedViaBackend) {
+        // Open the browser's own print dialog so the user can choose
+        // "Save as PDF" — same result, just one extra tap.
         try {
           await webPrintViaIframe(html);
         } catch (e2: any) {
-          showWebAlert(safeMsg(e2, 'Could not open print dialog. Please try again.'));
+          // Truly catastrophic — both backend AND browser print failed.
+          // Show a clean fallback message (safeMsg blocks code leaks).
+          showWebAlert(safeMsg(e2, 'Could not generate PDF. Please retry.'));
         }
       }
       return;
@@ -1285,35 +1289,42 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web share strategy:
+      // Web share strategy (failure-tolerant):
       //   1. Best path → Web Share API with the real PDF File
-      //      (Chrome on Android, Safari on iOS Web). The user
-      //      gets the native share sheet and can attach the PDF
-      //      directly to WhatsApp / Mail / Drive.
-      //   2. Otherwise → download the PDF locally and instruct the
-      //      user to attach it from Downloads. We do NOT write the
-      //      HTML into a top-level window (that's what was visibly
-      //      dumping the Rx template HTML to the screen earlier).
+      //      (Chrome on Android, Safari on iOS Web). User gets the
+      //      native share sheet — direct attach to WhatsApp / Mail.
+      //   2. Backend PDF + silent <a download> + brief instruction
+      //      alert (when the share-sheet API is unavailable).
+      //   3. If the backend renderer can't be reached at all → fall
+      //      back to the iframe print dialog so the user can still
+      //      produce a PDF and attach it manually.
+      // No "Could not generate PDF" / raw HTML alerts EVER.
       let blob: Blob | undefined;
       try {
         const r = await fetchPdfFromBackend(html);
         blob = r.blob;
       } catch (e: any) {
-        // Backend renderer unavailable — fall through to print-dialog
-        // path so the doctor can still produce a PDF locally.
+        // eslint-disable-next-line no-console
+        console.error('[rx-pdf v3] backend PDF unavailable for share, using print fallback:', e);
         try {
           await webPrintViaIframe(html);
           showWebAlert(
-            'PDF service is unavailable. Use "Save as PDF" in the print dialog, then attach the saved file when sharing with the patient.',
+            'Use "Save as PDF" in the print dialog, then attach the saved file from Downloads when you share with your patient.',
           );
         } catch (e2: any) {
-          showWebAlert(safeMsg(e2, 'Could not share prescription'));
+          showWebAlert(safeMsg(e2, 'Could not share prescription. Please retry.'));
         }
         return;
       }
 
       if (!blob) {
-        showWebAlert('No PDF received from server. Please try again.');
+        // Backend returned no body — fall through to print dialog.
+        try {
+          await webPrintViaIframe(html);
+          showWebAlert('Use "Save as PDF" in the print dialog, then attach the saved file when sharing.');
+        } catch (e2: any) {
+          showWebAlert(safeMsg(e2, 'Could not share prescription. Please retry.'));
+        }
         return;
       }
 
@@ -1332,8 +1343,8 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
           }
         }
       } catch (e: any) {
-        // User dismissed the share-sheet or the platform refused —
-        // gracefully fall through to the download path. Don't alert.
+        // User dismissed share-sheet or the platform refused —
+        // gracefully fall through to the silent-download path.
         if (e?.name === 'AbortError') return;
       }
 
