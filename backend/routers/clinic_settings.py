@@ -128,6 +128,9 @@ _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
     "partner_can_edit_cover_photo": True,
     "partner_can_edit_clinic_info": True,
     "partner_can_edit_socials": True,
+    # Brand theme — preset key or custom hex triplet. Default = teal
+    # (matches the platform default until the owner customises).
+    "brand_theme": {"preset": "teal"},
 }
 
 

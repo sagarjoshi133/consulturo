@@ -32,6 +32,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import api from '../../src/api';
+import { resolveTheme, type BrandTheme } from '../../src/theme-presets';
 
 type PublicClinic = {
   clinic_id: string;
@@ -42,6 +43,7 @@ type PublicClinic = {
   phone?: string;
   email?: string;
   branding?: Record<string, any>;
+  brand_theme?: BrandTheme;
   is_active?: boolean;
 };
 
@@ -106,9 +108,10 @@ export default function ClinicLanding() {
     router.push(`/book?clinic=${encodeURIComponent(slug)}` as any);
   };
 
+  const themeColors = resolveTheme(clinic?.brand_theme);
   const branding = clinic?.branding || {};
-  const heroBg = (branding as any)?.hero_color || COLORS.primary;
-  const accent = (branding as any)?.accent_color || COLORS.accent;
+  const heroBg = (branding as any)?.hero_color || themeColors.primary;
+  const accent = (branding as any)?.accent_color || themeColors.primaryLight;
   const logo = (branding as any)?.logo_url || '';
   const mapUrl = (branding as any)?.map_url as string | undefined;
   const whatsapp = (branding as any)?.whatsapp as string | undefined;
@@ -121,7 +124,7 @@ export default function ClinicLanding() {
         key: 'call',
         label: 'Call',
         icon: 'phone',
-        color: COLORS.primary,
+        color: themeColors.primary,
         onPress: () => Linking.openURL(`tel:${digitsOnly(clinic.phone!)}`),
       });
     }
@@ -262,11 +265,11 @@ export default function ClinicLanding() {
                 onPress={goBook}
                 style={({ pressed }) => [styles.heroCta, pressed && { opacity: 0.9 }]}
               >
-                <Feather name="calendar" size={16} color={COLORS.primary} />
-                <Text style={[styles.ctaText, { color: COLORS.primary }]}>
+                <Feather name="calendar" size={16} color={themeColors.primary} />
+                <Text style={[styles.ctaText, { color: themeColors.primary }]}>
                   Book a consultation
                 </Text>
-                <Feather name="arrow-right" size={16} color={COLORS.primary} />
+                <Feather name="arrow-right" size={16} color={themeColors.primary} />
               </Pressable>
             </Animated.View>
           </SafeAreaView>
@@ -312,7 +315,7 @@ export default function ClinicLanding() {
               <Text style={styles.cardHeader}>VISIT US</Text>
               {!!clinic.address && (
                 <View style={styles.row}>
-                  <Feather name="map-pin" size={16} color={COLORS.primary} style={styles.rowIcon} />
+                  <Feather name="map-pin" size={16} color={themeColors.primary} style={styles.rowIcon} />
                   <Text style={styles.rowText}>{clinic.address}</Text>
                 </View>
               )}
@@ -321,8 +324,8 @@ export default function ClinicLanding() {
                   onPress={() => Linking.openURL(`tel:${digitsOnly(clinic.phone!)}`)}
                   style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
                 >
-                  <Feather name="phone" size={16} color={COLORS.primary} style={styles.rowIcon} />
-                  <Text style={[styles.rowText, { color: COLORS.primary, fontWeight: '600' }]}>
+                  <Feather name="phone" size={16} color={themeColors.primary} style={styles.rowIcon} />
+                  <Text style={[styles.rowText, { color: themeColors.primary, fontWeight: '600' }]}>
                     {clinic.phone}
                   </Text>
                 </Pressable>
@@ -332,8 +335,8 @@ export default function ClinicLanding() {
                   onPress={() => Linking.openURL(`mailto:${clinic.email}`)}
                   style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
                 >
-                  <Feather name="mail" size={16} color={COLORS.primary} style={styles.rowIcon} />
-                  <Text style={[styles.rowText, { color: COLORS.primary, fontWeight: '600' }]}>
+                  <Feather name="mail" size={16} color={themeColors.primary} style={styles.rowIcon} />
+                  <Text style={[styles.rowText, { color: themeColors.primary, fontWeight: '600' }]}>
                     {clinic.email}
                   </Text>
                 </Pressable>
@@ -390,7 +393,7 @@ export default function ClinicLanding() {
           onPress={goBook}
           style={({ pressed }) => [
             styles.cta,
-            styles.ctaPrimary,
+            { backgroundColor: themeColors.primary },
             pressed && { opacity: 0.9 },
           ]}
           accessibilityRole="button"

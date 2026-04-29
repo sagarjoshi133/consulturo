@@ -12557,3 +12557,154 @@ phase_e_agent_communication:
       purged. Test referrer (ref_*) created+deleted within the test;
       pre/post snapshot of referrer_ids is equal.
 
+
+# ──────────────────────────────────────────────────────────────────────
+# Brand Theme + Clinic Link (2026-06)
+# ──────────────────────────────────────────────────────────────────────
+
+brand_theme_feature:
+  - task: "Per-clinic brand_theme persistence"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/clinic_settings.py + /app/backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added optional `brand_theme: dict` field to ClinicSettingsPatch
+          model. PATCH /api/clinic-settings now accepts and persists
+          either {"preset": "<key>"} or {"primary","primaryLight","primaryDark"}
+          custom triplets. GET /api/clinic-settings returns the value.
+          Default = {"preset": "teal"} when none is set.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 21/21 assertions PASS via /app/backend_test_brand_theme.py
+          against the public EXPO_PUBLIC_BACKEND_URL
+          (https://urology-pro.preview.emergentagent.com/api) with
+          OWNER token test_session_1776770314741 + X-Clinic-Id
+          clinic_a97b903f2fb2.
+
+          TEST 2 — PATCH preset ✅
+          - PATCH /api/clinic-settings body
+            {"brand_theme":{"preset":"royal_blue"}} (primary_owner,
+            X-Clinic-Id set) → 200 {"ok":true, "updated":1}.
+
+          TEST 3a — GET /api/clinic-settings reflects PATCH ✅
+          - Authenticated GET with X-Clinic-Id returned
+            brand_theme == {"preset":"royal_blue"} (exact equality).
+
+          TEST 4 — Custom triplet round-trip ✅
+          - PATCH {"brand_theme":{"primary":"#1E3A8A",
+            "primaryLight":"#3B82F6","primaryDark":"#172554"}} → 200
+            with updated=1.
+          - Subsequent authed GET returned the identical triplet
+            (string-for-string equality).
+
+
+brand_theme_agent_communication:
+  - agent: "testing"
+    message: |
+      Brand Theme feature verified end-to-end (21/21 assertions PASS).
+      - GET /api/clinics/by-slug/dr-joshi-uro (anonymous) exposes
+        brand_theme merged from clinic_settings doc.
+      - PATCH /api/clinic-settings with {"brand_theme":{"preset":"royal_blue"}}
+        as primary_owner + X-Clinic-Id → 200 updated=1. Subsequent
+        authed GET and anonymous by-slug GET both reflect the new value.
+      - Custom triplet (primary/primaryLight/primaryDark hex) round-trips
+        identically through authed GET AND anonymous by-slug GET.
+      - Regression: unrelated PATCH (clinic_name) preserves brand_theme.
+      - Restored to {"preset":"teal"} and clinic_name to original.
+        End-state verified clean via mongosh.
+      - NOTE: review request mentions slug "urology-pro" in its intro
+        line but the explicit test steps use "dr-joshi-uro". Used
+        "dr-joshi-uro" which is the actual/canonical slug in DB
+        (clinic_id clinic_a97b903f2fb2) per /app/memory/test_credentials.md.
+
+          TEST 5 — Restore default teal ✅
+          - PATCH {"brand_theme":{"preset":"teal"}} → 200.
+
+          TEST 6 — Regression smoke ✅
+          - PATCH {"clinic_name":"BrandThemeSmokeTest"} → 200 updated=1.
+          - Subsequent GET confirmed clinic_name roundtrip AND that
+            brand_theme (teal) was PRESERVED across the unrelated
+            field PATCH (no clobbering).
+          - Reverted clinic_name to original
+            ("ConsultUro · Dr. Sagar Joshi's Urology Practice") → 200.
+
+          End-state verified via mongosh:
+            db.clinic_settings.findOne({_id:'clinic_a97b903f2fb2'}):
+              brand_theme: {preset: 'teal'}
+              clinic_name: "ConsultUro · Dr. Sagar Joshi's Urology Practice"
+          No 5xx, no data pollution.
+
+  - task: "Public clinic landing exposes brand_theme"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/clinics.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          GET /api/clinics/by-slug/{slug} (anonymous) now merges in
+          `brand_theme` from the matching clinic_settings doc (or default
+          teal) so /c/<slug> can render the clinic's chosen colors before
+          the patient signs in.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL checks PASS (part of /app/backend_test_brand_theme.py,
+          21/21 assertions total). Review note: the review request
+          mentions slug "urology-pro" in its summary but lists the
+          concrete test calls under "dr-joshi-uro". The canonical
+          slug for this deployment is `dr-joshi-uro` (clinic_id
+          clinic_a97b903f2fb2) — confirmed via
+          db.clinics.find({}) and /app/memory/test_credentials.md
+          (line 93). All tests were executed against that slug.
+
+          TEST 1 — Default exposure (anonymous) ✅
+          - GET /api/clinics/by-slug/dr-joshi-uro (NO Authorization
+            header, NO X-Clinic-Id) → 200 with body:
+              slug: "dr-joshi-uro"
+              name: "Dr Joshi's Uro Clinic"
+              brand_theme: {"preset": "teal"}
+          - brand_theme key present, is a dict, contains "preset" key.
+
+          TEST 3b — Public GET reflects PATCH (royal_blue) ✅
+          - After primary_owner PATCH'd brand_theme to
+            {"preset":"royal_blue"} on clinic clinic_a97b903f2fb2,
+            the anonymous GET /api/clinics/by-slug/dr-joshi-uro
+            returned brand_theme == {"preset":"royal_blue"} (exact
+            match). Proves the router merges brand_theme from the
+            per-clinic clinic_settings doc (_id == clinic_id), not
+            the legacy "default" doc.
+
+          TEST 4 — Public GET reflects custom triplet ✅
+          - Anonymous GET returned brand_theme ==
+            {"primary":"#1E3A8A","primaryLight":"#3B82F6",
+             "primaryDark":"#172554"} (identical to the PATCH body).
+
+          TEST 5 — Restore ✅
+          - Anonymous GET after the restore PATCH returned
+            brand_theme == {"preset":"teal"}. End-state matches
+            pre-test snapshot exactly.
+
+          No 5xx, no auth leakage (endpoint is PUBLIC and properly
+          responded without Authorization header). Branding merge
+          logic at routers/clinics.py lines 168-177 verified end
+          to end.
+
+brand_theme_metadata:
+  current_focus:
+    - "Per-clinic brand_theme persistence"
+    - "Public clinic landing exposes brand_theme"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+

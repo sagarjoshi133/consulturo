@@ -442,6 +442,11 @@ class ClinicSettingsPatch(BaseModel):
     partner_can_edit_cover_photo: Optional[bool] = None
     partner_can_edit_clinic_info: Optional[bool] = None       # clinic_name + website
     partner_can_edit_socials: Optional[bool] = None           # all social_* handles
+    # Brand theme — single source of truth for the clinic's hero
+    # gradient, primary CTAs, and tab highlights. Stored as either a
+    # preset key ("teal", "royal_blue", "emerald", "indigo", "sunset",
+    # "slate") or a custom triplet (`{ primary, primaryLight, primaryDark }`).
+    brand_theme: Optional[Dict[str, Any]] = None
 
 class CreateDemoBody(BaseModel):
     email: str

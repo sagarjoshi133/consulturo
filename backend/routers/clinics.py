@@ -154,11 +154,28 @@ async def create_clinic_endpoint(
 
 @router.get("/api/clinics/by-slug/{slug}")
 async def get_by_slug(slug: str) -> Dict[str, Any]:
-    """PUBLIC endpoint for /c/<slug> landing pages. Anonymous access."""
+    """PUBLIC endpoint for /c/<slug> landing pages. Anonymous access.
+
+    Merges in the `brand_theme` from the matching `clinic_settings`
+    document so patients see the clinic's chosen color scheme on the
+    public landing page (before they even sign in)."""
     clinic = await get_clinic_by_slug(slug)
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic not found")
-    return _public_clinic_view(clinic)
+    out = _public_clinic_view(clinic)
+    # Pull brand_theme from clinic_settings (per-clinic doc keyed by
+    # clinic_id; falls back to the platform default).
+    settings = (
+        await db.clinic_settings.find_one(
+            {"_id": clinic["clinic_id"]}, {"brand_theme": 1}
+        )
+    ) or (
+        await db.clinic_settings.find_one(
+            {"_id": "default"}, {"brand_theme": 1}
+        )
+    ) or {}
+    out["brand_theme"] = settings.get("brand_theme") or {"preset": "teal"}
+    return out
 
 
 @router.get("/api/clinics/{clinic_id}")

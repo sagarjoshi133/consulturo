@@ -14,7 +14,7 @@
  * `partner_can_edit_*` toggles — the UI surfaces those toggles ONLY
  * to primary_owner / super_owner.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -29,10 +29,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
+import { LinearGradient } from 'expo-linear-gradient';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { useTier } from './tier';
 import { previewSampleRx } from './rx-pdf-preview';
+import { useTenant } from './tenant-context';
+import {
+  THEME_PRESETS,
+  type BrandTheme,
+  isPreset,
+  isValidHex,
+  normalizeHex,
+  resolveTheme,
+} from './theme-presets';
 
 type Settings = Record<string, any>;
 
@@ -67,6 +78,86 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
   useEffect(() => { load(); }, [load]);
 
   const set = (k: string, v: any) => setS((prev) => ({ ...prev, [k]: v }));
+
+  // ── Brand theme handling ────────────────────────────────────────────
+  const brandTheme: BrandTheme = (s.brand_theme && typeof s.brand_theme === 'object'
+    ? s.brand_theme
+    : { preset: 'teal' }) as BrandTheme;
+  const resolved = useMemo(() => resolveTheme(brandTheme), [brandTheme]);
+  const [customMode, setCustomMode] = useState<boolean>(
+    !!brandTheme && !brandTheme.preset && !!brandTheme.primary,
+  );
+  // Re-sync the toggle whenever settings reload (so reopening the panel
+  // shows the correct "Custom" tab if the saved theme has no preset).
+  useEffect(() => {
+    if (!brandTheme) return;
+    if (!brandTheme.preset && (brandTheme.primary || brandTheme.primaryLight)) {
+      setCustomMode(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.brand_theme]);
+
+  const applyPreset = (key: string) => {
+    const p = THEME_PRESETS.find((x) => x.key === key);
+    if (!p) return;
+    setCustomMode(false);
+    const next: BrandTheme = { preset: p.key };
+    set('brand_theme', next);
+    save({ brand_theme: next });
+  };
+
+  const updateCustomHex = (slot: 'primary' | 'primaryLight' | 'primaryDark', val: string) => {
+    setCustomMode(true);
+    const cur: BrandTheme = (s.brand_theme && typeof s.brand_theme === 'object' && !s.brand_theme.preset
+      ? { ...s.brand_theme }
+      : { ...resolved }) as BrandTheme;
+    cur[slot] = val;
+    delete cur.preset;
+    set('brand_theme', cur);
+  };
+
+  const commitCustomTheme = () => {
+    // Only persist when all 3 hexes are valid; otherwise show inline guidance.
+    const cur = (s.brand_theme || {}) as BrandTheme;
+    if (
+      isValidHex(cur.primary) &&
+      isValidHex(cur.primaryLight) &&
+      isValidHex(cur.primaryDark)
+    ) {
+      const next: BrandTheme = {
+        primary: normalizeHex(cur.primary!),
+        primaryLight: normalizeHex(cur.primaryLight!),
+        primaryDark: normalizeHex(cur.primaryDark!),
+      };
+      set('brand_theme', next);
+      save({ brand_theme: next });
+    }
+  };
+
+  // ── Clinic Link (public /c/<slug>) ──────────────────────────────────
+  const tenant = useTenant();
+  const clinicSlug = tenant?.currentClinic?.slug || '';
+  const clinicLink = useMemo(() => {
+    if (!clinicSlug || clinicSlug === 'all') return '';
+    let origin = '';
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+      origin = window.location.origin;
+    } else {
+      origin = (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://urology-pro.emergent.host').replace(/\/$/, '');
+    }
+    return `${origin}/c/${clinicSlug}`;
+  }, [clinicSlug]);
+
+  const copyClinicLink = async () => {
+    if (!clinicLink) return;
+    try {
+      await Clipboard.setStringAsync(clinicLink);
+      if (Platform.OS === 'web') window.alert('Clinic link copied to clipboard.');
+      else Alert.alert('Copied', 'Clinic link copied to clipboard.');
+    } catch {
+      if (Platform.OS === 'web') window.alert(clinicLink);
+    }
+  };
 
   const save = async (patch: Settings) => {
     setSaving(true);
@@ -133,6 +224,153 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      {/* ── Clinic Link (public /c/<slug>) ─────────────────────────── */}
+      {!rxOnly && !!clinicLink && (
+        <>
+          <Text style={styles.sectionTitle}>Clinic Link</Text>
+          <View style={styles.linkCard}>
+            <View style={styles.linkRow}>
+              <View style={styles.linkIcon}>
+                <Ionicons name="link" size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.linkUrl} numberOfLines={1} selectable>
+                {clinicLink}
+              </Text>
+            </View>
+            <View style={styles.linkActions}>
+              <TouchableOpacity style={styles.linkBtnPrimary} onPress={copyClinicLink}>
+                <Ionicons name="copy" size={14} color="#fff" />
+                <Text style={styles.linkBtnPrimaryText}>Copy</Text>
+              </TouchableOpacity>
+              {Platform.OS === 'web' && (
+                <TouchableOpacity
+                  style={styles.linkBtnGhost}
+                  onPress={() => {
+                    if (typeof window !== 'undefined') window.open(clinicLink, '_blank');
+                  }}
+                >
+                  <Ionicons name="open" size={14} color={COLORS.primary} />
+                  <Text style={styles.linkBtnGhostText}>Open</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.linkHelp}>
+              Share this URL on WhatsApp, business cards, or your website. Patients can view your profile and book without signing in.
+            </Text>
+          </View>
+        </>
+      )}
+
+      {/* ── Brand Theme picker ─────────────────────────────────────── */}
+      {!rxOnly && !tier.isPartner && (
+        <>
+          <Text style={styles.sectionTitle}>Theme</Text>
+          <Text style={styles.help}>
+            Choose a color scheme — it tints your home hero, public clinic page, and primary buttons. Patients see this on your /c/{clinicSlug || 'slug'} link.
+          </Text>
+
+          {/* Live preview chip */}
+          <LinearGradient
+            colors={[resolved.primaryDark, resolved.primary, resolved.primaryLight]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.themePreview}
+          >
+            <View>
+              <Text style={styles.themePreviewLabel}>YOUR THEME</Text>
+              <Text style={styles.themePreviewName}>
+                {customMode
+                  ? 'Custom'
+                  : THEME_PRESETS.find((p) => isPreset(brandTheme, p.key))?.label || 'Teal'}
+              </Text>
+            </View>
+            <View style={[styles.themePreviewCta, { backgroundColor: '#FFFFFF' }]}>
+              <Text style={[styles.themePreviewCtaText, { color: resolved.primary }]}>
+                Book now
+              </Text>
+            </View>
+          </LinearGradient>
+
+          {/* Mode tabs */}
+          <View style={styles.themeTabs}>
+            <TouchableOpacity
+              style={[styles.themeTab, !customMode && styles.themeTabActive]}
+              onPress={() => setCustomMode(false)}
+            >
+              <Text style={[styles.themeTabText, !customMode && styles.themeTabTextActive]}>
+                Presets
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.themeTab, customMode && styles.themeTabActive]}
+              onPress={() => setCustomMode(true)}
+            >
+              <Text style={[styles.themeTabText, customMode && styles.themeTabTextActive]}>
+                Custom HEX
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {!customMode ? (
+            <View style={styles.swatchGrid}>
+              {THEME_PRESETS.map((p) => {
+                const active = isPreset(brandTheme, p.key);
+                return (
+                  <TouchableOpacity
+                    key={p.key}
+                    activeOpacity={0.85}
+                    onPress={() => applyPreset(p.key)}
+                    style={[styles.swatch, active && { borderColor: p.primary, borderWidth: 2 }]}
+                  >
+                    <LinearGradient
+                      colors={[p.primaryDark, p.primary, p.primaryLight]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.swatchGradient}
+                    >
+                      {active && (
+                        <View style={styles.swatchCheck}>
+                          <Ionicons name="checkmark" size={14} color="#fff" />
+                        </View>
+                      )}
+                    </LinearGradient>
+                    <Text style={styles.swatchLabel}>{p.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={{ marginTop: 8 }}>
+              <Text style={styles.help}>
+                Enter HEX values for each color. Tip: light = lighter shade, dark = bolder shade. Save applies after all three are valid.
+              </Text>
+              <HexInput
+                label="Primary"
+                value={(s.brand_theme as BrandTheme | undefined)?.primary || resolved.primary}
+                onChange={(v) => updateCustomHex('primary', v)}
+                onBlur={commitCustomTheme}
+              />
+              <HexInput
+                label="Primary Light"
+                value={(s.brand_theme as BrandTheme | undefined)?.primaryLight || resolved.primaryLight}
+                onChange={(v) => updateCustomHex('primaryLight', v)}
+                onBlur={commitCustomTheme}
+              />
+              <HexInput
+                label="Primary Dark"
+                value={(s.brand_theme as BrandTheme | undefined)?.primaryDark || resolved.primaryDark}
+                onChange={(v) => updateCustomHex('primaryDark', v)}
+                onBlur={commitCustomTheme}
+              />
+              <TouchableOpacity onPress={commitCustomTheme} style={[styles.linkBtnPrimary, { alignSelf: 'flex-start', marginTop: 6 }]}>
+                <Ionicons name="save" size={14} color="#fff" />
+                <Text style={styles.linkBtnPrimaryText}>Save Custom Theme</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
+
       {/* Photos */}
       {!rxOnly && (() => {
         // Partner UI gate: hide each section if the partner toggle is off.
@@ -508,6 +746,42 @@ function Field({ label, v, on, placeholder, multiline, autoCapitalize }: {
   );
 }
 
+function HexInput({
+  label,
+  value,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  const valid = isValidHex(value);
+  const swatch = valid ? normalizeHex(value) : '#E5E7EB';
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.hexRow}>
+        <View style={[styles.hexSwatch, { backgroundColor: swatch }]} />
+        <TextInput
+          style={[styles.input, { flex: 1 }]}
+          value={value || ''}
+          onChangeText={(t) => onChange(t.startsWith('#') ? t : '#' + t.replace(/^#/, ''))}
+          onBlur={onBlur}
+          placeholder="#0E7C8B"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={7}
+        />
+      </View>
+      {!valid && !!value && (
+        <Text style={styles.hexErr}>Enter a valid 6-digit hex (e.g. #1E3A8A).</Text>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   sectionTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 14, marginTop: 18, marginBottom: 8 },
   photoRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
@@ -601,4 +875,125 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
   },
   keyChipText: { color: '#fff', fontSize: 11, fontFamily: 'Manrope_700Bold' },
+
+  // ── Theme picker ─────────────────────────────────────────────────
+  themePreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: RADIUS.md,
+    marginTop: 4,
+    marginBottom: 12,
+    minHeight: 80,
+  },
+  themePreviewLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontFamily: 'Manrope_700Bold', letterSpacing: 0.8 },
+  themePreviewName: { color: '#fff', fontSize: 18, fontFamily: 'Manrope_800ExtraBold', marginTop: 2 },
+  themePreviewCta: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 22,
+  },
+  themePreviewCtaText: { fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  themeTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F4F7',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 12,
+  },
+  themeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  themeTabActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  themeTabText: { color: COLORS.textSecondary, fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  themeTabTextActive: { color: COLORS.textPrimary },
+  swatchGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  swatch: {
+    width: '31%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 6,
+    alignItems: 'center',
+  },
+  swatchGradient: {
+    width: '100%',
+    height: 56,
+    borderRadius: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    padding: 6,
+  },
+  swatchCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchLabel: { fontSize: 11, fontFamily: 'Manrope_700Bold', color: COLORS.textPrimary, marginTop: 6 },
+  hexRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hexSwatch: { width: 38, height: 38, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
+  hexErr: { color: COLORS.accent, fontSize: 11, marginTop: 4 },
+
+  // ── Clinic Link card ─────────────────────────────────────────────
+  linkCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    marginBottom: 4,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  linkIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkUrl: { flex: 1, color: COLORS.textPrimary, fontSize: 12.5, fontFamily: 'Manrope_700Bold' },
+  linkActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  linkBtnPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  linkBtnPrimaryText: { color: '#fff', fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  linkBtnGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  linkBtnGhostText: { color: COLORS.primary, fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  linkHelp: { color: COLORS.textSecondary, fontSize: 11, marginTop: 8, lineHeight: 15 },
 });
