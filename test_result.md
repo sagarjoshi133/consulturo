@@ -10371,3 +10371,86 @@ agent_communication_2026_04_29_letterhead_smoke:
           backups, etc.
       • Final phase: split services (reg_no, email, notifications,
         pdf, telegram).
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 2 (Leaf Routers)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Goal
+    Continue the mechanical split of /app/backend/server.py — move
+    the simplest, least-coupled route handlers out into the new
+    /app/backend/routers/ package via APIRouter.
+
+  Phase 2 scope (this iteration)
+    Extract 4 LEAF routers (no inter-domain dependencies, simple
+    auth gates) to prove the AST-based extraction pipeline works
+    cleanly before tackling heavier domains.
+
+  Files created
+    • /app/backend/routers/__init__.py
+    • /app/backend/routers/diseases.py (134 lines)
+        - GET /api/diseases / GET /api/diseases/{id}
+        - DISEASE_IMAGE_MAP + disease_image() helper bundled in.
+    • /app/backend/routers/doctor.py (161 lines)
+        - GET /api/doctor (public profile + services + clinics).
+    • /app/backend/routers/profile.py (69 lines)
+        - GET /api/profile/quick-stats + STAFF_QUICKSTAT_ROLES const.
+    • /app/backend/routers/clinic_settings.py (129 lines)
+        - GET + PATCH /api/clinic-settings + _DEFAULT_CLINIC_SETTINGS
+          + partner per-field gating preserved exactly.
+
+  Files changed
+    • /app/backend/server.py
+        - 8548 → 8239 lines (−309 lines this phase; −640 lines
+          cumulative across Phase 1+2, −7.2% from the original
+          8879-line monolith).
+        - Each old route block replaced with a 1-line stub
+          "# (moved) /api/path → /app/backend/routers/X.py"
+          (line-numbered git blames stay readable).
+        - app.include_router() calls appended at the END of the
+          file so every `require_*` dependency is already bound on
+          the server module by the time auth_deps lazy-resolves
+          them. This sidesteps the circular-import trap.
+
+  Tooling
+    • /tmp/extract_phase2.py
+        - AST-based boundary detection using `ast.parse` +
+          `body_node.end_lineno` for accurate range capture.
+        - Handles multi-line def signatures, decorators, AnnAssign
+          constants. Reverse-order edits to keep line numbers
+          stable.
+
+  Backend smoke (deep_testing_backend_v2)
+    46/46 assertions PASS via
+    /app/backend_test_phase2_modularization_smoke.py:
+      • Disease list / detail / 404 → exact same payload shape
+      • /api/doctor — full profile preserved
+      • /api/clinic-settings — letterhead / education / need-help
+        keys still present
+      • /api/profile/quick-stats — auth gate intact (401/200)
+      • PATCH /api/clinic-settings — partner gating still rejects
+        when both granular AND umbrella toggles are off; primary
+        owner write succeeds; revert verified
+      • /api/auth/me, /api/admin/partners, /api/team — all 200
+        for primary_owner
+    No 5xx, no DB pollution, supervisor stable.
+
+  Awaiting user verification + approval to proceed with Phase 3
+    Phase 3 plan (next iteration) — heavier, well-bounded routers:
+      • routers/health.py            (health-check)
+      • routers/auth.py              (login / OTP / sessions)
+      • routers/team.py              (team mgmt + invites)
+      • routers/admin_partners.py    (partner promote / demote / dashboard-perm)
+      • routers/messaging.py         (chat / messaging permissions)
+      • routers/broadcasts.py
+      • routers/notifications.py     (push + WhatsApp + email)
+      • routers/availability.py      (slots + unavailabilities)
+    Then in Phase 4: bookings, prescriptions, surgeries (the heart
+    of the clinical workflow — extracted last so we can verify each
+    in isolation).
+    Final Phase 5: services/* (reg_no, email, telegram, pdf,
+    notifications dispatch).
