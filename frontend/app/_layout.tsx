@@ -17,6 +17,7 @@ import {
 } from '@expo-google-fonts/dm-sans';
 import { AuthProvider, useAuth } from '../src/auth';
 import { TenantProvider } from '../src/tenant-context';
+import { ThemeProvider } from '../src/theme-context';
 import { I18nProvider } from '../src/i18n';
 import { PhoneGate } from '../src/phone-gate';
 import { ConsentGate } from '../src/consent-gate';
@@ -166,12 +167,14 @@ export default function RootLayout() {
         <I18nProvider>
           <AuthProvider>
             <TenantProvider>
-              <ToastProvider>
-                <NotificationProvider>
-                  <StatusBar style="light" />
-                  <RootNav />
-                </NotificationProvider>
-              </ToastProvider>
+              <ThemeProvider>
+                <ToastProvider>
+                  <NotificationProvider>
+                    <StatusBar style="light" />
+                    <RootNav />
+                  </NotificationProvider>
+                </ToastProvider>
+              </ThemeProvider>
             </TenantProvider>
           </AuthProvider>
         </I18nProvider>

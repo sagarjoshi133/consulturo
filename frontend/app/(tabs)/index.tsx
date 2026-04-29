@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { useNotifications } from '../../src/notifications';
 import { useI18n } from '../../src/i18n';
 import { Skeleton } from '../../src/skeleton';
 import { useResponsive } from '../../src/responsive';
+import { useThemeColors } from '../../src/theme-context';
 
 const WHATSAPP = '+918155075669';
 
@@ -34,6 +35,25 @@ export default function Home() {
   const { t, lang, setLang, tRaw } = useI18n();
   const { unread, personalUnread } = useNotifications();
   const { isWebDesktop } = useResponsive();
+  const themeColors = useThemeColors();
+  // Build translucent variants so the doctor cover photo behind the
+  // hero remains slightly visible. Falls back gracefully if the hex
+  // can't be parsed.
+  const heroGradient = useMemo(() => {
+    const toRgba = (hex: string, alpha: number): string => {
+      const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+      if (!m) return `rgba(14,124,139,${alpha})`;
+      const r = parseInt(m[1].slice(0, 2), 16);
+      const g = parseInt(m[1].slice(2, 4), 16);
+      const b = parseInt(m[1].slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    return [
+      toRgba(themeColors.primaryDark, 0.85),
+      toRgba(themeColors.primary, 0.82),
+      toRgba(themeColors.primaryLight, 0.78),
+    ] as const;
+  }, [themeColors]);
   const [diseases, setDiseases] = useState<Disease[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -128,7 +148,7 @@ export default function Home() {
             />
           ) : null}
           <LinearGradient
-            colors={['rgba(10,94,107,0.85)', 'rgba(14,124,139,0.82)', 'rgba(22,166,184,0.78)']}
+            colors={heroGradient}
             style={styles.hero}
           >
             <SafeAreaView edges={['top']}>
@@ -392,7 +412,7 @@ export default function Home() {
             testID="home-book-consultation-card"
           >
           <LinearGradient
-            colors={['#0E7C8B', '#16A6B8']}
+            colors={[themeColors.primary, themeColors.primaryLight]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.ctaCard}
@@ -401,8 +421,8 @@ export default function Home() {
               <Text style={styles.ctaTitle}>{t('home.bookConsultation')}</Text>
               <Text style={styles.ctaSub}>{t('home.bookCtaSub')}</Text>
               <View style={styles.ctaBtn}>
-                <Text style={styles.ctaBtnText}>{t('home.bookNow')}</Text>
-                <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+                <Text style={[styles.ctaBtnText, { color: themeColors.primary }]}>{t('home.bookNow')}</Text>
+                <Ionicons name="arrow-forward" size={16} color={themeColors.primary} />
               </View>
             </View>
             <MaterialCommunityIcons

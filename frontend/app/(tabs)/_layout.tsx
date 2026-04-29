@@ -17,6 +17,8 @@ import { COLORS } from '../../src/theme';
 import { useI18n } from '../../src/i18n';
 import { haptics } from '../../src/haptics';
 import { useResponsive } from '../../src/responsive';
+import { useThemeColors } from '../../src/theme-context';
+import type { ThemeColors } from '../../src/theme-presets';
 
 /**
  * ConsultUro — Premium custom bottom tab bar.
@@ -73,12 +75,14 @@ function TabItem({
   onPress,
   onLongPress,
   testID,
+  theme,
 }: {
   def: TabDef;
   isFocused: boolean;
   onPress: () => void;
   onLongPress?: () => void;
   testID?: string;
+  theme: ThemeColors;
 }) {
   const scale = React.useRef(new Animated.Value(1)).current;
 
@@ -102,20 +106,20 @@ function TabItem({
       <Animated.View style={[styles.tabInner, { transform: [{ scale }] }]}>
         {/* active indicator bar above the icon */}
         <View style={styles.indicatorTrack}>
-          {isFocused && <View style={styles.indicatorPill} />}
+          {isFocused && <View style={[styles.indicatorPill, { backgroundColor: theme.primary }]} />}
         </View>
         <View style={styles.iconWrap}>
           <IconFor
             family={def.family}
             name={isFocused ? def.iconFilled : def.iconOutline}
             size={24}
-            color={isFocused ? COLORS.primary : '#8A9BA3'}
+            color={isFocused ? theme.primary : '#8A9BA3'}
           />
         </View>
         <Text
           numberOfLines={1}
           allowFontScaling={false}
-          style={[styles.tabLabel, isFocused && styles.tabLabelActive]}
+          style={[styles.tabLabel, isFocused && [styles.tabLabelActive, { color: theme.primary }]]}
         >
           {def.label}
         </Text>
@@ -129,11 +133,13 @@ function FabItem({
   isFocused,
   onPress,
   testID,
+  theme,
 }: {
   def: TabDef;
   isFocused: boolean;
   onPress: () => void;
   testID?: string;
+  theme: ThemeColors;
 }) {
   const scale = React.useRef(new Animated.Value(1)).current;
   const pressIn = () =>
@@ -151,9 +157,9 @@ function FabItem({
       testID={testID}
     >
       <Animated.View style={[styles.fabAnim, { transform: [{ scale }] }]}>
-        <View style={styles.fabHalo}>
+        <View style={[styles.fabHalo, { shadowColor: theme.primary }]}>
           <LinearGradient
-            colors={[COLORS.primaryLight, COLORS.primary, COLORS.primaryDark]}
+            colors={[theme.primaryLight, theme.primary, theme.primaryDark]}
             start={{ x: 0.1, y: 0 }}
             end={{ x: 0.9, y: 1 }}
             style={styles.fabCircle}
@@ -164,7 +170,7 @@ function FabItem({
         <Text
           numberOfLines={1}
           allowFontScaling={false}
-          style={[styles.fabLabel, isFocused && styles.fabLabelActive]}
+          style={[styles.fabLabel, isFocused && [styles.fabLabelActive, { color: theme.primary }]]}
         >
           {def.label}
         </Text>
@@ -176,6 +182,7 @@ function FabItem({
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const theme = useThemeColors();
   // Hide the bottom tab bar on desktop web — the WebShell sidebar
   // already provides navigation. The tabs would compete for space and
   // look out-of-place on a wide desktop monitor.
@@ -277,6 +284,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 isFocused={isFocused}
                 onPress={onPress}
                 testID={`tab-${route.name}`}
+                theme={theme}
               />
             );
           }
@@ -289,6 +297,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               onPress={onPress}
               onLongPress={onLongPress}
               testID={`tab-${route.name}`}
+              theme={theme}
             />
           );
         })}

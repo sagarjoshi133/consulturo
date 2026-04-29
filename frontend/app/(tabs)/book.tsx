@@ -29,6 +29,7 @@ import { addBookingToCalendar } from '../../src/calendar';
 import { scheduleBookingReminders, REMINDER_LEADS, ReminderLead, labelFor } from '../../src/booking-reminders';
 import { CountryCodePicker, DEFAULT_COUNTRY, Country } from '../../src/country-code-picker';
 import { useResponsive } from '../../src/responsive';
+import { useThemeColors } from '../../src/theme-context';
 
 const FALLBACK_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -42,6 +43,7 @@ export default function Book() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
+  const themeColors = useThemeColors();
   const [patientName, setPatientName] = useState('');
   const [phone, setPhone] = useState('');
   const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
@@ -68,6 +70,36 @@ export default function Book() {
   const [slot, setSlot] = useState('10:00');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+
+  // Clinic contact info — surfaced on the success screen so the
+  // patient can call / WhatsApp / get directions immediately after
+  // their request goes through.
+  type ClinicInfo = {
+    clinic_name?: string;
+    clinic_address?: string;
+    clinic_phone?: string;
+    clinic_whatsapp?: string;
+    clinic_map_url?: string;
+    clinic_email?: string;
+    clinic_hours?: string;
+    emergency_note?: string;
+    doctor_name?: string;
+  };
+  const [clinicInfo, setClinicInfo] = useState<ClinicInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/settings/homepage');
+        if (!cancelled) setClinicInfo(data || null);
+      } catch {
+        if (!cancelled) setClinicInfo(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Per-slot occupancy returned by /availability/slots:
   //   bookedCounts["09:00"] = 3   (3 of MAX patients already booked)
   // Used to render the "3/5" capacity badge on every slot chip.
@@ -195,13 +227,15 @@ export default function Book() {
   };
 
   if (confirmed) {
+    const cleanPhone = (clinicInfo?.clinic_phone || '').replace(/[^\d+]/g, '');
+    const waNum = (clinicInfo?.clinic_whatsapp || clinicInfo?.clinic_phone || '').replace(/[^\d]/g, '');
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
         <ScrollView contentContainerStyle={[
           { padding: 24 },
           isDesktop && { maxWidth: 720, alignSelf: 'center', width: '100%', padding: 28 } as any,
         ]}>
-          <View style={styles.successBadge}>
+          <View style={[styles.successBadge, { backgroundColor: themeColors.primary }]}>
             <Ionicons name="time" size={40} color="#fff" />
           </View>
           <Text style={styles.successTitle}>{t('book.requestedTitle')}</Text>
@@ -219,7 +253,83 @@ export default function Book() {
             <Row label={t('book.statusLabel')} value={t('book.statusRequested')} last />
           </Card>
 
-          {confirmed.mode === 'online' && (
+          {/* ── What happens next + clinic contact card ───────────── */}
+          {(clinicInfo?.clinic_name || clinicInfo?.clinic_phone || clinicInfo?.clinic_address) && (
+            <View style={[styles.nextCard, { borderLeftColor: themeColors.primary }]}>
+              <View style={styles.nextHead}>
+                <View style={[styles.nextIcon, { backgroundColor: themeColors.primary + '1A' }]}>
+                  <Ionicons name="information-circle" size={18} color={themeColors.primary} />
+                </View>
+                <Text style={styles.nextTitle}>{t('book.whatsNext') || "What's next?"}</Text>
+              </View>
+              <Text style={styles.nextBody}>
+                {confirmed.mode === 'online'
+                  ? (t('book.nextBodyOnline') || 'Our team will confirm your slot shortly. You will receive a call/WhatsApp from the clinic.')
+                  : (t('book.nextBodyInPerson') || 'Our team will confirm your slot shortly. Please reach the clinic 10 minutes before your appointment.')}
+              </Text>
+
+              {!!clinicInfo?.clinic_name && (
+                <Text style={styles.clinicHeader}>{clinicInfo.clinic_name}</Text>
+              )}
+
+              {!!clinicInfo?.clinic_address && (
+                <View style={styles.contactRow}>
+                  <Ionicons name="location" size={15} color={themeColors.primary} />
+                  <Text style={styles.contactText}>{clinicInfo.clinic_address}</Text>
+                </View>
+              )}
+              {!!clinicInfo?.clinic_hours && (
+                <View style={styles.contactRow}>
+                  <Ionicons name="time-outline" size={15} color={themeColors.primary} />
+                  <Text style={styles.contactText}>{clinicInfo.clinic_hours}</Text>
+                </View>
+              )}
+
+              <View style={styles.contactCtas}>
+                {!!cleanPhone && (
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(`tel:${cleanPhone}`)}
+                    style={[styles.contactBtn, { backgroundColor: themeColors.primary }]}
+                  >
+                    <Ionicons name="call" size={14} color="#fff" />
+                    <Text style={styles.contactBtnText}>{t('book.call') || 'Call'}</Text>
+                  </TouchableOpacity>
+                )}
+                {!!waNum && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      Linking.openURL(`https://wa.me/${waNum.replace(/^\+/, '')}?text=${encodeURIComponent(
+                        `Hello, my booking ID is ${confirmed.booking_id} for ${confirmed.booking_date} at ${display12h(confirmed.booking_time)}.`
+                      )}`)
+                    }
+                    style={[styles.contactBtn, { backgroundColor: '#25D366' }]}
+                  >
+                    <Ionicons name="logo-whatsapp" size={14} color="#fff" />
+                    <Text style={styles.contactBtnText}>WhatsApp</Text>
+                  </TouchableOpacity>
+                )}
+                {!!clinicInfo?.clinic_map_url && confirmed.mode !== 'online' && (
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(clinicInfo.clinic_map_url!)}
+                    style={[styles.contactBtnGhost, { borderColor: themeColors.primary }]}
+                  >
+                    <Ionicons name="navigate" size={14} color={themeColors.primary} />
+                    <Text style={[styles.contactBtnGhostText, { color: themeColors.primary }]}>
+                      {t('book.directions') || 'Directions'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {!!clinicInfo?.emergency_note && (
+                <Text style={styles.emergencyNote} numberOfLines={3}>
+                  ⚠ {clinicInfo.emergency_note}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {confirmed.mode === 'online' && !waNum && (
             <PrimaryButton
               title={t('book.openWhatsApp')}
               onPress={() =>
@@ -901,5 +1011,62 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontStyle: 'italic',
     lineHeight: 15,
+  },
+
+  // ── "What's next?" + clinic contact card on success screen ─────
+  nextCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    padding: 14,
+    marginTop: 18,
+    shadowColor: '#0E7C8B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  nextHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  nextIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 16 },
+  nextBody: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 12 },
+  clinicHeader: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14, marginTop: 4, marginBottom: 6 },
+  contactRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  contactText: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 13, flex: 1, lineHeight: 18 },
+  contactCtas: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 22,
+  },
+  contactBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  contactBtnGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 22,
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  contactBtnGhostText: { fontSize: 12, fontFamily: 'Manrope_700Bold' },
+  emergencyNote: {
+    marginTop: 10,
+    fontSize: 12,
+    color: COLORS.accent,
+    fontStyle: 'italic',
+    lineHeight: 17,
   },
 });

@@ -36,6 +36,7 @@ import { COLORS, FONTS, RADIUS } from './theme';
 import { useTier } from './tier';
 import { previewSampleRx } from './rx-pdf-preview';
 import { useTenant } from './tenant-context';
+import { useTheme } from './theme-context';
 import {
   THEME_PRESETS,
   type BrandTheme,
@@ -80,6 +81,7 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
   const set = (k: string, v: any) => setS((prev) => ({ ...prev, [k]: v }));
 
   // ── Brand theme handling ────────────────────────────────────────────
+  const themeCtx = useTheme();
   const brandTheme: BrandTheme = (s.brand_theme && typeof s.brand_theme === 'object'
     ? s.brand_theme
     : { preset: 'teal' }) as BrandTheme;
@@ -104,6 +106,9 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
     const next: BrandTheme = { preset: p.key };
     set('brand_theme', next);
     save({ brand_theme: next });
+    // Optimistically update the live theme context so the home hero,
+    // tab bar, and CTAs all flip instantly without a refetch round-trip.
+    themeCtx.setTheme(next);
   };
 
   const updateCustomHex = (slot: 'primary' | 'primaryLight' | 'primaryDark', val: string) => {
@@ -131,6 +136,7 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
       };
       set('brand_theme', next);
       save({ brand_theme: next });
+      themeCtx.setTheme(next);
     }
   };
 
