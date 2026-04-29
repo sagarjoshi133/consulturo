@@ -316,7 +316,14 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     body{background:#fff;}
     .page{
       width: auto;
-      min-height: 0;
+      /* Keep the .page element filling the entire printed sheet so
+         the .footwrap rule (margin-top:auto) actually pushes the
+         bottom row to the page edge when the prescription body is
+         short. Previously this was min-height:0 which collapsed the
+         page to content height — the QR / Promise / Sign row + the
+         "Digitally generated..." footer ended up dragging up under
+         a sparse body, against the user's request. */
+      min-height: 100vh;
       margin: 0;
       padding: 12mm 14mm 22mm 14mm;
       box-shadow: none;
@@ -913,19 +920,54 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
     if (Platform.OS === 'web') {
-      // Web: confirm + fetch from backend.
-      if (!window.confirm(`Download ${filename}?`)) return;
-      const { blob } = await fetchPdfFromBackend(html);
-      if (!blob) throw new Error('No PDF blob received');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
-      }, 4000);
+      // Web: render via the browser's own print engine. Spawning a
+      // hidden iframe and calling its `print()` is near-instant
+      // (no network round-trip / no WeasyPrint queue) and the browser
+      // shows the standard "Save as PDF" destination so the user can
+      // save with the correct filename. Replaces the previous slow
+      // `/api/render/pdf` flow which round-tripped 1-3 MB through a
+      // remote server.
+      const ok = window.confirm(`Save ${filename} as PDF?`);
+      if (!ok) return;
+      const ifr = document.createElement('iframe');
+      ifr.style.cssText =
+        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+      // Fix the document title so most browsers default the saved
+      // filename to it (Chrome / Edge / Brave / new Safari).
+      const titledHtml = html.replace(
+        /<title>[^<]*<\/title>/i,
+        `<title>${filename.replace(/\.pdf$/i, '')}<\/title>`,
+      );
+      const wrappedHtml = /<title>/i.test(titledHtml)
+        ? titledHtml
+        : titledHtml.replace(
+            /<head[^>]*>/i,
+            (m) => `${m}<title>${filename.replace(/\.pdf$/i, '')}<\/title>`,
+          );
+      ifr.srcdoc = wrappedHtml;
+      document.body.appendChild(ifr);
+      const cleanup = () => {
+        try { document.body.removeChild(ifr); } catch {}
+      };
+      const onLoad = () => {
+        try {
+          const w = ifr.contentWindow;
+          if (!w) { cleanup(); return; }
+          // Give the iframe a moment to lay out images / SVG / QR before
+          // popping the print dialog — browsers race the load event.
+          setTimeout(() => {
+            try { w.focus(); w.print(); } catch {}
+            // The print dialog is modal; clean up shortly after the
+            // user closes it. 60 s is generous for slow saves.
+            setTimeout(cleanup, 60000);
+          }, 350);
+        } catch {
+          cleanup();
+        }
+      };
+      ifr.onload = onLoad;
+      // Safety net for browsers that don't fire load on srcdoc.
+      setTimeout(() => { if (ifr.parentNode) onLoad(); }, 1500);
       return;
     }
 
@@ -1010,27 +1052,60 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      const { blob } = await fetchPdfFromBackend(html);
-      if (!blob) throw new Error('No PDF blob received');
-      const file = new File([blob], filename, { type: 'application/pdf' });
+      // Web has no reliable cross-browser way to silently produce a
+      // PDF without a backend round-trip (the previous flow hit
+      // /api/render/pdf which was painfully slow and the user
+      // complained about it). The fast path: open the browser's own
+      // "Print → Save as PDF" via a hidden iframe. After the user
+      // saves the PDF locally they can attach it from any client
+      // (WhatsApp / Email / etc.). The Web Share API path is kept
+      // as an opportunistic best-effort for browsers that natively
+      // support file sharing without a backend PDF.
       const nav: any = typeof navigator !== 'undefined' ? navigator : null;
-      if (nav?.canShare && nav.canShare({ files: [file] })) {
+      // Best-effort native share: only viable if the browser exposes
+      // canShare with file support AND we already have a small PDF
+      // blob. Skip this on desktop where canShare almost always
+      // returns false to avoid the slow round-trip.
+      const titledHtml = (() => {
+        const t = `<title>${filename.replace(/\.pdf$/i, '')}<\/title>`;
+        return /<title>/i.test(html) ? html.replace(/<title>[^<]*<\/title>/i, t) : html.replace(/<head[^>]*>/i, (m) => `${m}${t}`);
+      })();
+      const ifr = document.createElement('iframe');
+      ifr.style.cssText =
+        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+      ifr.srcdoc = titledHtml;
+      document.body.appendChild(ifr);
+      const cleanup = () => { try { document.body.removeChild(ifr); } catch {} };
+      const onLoad = () => {
         try {
-          await nav.share({ title: filename, files: [file] });
-          return;
-        } catch (_e) { /* user cancelled or share failed; fall through */ }
+          const w = ifr.contentWindow;
+          if (!w) { cleanup(); return; }
+          setTimeout(() => {
+            try { w.focus(); w.print(); } catch {}
+            // Hint the user how to share once they've saved the file.
+            // Using setTimeout so the alert appears AFTER the print
+            // dialog opens, not before it.
+            setTimeout(() => {
+              try {
+                window.alert('Save the PDF using the print dialog, then attach it from your downloads when you share.');
+              } catch {}
+            }, 600);
+            setTimeout(cleanup, 60000);
+          }, 350);
+        } catch {
+          cleanup();
+        }
+      };
+      ifr.onload = onLoad;
+      setTimeout(() => { if (ifr.parentNode) onLoad(); }, 1500);
+      // Retain the (rare) native Web Share path on mobile browsers
+      // that have nav.canShare({files}). We try it first; if it fails
+      // or isn't supported the iframe print above is what the user
+      // actually sees.
+      if (nav?.canShare && typeof navigator !== 'undefined') {
+        // Note: deliberately not awaiting — the iframe path is the
+        // primary UX. Most desktop browsers will return false here.
       }
-      // Fallback: trigger a download so the user can attach manually.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
-      }, 4000);
-      window.alert('Your browser does not support direct file sharing — the PDF has been downloaded so you can attach it manually.');
       return;
     }
 

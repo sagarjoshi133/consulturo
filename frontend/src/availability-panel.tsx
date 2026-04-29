@@ -100,14 +100,30 @@ export function AvailabilityPanel() {
     // Deep-copy slots so subsequent edits on one day don't mutate all others
     const snapshot = source.map((s) => ({ start: s.start, end: s.end }));
     const next: any = { ...data };
+    let appliedCount = 0;
     DAYS.forEach((d) => {
       // Skip days marked as fully off to honour the user's off-day preference
       if ((data.off_days || []).includes(d.key)) return;
       next[`${d.key}_${kind}`] = snapshot.map((s) => ({ ...s }));
+      appliedCount += 1;
     });
     setData(next);
-    setMsg(`${kind === 'in' ? 'In-person' : 'Online'} schedule copied to all working days. Tap "Save" to confirm.`);
+    const modeLabel = kind === 'in' ? 'In-person' : 'Online';
+    const inlineMsg = `${modeLabel} schedule copied to ${appliedCount} working day${appliedCount === 1 ? '' : 's'}. Tap "Save" to confirm.`;
+    setMsg(inlineMsg);
     setTimeout(() => setMsg(''), 3500);
+    // Also raise an explicit confirmation popup — the inline banner
+    // alone was easy to miss on long pages where the button sits at
+    // the bottom of the day card. The user complained the action
+    // gave no clear acknowledgment.
+    const popupTitle = 'Applied to all working days';
+    const popupBody = `${modeLabel} timing from ${day.toUpperCase()} has been copied to every other working day (${appliedCount} day${appliedCount === 1 ? '' : 's'}). Don\u2019t forget to tap Save.`;
+    if (Platform.OS === 'web') {
+      // Avoid the blocking window.alert on web — render a richer
+      // inline banner instead (already set via setMsg above).
+    } else {
+      Alert.alert(popupTitle, popupBody);
+    }
   };
 
   const save = async () => {

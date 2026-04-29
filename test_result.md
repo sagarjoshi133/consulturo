@@ -9474,3 +9474,65 @@ agent_communication_2026_04_28_session3:
       crash, dashboard scrolls smoothly, prescription PDF lands in
       a real Files folder, surgery / role-management modals respect
       device notch & gesture bars).
+
+  - agent: main
+    message: |
+      [bundle: 4 follow-up fixes — superowner team exclusion,
+       availability "apply to all" feedback, web Rx download/share
+       speed, prescription footer pinned to bottom]
+
+      1) Super-owner removed from /api/team list. The /messages/
+         recipients endpoint already correctly allows primary_owner
+         ↔ super_owner two-way DMs (owner-side hierarchy rule was
+         already in place), so this is purely a UI cleanup — the
+         super-owner no longer shows up as a clinic team member on
+         a Primary Owner's Team panel.
+
+      2) Availability "Apply to all working days" button now gives
+         a clear, audible confirmation (Alert.alert on native + a
+         richer inline banner that includes the count of days the
+         schedule was copied to). The previous inline banner alone
+         was easy to miss at the bottom of a long day-card list.
+
+      3) Web Download / Share for prescriptions no longer round-trip
+         through the slow /api/render/pdf (WeasyPrint) backend.
+         downloadPrescriptionPdf now spawns a hidden iframe with
+         srcdoc=html and calls window.print() — the browser shows
+         its native "Save as PDF" dialog instantly, with the
+         prescription filename pre-filled via <title>. sharePrescr-
+         iptionPdf does the same and prompts the user to attach the
+         saved PDF afterwards. Web Print already used the same
+         iframe approach, so all three actions are now near-instant.
+
+      4) Generated prescription PDF now keeps the QR / Promise /
+         Sanskrit / Sign row + the "Digitally generated…" footer
+         pinned to the bottom of the A4 sheet even when the body
+         is short. Root cause: under @media print the .page rule
+         had min-height:0, collapsing the page element to content
+         height and defeating the existing margin-top:auto. Changed
+         min-height to 100vh in print mode so the .page fills the
+         sheet and the footwrap pushes correctly to the bottom.
+
+      Files changed:
+        • /app/backend/server.py
+            — list_team excludes role=="super_owner"
+        • /app/frontend/src/availability-panel.tsx
+            — applyToAll: counts copied days, raises Alert.alert
+              on native, longer/clearer inline banner
+        • /app/frontend/src/rx-pdf.ts
+            — web Download path → iframe.print()
+            — web Share path   → iframe.print() + hint alert
+            — @media print .page min-height: 100vh (footer pin)
+
+      Verified:
+        • GET /api/team returns 8 members, 0 super_owners.
+        • Slot listing still 18 slots / max_per_slot=5.
+        • Web bundle compiles fresh (welcome screen renders).
+        • Backend warning-free; no DB migration; no mocks.
+
+      Not addressed in this batch:
+        • "Dashboard > Analytics: different sections not well
+          organised on desktop." — I need a more specific repro
+          (which sections feel mis-aligned, what viewport width)
+          to make a targeted fix without churning the layout.
+          Will pick up once you point at the offending block.

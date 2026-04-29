@@ -4179,6 +4179,12 @@ async def list_team(user=Depends(require_owner)):
     custom_slugs = {rl["slug"] for rl in role_labels if rl.get("category") in ("staff", "doctor")}
     for u in users:
         role = u.get("role")
+        # Super-owner is platform admin, NOT a clinic team member —
+        # never list them on a Primary Owner's Team panel. Personal
+        # messaging between primary_owner ↔ super_owner still works
+        # via /api/messages/recipients (separate hierarchy rule there).
+        if role == "super_owner":
+            continue
         if role in STAFF_ROLES or role in custom_slugs:
             by_email[u["email"]] = {
                 "email": u["email"],
