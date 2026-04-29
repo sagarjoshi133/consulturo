@@ -241,30 +241,39 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     : '';
 
   // ---- Patient Education tips (always rendered — fills left col gracefully)
-  // Hardcoded urology-relevant lifestyle bullets. Kept short so it reads as
-  // a helpful sticker, not a marketing block. Future: drive from clinic
-  // settings (settings.tips) so the doctor can edit per-specialty.
+  // Sourced from clinic_settings.patient_education_html when the
+  // primary_owner has provided custom copy in the Branding panel,
+  // otherwise falls back to the built-in urology lifestyle bullets.
+  // Stored HTML is rendered as-is — the Branding panel sanitises the
+  // input on the way in (no <script>, no <iframe>, etc.).
+  const _eduCustom = (settings as any)?.patient_education_html?.trim?.() || '';
   const tipsCard = `
   <section class="sec tipsCard">
     <div class="sech">Patient Education</div>
     <div class="secb">
-      <ul class="tipsList">
+      ${_eduCustom
+        ? `<div class="custom-rt">${_eduCustom}</div>`
+        : `<ul class="tipsList">
         <li><b>Hydrate</b> · 2–3 L water/day; sip through the day</li>
         <li><b>Bladder discipline</b> · void by clock, don't hold</li>
         <li><b>Avoid</b> · tobacco, late caffeine, heavy alcohol</li>
         <li><b>Diet</b> · low salt, less spicy; high-fibre meals</li>
-      </ul>
+      </ul>`}
     </div>
   </section>`;
 
   // ---- Clinic / emergency contact mini-card (D)
+  // Same custom-or-default pattern as Patient Education above.
+  const _helpCustom = (settings as any)?.need_help_html?.trim?.() || '';
   const clinicCard = `
   <section class="sec clinicCard">
     <div class="sech">Need Help?</div>
     <div class="secb">
-      <div class="ccRow"><span class="ccIcon">📞</span><span class="ccText">${escapeHtml(clinicPhone)}</span></div>
+      ${_helpCustom
+        ? `<div class="custom-rt">${_helpCustom}</div>`
+        : `<div class="ccRow"><span class="ccIcon">📞</span><span class="ccText">${escapeHtml(clinicPhone)}</span></div>
       <div class="ccRow"><span class="ccIcon">🏥</span><span class="ccText">${escapeHtml(clinicName)}</span></div>
-      <div class="ccRow"><span class="ccIcon">🕐</span><span class="ccText">Mon–Sat · 10 AM – 8 PM</span></div>
+      <div class="ccRow"><span class="ccIcon">🕐</span><span class="ccText">Mon–Sat · 10 AM – 8 PM</span></div>`}
     </div>
   </section>`;
 

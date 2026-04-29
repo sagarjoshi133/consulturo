@@ -8390,6 +8390,18 @@ class ClinicSettingsPatch(BaseModel):
     """
     main_photo_url: Optional[str] = None     # data: URI or external URL
     cover_photo_url: Optional[str] = None
+    # Letterhead — banner image that REPLACES the entire app-logo +
+    # clinic-name + contact strip at the top of every Rx PDF page when
+    # `use_letterhead` is True. Stored inline as a data: URI to match
+    # main_photo_url's pattern. Capped at ~2 MB on write.
+    letterhead_image_b64: Optional[str] = None
+    use_letterhead: Optional[bool] = None
+    # Per-clinic editable copy that flows into the prescription PDF —
+    # "Patient Education" tips card and the "Need Help?" mini-card. Both
+    # accept simple HTML (sanitised at render time). When null/empty,
+    # the renderer falls back to the built-in defaults.
+    patient_education_html: Optional[str] = None
+    need_help_html: Optional[str] = None
     doctor_name: Optional[str] = None        # e.g. "Dr Ajay Mehta"
     doctor_title: Optional[str] = None       # e.g. "Consultant Urologist"
     doctor_tagline: Optional[str] = None
@@ -8430,6 +8442,10 @@ _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
     "clinic_website": "https://www.drsagarjoshi.com",
     "main_photo_url": "",
     "cover_photo_url": "",
+    "letterhead_image_b64": "",
+    "use_letterhead": False,
+    "patient_education_html": "",
+    "need_help_html": "",
     "social_facebook": "",
     "social_instagram": "",
     "social_twitter": "",
@@ -8474,10 +8490,16 @@ async def patch_clinic_settings(
     # Cap free-text payloads to ~2 MB each (data: URIs of photos
     # included). Anything bigger is almost certainly a UI bug.
     payload = body.model_dump(exclude_unset=True)
-    for k in ("main_photo_url", "cover_photo_url"):
+    for k in ("main_photo_url", "cover_photo_url", "letterhead_image_b64"):
         v = payload.get(k)
         if isinstance(v, str) and len(v) > 6_000_000:  # ~6 MB safety cap
             raise HTTPException(status_code=413, detail=f"{k} too large")
+    # Soft cap on the editable Rx text blocks — keeps the PDF clean and
+    # prevents abuse via runaway HTML payloads.
+    for k in ("patient_education_html", "need_help_html"):
+        v = payload.get(k)
+        if isinstance(v, str) and len(v) > 8000:
+            raise HTTPException(status_code=413, detail=f"{k} too long (max 8000 chars)")
     # Partner-permission gating: a partner can only modify fields the
     # primary_owner has unlocked for them. Primary/super always pass.
     if user.get("role") == "partner":
