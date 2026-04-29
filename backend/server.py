@@ -2816,3 +2816,22 @@ app.include_router(_admin_extras_router)
 app.include_router(_surgeries_router)
 app.include_router(_prescriptions_router)
 app.include_router(_bookings_router)
+
+# ─── Phase A multi-tenant ────────────────────────────────────────────
+# Registers the new /api/clinics CRUD endpoints + ensures Mongo
+# indexes for the clinics / clinic_memberships collections at startup.
+# Existing routers are NOT scoped yet — Phase B/C/D will progressively
+# wire X-Clinic-Id into each one.
+from routers.clinics import router as _clinics_router
+app.include_router(_clinics_router)
+
+
+@app.on_event("startup")
+async def _ensure_tenant_indexes() -> None:
+    try:
+        from services.tenancy import ensure_indexes as _tenant_ensure_indexes
+        await _tenant_ensure_indexes()
+    except Exception as _e:  # noqa: BLE001
+        # Don't crash boot — index creation is best-effort and idempotent.
+        print(f"[startup] tenant index ensure skipped: {_e}")
+
