@@ -32,6 +32,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import api from '../src/api';
 import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
+import { useTier } from '../src/tier';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 
 type Row = {
@@ -49,8 +50,10 @@ type Row = {
 type Tab = 'staff' | 'patients' | 'all';
 
 const ROLE_COLOR: Record<string, string> = {
-  owner: '#0E7C8B',
+  super_owner: '#7C3AED',
+  primary_owner: '#0E7C8B',
   partner: '#0EA5E9',
+  owner: '#0E7C8B', // legacy alias — should not appear post-migration
   doctor: '#10B981',
   nursing: '#7C3AED',
   reception: '#F59E0B',
@@ -62,6 +65,7 @@ export default function MessagingPermissions() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const tier = useTier();
 
   const [tab, setTab] = useState<Tab>('staff');
   const [q, setQ] = useState('');
@@ -70,7 +74,15 @@ export default function MessagingPermissions() {
   const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<Record<string, boolean>>({}); // user_id → toggling
 
-  const isOwner = user?.role === 'owner';
+  // Owner-tier gate: Primary Owner, Partner, Super Owner. The legacy
+  // 'owner' alias is retained for backward-compat (already migrated to
+  // primary_owner on backend startup, but keep here to be safe).
+  const isOwnerTier =
+    tier.isOwnerTier ||
+    user?.role === 'primary_owner' ||
+    user?.role === 'partner' ||
+    user?.role === 'super_owner' ||
+    user?.role === 'owner';
 
   const load = useCallback(async () => {
     try {
@@ -89,7 +101,7 @@ export default function MessagingPermissions() {
       setRows(items);
     } catch (e: any) {
       if (e?.response?.status === 403) {
-        Alert.alert('Owner only', 'This panel is restricted to the clinic owner.');
+        Alert.alert('Restricted', 'This panel is for the Primary Owner / Partner only.');
         goBackSafe(router);
         return;
       }
@@ -108,7 +120,8 @@ export default function MessagingPermissions() {
   }, [load]);
 
   const toggle = async (row: Row, next: boolean) => {
-    if (row.role === 'owner') return;
+    // Don't allow revoking owner-tier rows — they always have messaging.
+    if (row.role === 'super_owner' || row.role === 'primary_owner' || row.role === 'partner' || row.role === 'owner') return;
     setPending((p) => ({ ...p, [row.user_id]: true }));
     // Optimistic update.
     setRows((cur) => cur.map((r) =>
@@ -132,13 +145,13 @@ export default function MessagingPermissions() {
     return { total: rows.length, allowed, revoked: rows.length - allowed };
   }, [rows]);
 
-  if (!isOwner) {
+  if (!isOwnerTier) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
         <View style={styles.empty}>
           <Ionicons name="lock-closed" size={48} color={COLORS.textDisabled} />
-          <Text style={styles.emptyTitle}>Owner only</Text>
-          <Text style={styles.emptySub}>This panel is for the clinic owner.</Text>
+          <Text style={styles.emptyTitle}>Restricted</Text>
+          <Text style={styles.emptySub}>This panel is for the Primary Owner and Partners.</Text>
           <TouchableOpacity onPress={() => goBackSafe(router)} style={styles.primaryBtn}>
             <Text style={styles.primaryBtnText}>Back</Text>
           </TouchableOpacity>
@@ -155,7 +168,7 @@ export default function MessagingPermissions() {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 6 }}>
-            <Text style={styles.kicker}>OWNER · ADMIN</Text>
+            <Text style={styles.kicker}>PRIMARY OWNER · ADMIN</Text>
             <Text style={styles.title}>Messaging permissions</Text>
             <Text style={styles.sub}>
               {counts.allowed} allowed · {counts.revoked} revoked · {counts.total} total
@@ -222,7 +235,18 @@ export default function MessagingPermissions() {
           ) : (
             rows.map((r) => {
               const roleColor = ROLE_COLOR[r.role || ''] || COLORS.textSecondary;
-              const isOwnerRow = r.role === 'owner';
+              // Owner-tier rows can never be revoked — always-allowed
+              // by hierarchy. Cover legacy 'owner' alias too.
+              const isOwnerRow = r.role === 'super_owner' || r.role === 'primary_owner' || r.role === 'partner' || r.role === 'owner';
+              const roleLabelStr = (() => {
+                switch (r.role) {
+                  case 'super_owner': return 'SUPER OWNER';
+                  case 'primary_owner': return 'PRIMARY OWNER';
+                  case 'partner': return 'PARTNER';
+                  case 'owner': return 'PRIMARY OWNER'; // legacy alias
+                  default: return (r.role || '').toUpperCase();
+                }
+              })();
               const explicitBadge = r.explicit === null
                 ? r.default_allowed ? 'Default · allowed' : 'Default · revoked'
                 : r.allowed ? 'Authorised' : 'Revoked';
@@ -240,7 +264,7 @@ export default function MessagingPermissions() {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.name} numberOfLines={1}>{r.name || r.email || '—'}</Text>
                     <Text style={styles.meta} numberOfLines={1}>
-                      <Text style={{ color: roleColor, fontFamily: 'Manrope_700Bold' }}>{(r.role || '').toUpperCase()}</Text>
+                      <Text style={{ color: roleColor, fontFamily: 'Manrope_700Bold' }}>{roleLabelStr}</Text>
                       {r.email ? ` · ${r.email}` : r.phone ? ` · ${r.phone}` : ''}
                     </Text>
                     <View style={[

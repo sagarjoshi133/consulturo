@@ -291,8 +291,8 @@ export default function More() {
       });
       adminItems.push({
         icon: 'color-palette',
-        label: t('more.branding') || 'Clinic Branding & About Doctor',
-        sub: t('more.brandingSub') || 'Photos, social links, doctor profile, clinic settings',
+        label: t('more.branding') || 'Branding & Settings',
+        sub: t('more.brandingSub') || 'Patient home, clinic branding & prescription look',
         route: '/branding' as any,
         testID: 'more-branding',
       });

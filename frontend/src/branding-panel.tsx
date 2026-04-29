@@ -44,11 +44,16 @@ const SOCIALS: { key: string; label: string; icon: any; placeholder: string }[] 
   { key: 'social_whatsapp', label: 'WhatsApp', icon: 'logo-whatsapp', placeholder: '+91-9000000000' },
 ];
 
-export default function BrandingPanel() {
+export default function BrandingPanel({ category = 'full' }: { category?: 'full' | 'rx' } = {}) {
   const tier = useTier();
   const [s, setS] = useState<Settings>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // When `category === 'rx'` the panel renders ONLY the Prescription
+  // Letterhead + Patient-Education + Need-Help sections, so it can
+  // be embedded inside the consolidated Branding panel as the "Rx"
+  // category without dragging in About-Doctor / Photos / Socials.
+  const rxOnly = category === 'rx';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,7 +133,7 @@ export default function BrandingPanel() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
       {/* Photos */}
-      {(() => {
+      {!rxOnly && (() => {
         // Partner UI gate: hide each section if the partner toggle is off.
         // Owners always see everything. We compute here for inline use below.
         const isPartner = tier.isPartner;
@@ -171,7 +176,7 @@ export default function BrandingPanel() {
       })()}
 
       {/* About Doctor — partners gated via partner_can_edit_about_doctor */}
-      {(!tier.isPartner || s.partner_can_edit_about_doctor !== false) && (
+      {!rxOnly && (!tier.isPartner || s.partner_can_edit_about_doctor !== false) && (
         <>
           <Text style={styles.sectionTitle}>About the Doctor</Text>
           <Field label="Doctor name" v={s.doctor_name} on={(v) => set('doctor_name', v)} placeholder="Dr. Sagar Joshi" />
@@ -182,7 +187,7 @@ export default function BrandingPanel() {
       )}
 
       {/* Clinic info — partners gated via partner_can_edit_clinic_info */}
-      {(!tier.isPartner || s.partner_can_edit_clinic_info !== false && (s.partner_can_edit_clinic_info !== undefined || s.partner_can_edit_branding !== false)) && (
+      {!rxOnly && (!tier.isPartner || s.partner_can_edit_clinic_info !== false && (s.partner_can_edit_clinic_info !== undefined || s.partner_can_edit_branding !== false)) && (
         <>
           <Text style={styles.sectionTitle}>Clinic</Text>
           <Field label="Clinic name" v={s.clinic_name} on={(v) => set('clinic_name', v)} placeholder="My Urology Practice" />
@@ -191,7 +196,7 @@ export default function BrandingPanel() {
       )}
 
       {/* Socials — partners gated via partner_can_edit_socials */}
-      {(!tier.isPartner || s.partner_can_edit_socials !== false && (s.partner_can_edit_socials !== undefined || s.partner_can_edit_branding !== false)) && (
+      {!rxOnly && (!tier.isPartner || s.partner_can_edit_socials !== false && (s.partner_can_edit_socials !== undefined || s.partner_can_edit_branding !== false)) && (
         <>
           <Text style={styles.sectionTitle}>Social Media</Text>
           {SOCIALS.map((sc) => (
@@ -319,7 +324,7 @@ export default function BrandingPanel() {
       )}
 
       {/* Partner toggles — only primary_owner/super_owner see these */}
-      {(tier.isPrimaryOwner || tier.isSuperOwner) && (
+      {!rxOnly && (tier.isPrimaryOwner || tier.isSuperOwner) && (
         <>
           <Text style={styles.sectionTitle}>Partner Access</Text>
           <Text style={styles.help}>Toggle which sections Partners are allowed to edit. Owners can always edit everything.</Text>

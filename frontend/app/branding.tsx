@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import BrandingPanel from '../src/branding-panel';
+import BrandingSettingsPanel from '../src/branding-settings-panel';
 import { COLORS, FONTS } from '../src/theme';
 
 export default function BrandingPage() {
@@ -14,9 +14,9 @@ export default function BrandingPage() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Clinic Branding & About Doctor</Text>
+        <Text style={styles.title}>Branding & Settings</Text>
       </View>
-      <BrandingPanel />
+      <BrandingSettingsPanel />
     </SafeAreaView>
   );
 }

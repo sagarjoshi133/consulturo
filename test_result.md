@@ -10011,3 +10011,79 @@ agent_communication_2026_04_29_letterhead_smoke:
        Owners & Partners → toggle a Partner's "Full Dashboard Access"
        → re-log-in as that Partner and confirm Backups / Team /
        Analytics / Blog / Broadcasts disappear from the tab bar.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Consolidated Branding Section + "Owner" Terminology Cleanup
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Summary
+    User feedback:
+      (1) Merge "Branding" and "Settings" tabs in the Dashboard into a
+          single "Branding" tab with sub-categories.
+      (2) Patient Self-service (Messaging Permissions) under Permission
+          Manager said "Owner only" and rejected primary_owner / partner
+          — confusion between legacy "owner" alias and the canonical
+          "primary_owner" / "partner" tier. Fix gating + drop the
+          "Owner" tag from user-facing copy.
+
+  Files changed
+    • /app/frontend/src/branding-settings-panel.tsx (NEW)
+        - Sticky chip-bar with three categories:
+            • Patient Home   → mounts <HomepagePanel/>
+            • Clinic Branding → mounts <BrandingPanel category="full"/>
+            • Prescription Look → mounts <BrandingPanel category="rx"/>
+        - Each chip carries an icon, color, and a one-line description
+          rendered below the chip bar so the user understands what
+          each category controls. Horizontal scroll on phones; flex
+          row on desktop.
+    • /app/frontend/src/branding-panel.tsx
+        - New optional prop `category: 'full' | 'rx'` (default 'full').
+          When `'rx'` the panel renders ONLY the Letterhead +
+          Patient-Education + Need-Help sections — used by the
+          consolidated panel's "Prescription Look" category.
+    • /app/frontend/app/dashboard.tsx
+        - Removed the standalone "Settings" tab (id: homepage). Both
+          'homepage' and 'branding' tab IDs now mount
+          <BrandingSettingsPanel/> so deep-links keep working.
+        - Dropped the unused HomepagePanel + BrandingPanel imports.
+    • /app/frontend/app/branding.tsx
+        - Standalone /branding route page now mounts the new
+          consolidated panel ("Branding & Settings" header).
+    • /app/frontend/app/(tabs)/more.tsx
+        - "Clinic Branding & About Doctor" entry renamed to
+          "Branding & Settings" with a clearer subtitle.
+
+    • /app/frontend/app/messaging-permissions.tsx
+        - Owner-tier check now uses tier.isOwnerTier OR explicit role
+          match for primary_owner / partner / super_owner / legacy
+          'owner'. Was previously `role === 'owner'` only — which
+          rejected primary_owner and partner.
+        - Strings: "Owner only" → "Restricted" / "for the Primary
+          Owner and Partners". Kicker "OWNER · ADMIN" → "PRIMARY
+          OWNER · ADMIN". Role row labels normalised to "PRIMARY
+          OWNER" instead of legacy "OWNER".
+        - Owner-tier rows (super_owner / primary_owner / partner /
+          legacy owner) are always-allowed and show the locked icon.
+        - ROLE_COLOR map extended with super_owner / primary_owner.
+    • /app/frontend/app/permission-manager.tsx
+        - Empty-state title "Owner only" → "Restricted" (with
+          Primary Owner / Partner copy). Kicker "OWNER · ADMIN" →
+          "PRIMARY OWNER · ADMIN". Team-card description reordered
+          so partner/doctor is the first role mentioned.
+
+  Verification
+    - Expo bundle compiles cleanly; welcome screen renders.
+    - Backend untouched in this iteration (existing tests still
+      pass).
+
+  Awaiting user
+    a) Open Dashboard → Branding tab → switch between the 3 chips
+       (Patient Home / Clinic Branding / Prescription Look) → confirm
+       the underlying form fields render correctly per category.
+    b) Open Permission Manager → Patient Self-service card → tap →
+       confirm the Messaging Permissions screen now opens for
+       Primary Owner / Partner (no more "Owner only" wall).

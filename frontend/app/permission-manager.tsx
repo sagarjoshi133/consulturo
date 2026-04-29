@@ -111,8 +111,8 @@ export default function PermissionManager() {
       <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
         <View style={styles.empty}>
           <Ionicons name="lock-closed" size={48} color={COLORS.textDisabled} />
-          <Text style={styles.emptyTitle}>Owner only</Text>
-          <Text style={styles.emptySub}>This panel is restricted to the clinic owner.</Text>
+          <Text style={styles.emptyTitle}>Restricted</Text>
+          <Text style={styles.emptySub}>This panel is for the Primary Owner and Partners.</Text>
           <TouchableOpacity onPress={() => goBackSafe(router)} style={styles.backBtn2}>
             <Text style={styles.backBtn2Text}>Back</Text>
           </TouchableOpacity>
@@ -136,7 +136,7 @@ export default function PermissionManager() {
       icon: 'people',
       color: '#7C3AED',
       title: 'Team Roles & Access',
-      desc: 'Manage staff roles (doctor / partner / assistant / reception / nursing) and their dashboard access.',
+      desc: 'Manage staff roles (partner / doctor / nursing / reception / assistant) and their dashboard access.',
       summary: `${counts.team_count} active member${counts.team_count === 1 ? '' : 's'}`,
       onPress: () => router.push('/dashboard?tab=team' as any),
     },
@@ -185,7 +185,7 @@ export default function PermissionManager() {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 6 }}>
-            <Text style={styles.kicker}>OWNER · ADMIN</Text>
+            <Text style={styles.kicker}>PRIMARY OWNER · ADMIN</Text>
             <Text style={styles.title}>Permission Manager</Text>
             <Text style={styles.sub}>Authorise team & patient powers in one place.</Text>
           </View>

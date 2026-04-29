@@ -27,8 +27,7 @@ import { PrimaryButton, SecondaryButton } from '../src/components';
 import { SurgeriesPanel } from '../src/surgery-panel';
 import { AvailabilityPanel } from '../src/availability-panel';
 import { BroadcastsPanel } from '../src/broadcasts-panel';
-import { HomepagePanel } from '../src/homepage-panel';
-import BrandingPanel from '../src/branding-panel';
+import BrandingSettingsPanel from '../src/branding-settings-panel';
 import { TeamPanelV2 } from '../src/team-panel';
 import { AnalyticsPanel } from '../src/analytics-panel';
 import { ReferrersPanel } from '../src/referrers-panel';
@@ -468,7 +467,6 @@ export default function Dashboard() {
         { id: 'team', label: 'Team', icon: 'people', canSee: allowTab('team') },
         { id: 'push', label: 'Notifs', icon: 'notifications', canSee: allowTab('push') },
         { id: 'branding', label: 'Branding', icon: 'color-palette', canSee: isOwner },
-        { id: 'homepage', label: 'Settings', icon: 'cog', canSee: isOwner },
         { id: 'backups', label: 'Backups', icon: 'cloud-upload', canSee: allowTab('backups') },
       ];
       return all.filter((t) => t.canSee).map(({ canSee, ...rest }) => rest);
@@ -685,8 +683,8 @@ export default function Dashboard() {
           if (id === 'referrers') return <ReferrersPanel />;
           if (id === 'availability') return <AvailabilityPanel />;
           if (id === 'broadcasts') return <BroadcastsPanel autoOpen={bcAutoOpen} />;
-          if (id === 'homepage') return <HomepagePanel />;
-          if (id === 'branding') return <BrandingPanel />;
+          if (id === 'homepage') return <BrandingSettingsPanel />;
+          if (id === 'branding') return <BrandingSettingsPanel />;
           if (id === 'team') return <TeamPanelV2 />;
           if (id === 'push') return <NotificationsHealthPanel />;
           if (id === 'backups') return <BackupHealthPanel />;
