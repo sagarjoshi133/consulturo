@@ -11765,3 +11765,112 @@ agent_communication_2026_04_29_phase7_polish_smoke_RERUN:
       No further action required for the backend.
 
       YOU MUST ASK USER BEFORE DOING FRONTEND TESTING.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 7 (Polish)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Goal
+    Polish work on top of the Phase 1-6 mechanical extraction:
+      • fix a real legacy gating bug
+      • extract the remaining heavy helpers (push, blog, booking
+        formatting) into services/ so server.py is closer to a
+        thin orchestrator
+      • prepare the codebase for Multi-Tenant work
+
+  Bug fixes
+    • routers/prescriptions.py — DELETE /api/prescriptions/{id}
+      previously hard-coded `user.role == "owner"` (legacy literal
+      that no live user matches post-migration). Switched to
+      OWNER_TIER_ROLES so primary_owner / partner / super_owner
+      can all delete. Verified end-to-end: both primary_owner and
+      partner now get 200.
+
+  Files created (3 new services)
+    • services/notifications.py (237 lines)
+        send_expo_push_batch, collect_user_tokens,
+        collect_role_tokens, push_to_owner, push_to_user,
+        ROLE_LABELS_BASIC, pretty_role, create_notification,
+        notify_role_change.
+    • services/blog_helpers.py (159 lines)
+        _extract_first_img, _strip_html,
+        _load_blog_from_blogger (incl. _BLOG_CACHE 15-min cache,
+        BLOGGER_FEED_URL env wiring),
+        _admin_to_html, _apply_custom_cover (incl. _IMG_RE,
+        _TAG_RE compiled patterns and the _EDU_CUSTOM_COVERS
+        static map for the in-app patient-education library).
+    • services/booking_helpers.py (32 lines)
+        _time_12h, _format_booking_display.
+
+  Files changed
+    • /app/backend/server.py
+        - 3099 → 2818 lines (−281 this phase).
+        - Each extracted helper replaced with
+          `from services.X import name  # (extracted)` so any
+          legacy `from server import push_to_user` etc. keeps
+          resolving via the same identity.
+
+  Bugs caught + fixed during Phase 7 smoke
+    1. blog_helpers.py headers initially missed `import resend`
+       style nice-to-have stuff — handled.
+    2. blog_helpers.py forgot the 3 module-level deps the helpers
+       reference: `_IMG_RE`, `_TAG_RE`, `_EDU_CUSTOM_COVERS`
+       (caused 500 on /api/education and silent [] on /api/blog).
+       Added all three at module top with verbatim values.
+    3. _BLOG_CACHE constant initially missed.
+    4. uuid + html-as-htmllib + datetime imports — added.
+
+  Backend smoke (deep_testing_backend_v2)
+    31/31 PASS post-fix.
+    + /api/education?lang=en → 200 with 37 items + custom covers
+      applied (was 500).
+    + /api/education/{eid}?lang=en → 200 with cover (was 500).
+    + /api/blog → 23-entry Blogger feed list (was silently []).
+
+  ════════════════════════════════════════════════════════════════
+  CUMULATIVE MODULARIZATION SUMMARY (Phase 1-7)
+  ════════════════════════════════════════════════════════════════
+                          server.py          Δ
+    Original (Phase 0):   8879 lines        baseline
+    After Phase 1:        8548 lines        −331
+    After Phase 2:        8239 lines        −309
+    After Phase 3:        7471 lines        −768
+    After Phase 4:        5316 lines      −2155
+    After Phase 5:        3662 lines      −1654
+    After Phase 6:        3099 lines        −563
+    After Phase 7:        2818 lines        −281
+    ──────────────────────────────────────────────────
+    Total reduction:                       −6061 lines (−68.3%)
+
+  Final module layout under /app/backend/
+    db.py             (22)   Mongo client + db handle
+    auth_deps.py      (74)   Role helpers + lazy require_* re-exports
+    models.py        (442)   49 Pydantic schemas
+    routers/        (5921)   36 modules · 145 endpoints
+    services/        (628)   7 modules
+        reg_no, email, telegram, notifications,
+        blog_helpers, booking_helpers
+    server.py       (2818)   Orchestrator: app instance, middleware,
+                              startup hooks, slowapi rate limiting,
+                              Google session verification, demo
+                              read-only middleware, auth-callback
+                              page builder, the booking-reminder
+                              loop, PDF warm-up, and ~145 lines of
+                              other glue. Router registrations live
+                              at end-of-file.
+
+  Foundation for Multi-Tenant — READY
+    The clean domain-segregated routers/ + services/ structure
+    means the Multi-Tenant work becomes:
+      • Add `clinic_id` field to every model in models.py
+      • Bake a `tenant_filter` dependency into auth_deps.py that
+        narrows every Mongo query to the caller's clinic
+      • Add slug-based URL routing (`/c/<slug>/api/...`) at the
+        FastAPI level
+      • Migrate existing data with a single backfill script
+    No archaeological digging required — every domain has a clear
+    home and every helper lives in services/.
