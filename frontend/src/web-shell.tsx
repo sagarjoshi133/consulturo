@@ -205,10 +205,14 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   ];
 
   // ── DASHBOARD (its own section, just below Main) ───────────────────
-  // Super-owner gets a single "Platform Administration" link instead;
-  // they should NOT see clinical Dashboard tabs.
+  // Super-owner gets a SEPARATE Platform Administration link AND a
+  // dedicated Analytics section (per-Primary-Owner usage stats —
+  // distinct from clinical analytics so the audit and admin flows
+  // are cleanly split). They should NOT see clinical Dashboard tabs.
   if (isSuperOwner) {
     items.push({ label: 'Platform Administration', icon: 'shield-checkmark', route: '/permission-manager', ownerOnly: true, section: SEC_ADMIN });
+    items.push({ label: 'Analytics', icon: 'analytics', route: '/admin/primary-owner-analytics', ownerOnly: true });
+    items.push({ label: 'Backups', icon: 'cloud-upload', route: '/admin/backups', ownerOnly: true });
   } else if (isStaff) {
     items.push({ label: t('more.doctorDashboard') || 'Dashboard', icon: 'grid', route: '/dashboard', staffOnly: true, section: SEC_DASH });
   }
@@ -221,6 +225,12 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     items.push({ label: t('more.broadcasts')    || 'Broadcasts',    icon: 'megaphone', route: '/dashboard?tab=broadcasts', staffOnly: true });
     items.push({ label: t('more.notes')         || 'Notes',         icon: 'create',  route: '/notes', staffOnly: true });
     items.push({ label: t('more.reminders')     || 'Reminders',     icon: 'alarm',   route: '/reminders', staffOnly: true });
+  } else if (isSuperOwner) {
+    // Super-owner: Notes + Reminders surface in the "App" section
+    // alongside Inbox so the bell, scratchpad and to-dos all sit
+    // together, keeping the sidebar focused on platform admin.
+    items.push({ label: t('more.notes')      || 'Notes',     icon: 'create',  route: '/notes', staffOnly: true, section: SEC_APP });
+    items.push({ label: t('more.reminders')  || 'Reminders', icon: 'alarm',   route: '/reminders', staffOnly: true });
   } else if (user) {
     // ── MY HEALTH (patient) ─────────────────────────────────────────
     items.push({ label: t('more.myBookings') || 'My Bookings', icon: 'calendar-clear', route: '/my-bookings', section: SEC_HEALTH });
@@ -230,15 +240,17 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   }
 
   // ── ADMINISTRATION (BELOW Practice per latest spec) ────────────────
-  if (isStaff && (isOwner || isFullAccess)) {
+  // Super-owner already has these (separate Analytics + Backups under
+  // Platform Administration above) — guard against duplicates.
+  if (isStaff && (isOwner || isFullAccess) && !isSuperOwner) {
     items.push({ label: t('more.analytics') || 'Analytics', icon: 'analytics', route: '/dashboard?tab=analytics', staffOnly: true, section: SEC_ADMIN });
     items.push({ label: t('more.team')      || 'Team',      icon: 'people',    route: '/dashboard?tab=team',      staffOnly: true });
   }
-  if (isOwner) {
+  if (isOwner && !isSuperOwner) {
     items.push({ label: t('more.branding')    || 'Branding',  icon: 'color-palette', route: '/branding', ownerOnly: true, section: !(isStaff && (isOwner || isFullAccess)) ? SEC_ADMIN : undefined });
     items.push({ label: t('more.permissions') || 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
   }
-  if (isOwner || isFullAccess) {
+  if ((isOwner || isFullAccess) && !isSuperOwner) {
     items.push({ label: t('more.backups') || 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true });
   }
 
@@ -265,8 +277,12 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   });
 
   // ── ABOUT (last) ───────────────────────────────────────────────────
-  items.push({ label: t('more.aboutDoctor') || 'About Doctor', icon: 'person-circle', route: '/about', section: SEC_ABOUT });
-  items.push({ label: t('more.aboutApp')    || 'About App',    icon: 'information-circle', route: '/about-app' });
+  // Super-owner shouldn't see "About Doctor" — they're not running a
+  // clinic, just the platform. Show only "About App".
+  if (!isSuperOwner) {
+    items.push({ label: t('more.aboutDoctor') || 'About Doctor', icon: 'person-circle', route: '/about', section: SEC_ABOUT });
+  }
+  items.push({ label: t('more.aboutApp')    || 'About App',    icon: 'information-circle', route: '/about-app', section: isSuperOwner ? SEC_ABOUT : undefined });
 
   // Active route detection — match exact OR prefix for nested routes.
   // Special handling for `/dashboard?tab=X` — only highlights the

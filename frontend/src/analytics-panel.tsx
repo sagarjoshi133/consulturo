@@ -111,9 +111,12 @@ export function AnalyticsPanel() {
         </>
       )}
 
-      {/* --- Range toggle --- */}
+      {/* --- Range toggle (header here is just for the segmented
+          control; the per-chart "Bookings trend" header lives inside
+          its grid cell so all 4 cells align in a uniform 2x2 row on
+          desktop). --- */}
       <View style={styles.rangeRow}>
-        <Text style={styles.hdr}>Bookings trend</Text>
+        <Text style={[styles.hdr, { opacity: 0 }]}>Trend range</Text>
         <View style={styles.segment}>
           {[6, 12].map((m) => (
             <TouchableOpacity
@@ -129,9 +132,11 @@ export function AnalyticsPanel() {
       </View>
 
       {/* On desktop the 4 trend charts tile into a 2x2 grid for better
-          space efficiency; mobile keeps the stacked 1-col layout. */}
+          space efficiency; mobile keeps the stacked 1-col layout.
+          Each cell now owns its own header so they line up uniformly. */}
       <View style={isWebDesktop ? styles.chartGrid : undefined}>
         <View style={isWebDesktop ? styles.chartCell : undefined}>
+          <Text style={styles.hdr}>Bookings trend</Text>
           <BarChart
             data={data.monthly_bookings}
             max={bookingsMax}

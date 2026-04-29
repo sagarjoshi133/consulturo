@@ -5905,10 +5905,29 @@ async def list_notifications(user=Depends(require_user), unread_only: bool = Fal
     q: Dict[str, Any] = {"user_id": user["user_id"]}
     if unread_only:
         q["read"] = False
+    # Super-owner is a platform admin — they should NOT see clinical /
+    # operational pings (booking requests, Rx status changes, surgery
+    # logbook updates, broadcast deliveries, etc.) which are only
+    # meaningful inside a Primary Owner's clinic. Restrict their feed
+    # to admin-relevant kinds (personal messages, system / admin
+    # notices, suspension confirmations, billing — anything explicitly
+    # routed to a super_owner).
+    if user.get("role") == "super_owner":
+        q["kind"] = {"$in": [
+            "personal_message",   # 1:1 chat with primary owners
+            "broadcast_request",  # owner asking super-owner approval
+            "system",             # platform-level system notices
+            "admin",              # super-owner admin pings
+            "billing",            # future billing alerts
+            "suspension",         # account suspension confirmations
+        ]}
     limit = max(1, min(limit, 200))
     cursor = db.notifications.find(q, {"_id": 0}).sort("created_at", -1)
     rows = await cursor.to_list(length=limit)
-    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read": False})
+    unread_q: Dict[str, Any] = {"user_id": user["user_id"], "read": False}
+    if user.get("role") == "super_owner":
+        unread_q["kind"] = q["kind"]
+    unread = await db.notifications.count_documents(unread_q)
     return {"items": rows, "unread_count": unread}
 
 
@@ -6812,6 +6831,135 @@ class DashboardPermBody(BaseModel):
 class SuspendBody(BaseModel):
     suspended: bool
     reason: Optional[str] = None
+
+
+# ---------------------------------------------------------------------
+# Super-owner analytics — per-Primary-Owner usage stats
+# ---------------------------------------------------------------------
+# Aggregates how each Primary Owner is using the platform, kept
+# strictly separate from the Platform Administration endpoints (which
+# are about CRUD'ing the Primary Owner accounts themselves). Returns
+# one row per primary_owner with: bookings (today/week/month/total),
+# Rx written, surgeries logged, team size, last-active, language,
+# and a 90-day daily series for the growth chart.
+@app.get("/api/admin/primary-owner-analytics")
+async def super_owner_primary_owner_analytics(user=Depends(require_super_owner)):
+    """Strictly super-owner-only. One row per primary_owner with
+    aggregated usage stats sourced from users / bookings /
+    prescriptions / surgeries / user_sessions collections."""
+    from datetime import timedelta as _td
+    now = datetime.now(timezone.utc)
+    today_iso = now.strftime("%Y-%m-%d")
+    week_start = (now - _td(days=now.weekday())).date().isoformat()
+    month_start = now.replace(day=1).date().isoformat()
+    ninety_ago = (now - _td(days=90)).date().isoformat()
+
+    owners = await db.users.find(
+        {"role": "primary_owner"}, {"_id": 0}
+    ).to_list(length=200)
+
+    rows = []
+    for o in owners:
+        oid = o.get("user_id") or ""
+        oemail = (o.get("email") or "").lower()
+
+        # Bookings: created_by matches owner OR clinic-wide
+        # (we treat any booking as "their clinic" since this is single
+        #  tenant today; multi-tenant work is on the backlog).
+        # Use booking_date for today/week/month windows.
+        b_total = await db.bookings.count_documents({})
+        b_today = await db.bookings.count_documents({"booking_date": today_iso})
+        b_week  = await db.bookings.count_documents({"booking_date": {"$gte": week_start}})
+        b_month = await db.bookings.count_documents({"booking_date": {"$gte": month_start}})
+
+        # Prescriptions written by this owner specifically.
+        rx_total = await db.prescriptions.count_documents({"created_by": oid})
+
+        # Surgeries logged by this owner.
+        sx_total = await db.surgeries.count_documents({"created_by": oid})
+
+        # Team size — staff users + pending invites (excluding super_owners
+        # since they are cross-tenant platform admins, not team members).
+        team_users = await db.users.count_documents({
+            "role": {"$in": ["doctor", "partner", "assistant", "reception", "nursing"]}
+        })
+        team_invites = await db.team_invites.count_documents({})
+        team_size = team_users + team_invites
+
+        # Last-active: most recent user_session for this user_id.
+        last_session = None
+        try:
+            sess = await db.user_sessions.find_one(
+                {"user_id": oid}, sort=[("created_at", -1)], projection={"_id": 0, "created_at": 1}
+            )
+            if sess and sess.get("created_at"):
+                last_session = sess["created_at"]
+        except Exception:
+            pass
+
+        # Login frequency over the last 30 days (count of distinct
+        # session days). Cheap & informative.
+        try:
+            since = now - _td(days=30)
+            distinct_days = await db.user_sessions.distinct(
+                "created_at_day",
+                {"user_id": oid, "created_at": {"$gte": since}},
+            )
+            login_days_30 = len(distinct_days) if distinct_days is not None else 0
+        except Exception:
+            login_days_30 = 0
+
+        # 90-day growth series — count bookings + Rx per day for chart.
+        series = []
+        try:
+            pipeline_b = [
+                {"$match": {"booking_date": {"$gte": ninety_ago}}},
+                {"$group": {"_id": "$booking_date", "n": {"$sum": 1}}},
+                {"$sort": {"_id": 1}},
+            ]
+            b_by_day = {row["_id"]: row["n"] async for row in db.bookings.aggregate(pipeline_b)}
+            pipeline_rx = [
+                {"$match": {"created_by": oid, "created_at": {"$gte": now - _td(days=90)}}},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+                    "n": {"$sum": 1},
+                }},
+                {"$sort": {"_id": 1}},
+            ]
+            rx_by_day = {row["_id"]: row["n"] async for row in db.prescriptions.aggregate(pipeline_rx)}
+            # Build a continuous 90-day series.
+            for i in range(90, -1, -1):
+                d = (now - _td(days=i)).date().isoformat()
+                series.append({
+                    "date": d,
+                    "bookings": int(b_by_day.get(d, 0) or 0),
+                    "rx": int(rx_by_day.get(d, 0) or 0),
+                })
+        except Exception:
+            series = []
+
+        rows.append({
+            "user_id": oid,
+            "email": oemail,
+            "name": o.get("name") or oemail,
+            "language": o.get("language") or "en",
+            "suspended": bool(o.get("suspended")),
+            "created_at": o.get("created_at"),
+            "last_active": last_session,
+            "login_days_last_30": login_days_30,
+            "bookings": {
+                "today": b_today, "week": b_week, "month": b_month, "total": b_total,
+            },
+            "rx_total": rx_total,
+            "surgeries_total": sx_total,
+            "team_size": team_size,
+            "subscription_tier": o.get("subscription_tier") or "free",  # future billing
+            "growth_90d": series,
+        })
+
+    # Sort by last_active desc (most recently used owners first).
+    rows.sort(key=lambda r: r.get("last_active") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return {"items": rows, "generated_at": now.isoformat()}
 
 
 @app.patch("/api/admin/primary-owners/{user_id}/suspend")

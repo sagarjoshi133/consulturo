@@ -82,6 +82,7 @@ export default function Home() {
   };
 
   const isClinical = !!user && ['primary_owner', 'partner', 'doctor', 'super_owner', 'owner'].includes((user.role as string) || '');
+  const isSuperOwner = user?.role === 'super_owner';
 
   const quickActions = [
     { icon: 'calendar', label: t('home.quickActions.bookVisit'), key: 'bookvisit', route: '/(tabs)/book', color: COLORS.primary, family: 'ion' },
@@ -144,7 +145,52 @@ export default function Home() {
                       Consults / Prescription). Patients still get the
                       single "Book Consultation" pill. Mobile keeps
                       its original action cluster lower down. */}
-                  {isWebDesktop && isStaff && (
+                  {isWebDesktop && isSuperOwner && (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {/* Super-owner desktop hero — platform-admin
+                          shortcuts (Inbox / Notes / Reminders /
+                          Analytics). Replaces the clinic-oriented
+                          Bookings/Consult/Rx pills which are
+                          irrelevant to a platform admin. */}
+                      <TouchableOpacity
+                        onPress={() => router.push('/inbox' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-inbox-super"
+                      >
+                        <Ionicons name="chatbubbles" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Inbox</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => router.push('/notes' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-notes-super"
+                      >
+                        <Ionicons name="create" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Notes</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => router.push('/reminders' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-reminders-super"
+                      >
+                        <Ionicons name="alarm" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Reminders</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => router.push('/admin/primary-owner-analytics' as any)}
+                        style={styles.heroQuickBtn}
+                        activeOpacity={0.85}
+                        testID="home-hero-analytics-super"
+                      >
+                        <Ionicons name="analytics" size={14} color="#0E7C8B" />
+                        <Text style={styles.heroQuickText}>Analytics</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {isWebDesktop && isStaff && !isSuperOwner && (
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TouchableOpacity
                         onPress={() => router.push('/dashboard?tab=bookings' as any)}
@@ -255,6 +301,31 @@ export default function Home() {
                 </View>
               </View>
 
+              {isSuperOwner ? (
+                /* Super-owner: swap the doctor card for ConsultUro
+                   app-branding so the home page is purely platform-
+                   admin oriented (no clinical / Dr. Sagar identity). */
+                <View style={styles.doctorCard}>
+                  <Image
+                    source={{ uri: 'https://customer-assets.emergentagent.com/job_urology-pro/artifacts/k4t1zfir_ConsultUro%20Logo%20%28Removebg%29.png' }}
+                    style={[styles.doctorPhoto, { backgroundColor: 'transparent', borderRadius: 18 }]}
+                    resizeMode="contain"
+                  />
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Text style={styles.doctorName}>ConsultUro</Text>
+                    <Text style={styles.doctorSpec}>Trilingual urology &amp; clinic-management platform</Text>
+                    <Text style={styles.doctorSubtitle}>
+                      EN · हिं · ગુ · Bookings · Prescriptions · Surgeries · Backups
+                    </Text>
+                    <View style={styles.badgeRow}>
+                      <View style={styles.badge}>
+                        <Ionicons name="shield-checkmark" size={11} color={COLORS.primary} />
+                        <Text style={styles.badgeText}>Platform Owner</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ) : (
               <View style={styles.doctorCard}>
                 <Image
                   source={{ uri: homepage?.doctor_photo_url || DOCTOR_PHOTO_URL }}
@@ -274,6 +345,7 @@ export default function Home() {
                   </View>
                 </View>
               </View>
+              )}
             </SafeAreaView>
           </LinearGradient>
         </View>

@@ -9594,3 +9594,87 @@ agent_communication_2026_04_28_session3:
         • Web bundle compiles fresh.
 
       Backend untouched. No DB migration. No mocks.
+
+  - agent: main
+    message: |
+      [super-owner experience revamp — Phase 1+2+3 in one batch]
+
+      Per-Phase delivery:
+
+      Phase 1 — Visual shell + navigation:
+        • web-shell sidebar (web-shell.tsx): super-owner now sees
+          ONLY Home / Inbox / Platform Administration / Notes /
+          Reminders / Analytics / Backups / About App in their
+          dedicated sections (no clinical Practice section).
+          Other-tier users keep the old sidebar layout (guarded
+          behind !isSuperOwner so we don't double-list anything).
+        • Home page (app/(tabs)/index.tsx):
+            – Doctor card is replaced with a ConsultUro brand card
+              (logo + tagline + "Platform Owner" badge) when the
+              caller is super_owner. Dr. Sagar Joshi card is
+              preserved verbatim for everyone else.
+            – Desktop hero quick-buttons swap to Inbox / Notes /
+              Reminders / Analytics for super_owner. Clinical
+              shortcuts remain for primary-owner / partner / staff.
+
+      Phase 2 — Notification scoping:
+        • /api/notifications now restricts the kind whitelist to
+          [personal_message, broadcast_request, system, admin,
+          billing, suspension] when the caller is super_owner.
+          The unread-count query mirrors the same filter so the
+          bell badge stays accurate. Clinical pings (booking,
+          rx_status, surgery_log, etc.) are filtered out cleanly.
+
+      Phase 3 — Platform-Admin / Analytics split:
+        • New backend endpoint
+          GET /api/admin/primary-owner-analytics
+          (super_owner only — 401 unauth, 403 non-super) returns
+          one row per primary_owner with:
+            - email / name / language / suspension flag
+            - last_active (latest user_session.created_at)
+            - login_days_last_30 (distinct days with a session)
+            - bookings.{today,week,month,total}
+            - rx_total / surgeries_total / team_size
+            - subscription_tier (placeholder for billing)
+            - growth_90d series (date / bookings / rx)
+        • New frontend route /admin/primary-owner-analytics
+          (app/admin/primary-owner-analytics.tsx) — guarded to
+          super_owner. Renders one card per primary owner with
+          KPI cells and an inline 30-day sparkline (no chart-lib
+          dependency). Sorted by last_active desc so most-recently-
+          active clinics surface first. SafeAreaView applied so
+          the page respects status bar / nav-gesture insets.
+        • Sidebar now exposes "Analytics" (this new route) and
+          "Backups" as separate entries under the super_owner
+          tree, distinct from Platform Administration.
+
+      Side fix: Analytics widget alignment on desktop —
+        Bookings-trend / Surgeries-per-month / Rx-per-month /
+        Patients-per-month charts now line up uniformly in the 2x2
+        grid because the "Bookings trend" header was moved INTO
+        its grid cell (previously it lived above the grid in the
+        range-toggle row, leaving its cell shorter than the others).
+
+      Files changed:
+        • /app/backend/server.py — notification filter for super_owner;
+          new /api/admin/primary-owner-analytics endpoint
+        • /app/frontend/src/web-shell.tsx — sidebar restructure for
+          super_owner (separate Platform Admin + Analytics + Backups
+          sections; About-Doctor hidden for super_owner)
+        • /app/frontend/app/(tabs)/index.tsx — super_owner brand card
+          + super_owner desktop hero quick-buttons
+        • /app/frontend/app/admin/primary-owner-analytics.tsx — NEW
+        • /app/frontend/src/analytics-panel.tsx — chart-grid
+          alignment fix
+
+      Verified:
+        • New endpoint returns 401 unauth, 403 to non-super-owner.
+        • Notifications kind whitelist applies on super-owner path.
+        • Web bundle compiles fresh (welcome screen renders).
+        • No DB migration, no mocks.
+
+      Awaiting user to log in as super-owner and verify:
+        - Sidebar shows only the listed entries
+        - Home page renders ConsultUro brand card (no Dr. Sagar)
+        - /admin/primary-owner-analytics loads with per-owner cards
+        - Analytics chart grid is now uniformly aligned
