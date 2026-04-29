@@ -10182,3 +10182,78 @@ agent_communication_2026_04_29_letterhead_smoke:
     b) Open Permission Manager → Patient Self-service card → tap →
        confirm the Messaging Permissions screen now opens for
        Primary Owner / Partner (no more "Owner only" wall).
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 1 (Foundation)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Goal
+    Begin the user-requested mechanical split of /app/backend/server.py
+    (8879 lines, 151 routes, 49 BaseModel classes) into a maintainable
+    multi-module structure with ZERO behaviour changes — to unblock the
+    upcoming Multi-Tenant work.
+
+  Phase 1 scope (this iteration)
+    Foundation modules — extract pure data + import targets so that
+    Phase 2 router-extractions have a clean place to land WITHOUT
+    pulling in the whole monolith.
+
+  Files created
+    • /app/backend/models.py (442 lines)
+        - Auto-extracted 49 Pydantic request/response classes via
+          /tmp/extract_models.py. Order preserved exactly. server.py
+          now imports via `from models import *`.
+    • /app/backend/db.py (~20 lines)
+        - Single Motor client + db handle. New router modules will
+          `from db import db, client`. server.py keeps its own
+          identically-configured client for backward compat.
+    • /app/backend/auth_deps.py (~80 lines)
+        - Role-tier constants (OWNER_TIER_ROLES / PRIMARY_TIER_ROLES /
+          STAFF_ROLES / VALID_ROLES).
+        - Pure `is_owner_or_partner` / `is_primary_or_super` /
+          `is_super_owner` helpers (no I/O).
+        - `__getattr__` lazy re-export of every FastAPI `require_*`
+          dependency from server.py so future routers can write
+          `from auth_deps import require_owner` and resolve to the
+          SAME function object server.py registers.
+
+  Files changed
+    • /app/backend/server.py
+        - 8879 → 8548 lines (−331 lines, −3.7%).
+        - Each old class definition replaced with a 1-line stub
+          comment "# (moved) class XYZ → /app/backend/models.py" so
+          line-numbered git blames stay readable.
+        - Added `from models import *  # noqa: F401,F403` immediately
+          after the pydantic import line.
+
+  Backend smoke (deep_testing_backend_v2)
+    35/35 assertions PASS via /app/backend_test_phase1_refactor_smoke.py
+      • Public reads: clinic-settings, diseases, doctor → 200
+      • Auth: /auth/me 401 unauth, 200 with primary_owner token
+      • Owner-tier writes: clinic-settings PATCH, partner dashboard
+        perm PATCH, team invite POST — all still 200
+      • Auth gating regressions: 401 on no-token writes
+    Tear-down clean — no DB pollution.
+
+  Awaiting user verification + approval to proceed with Phase 2
+    Phase 2 plan (next iteration):
+      • Create /app/backend/routers/ package
+      • Extract leaf-domain routers first (pure reads / minimal deps):
+          - routers/diseases.py
+          - routers/doctor.py
+          - routers/clinic_settings.py
+          - routers/profile.py
+      • Each router uses APIRouter(); server.py registers via
+        app.include_router(...). Same URL paths; same auth gates;
+        same payloads — purely a code-location move.
+      • After leaf routers verified, extract heavier domains:
+          bookings, prescriptions, surgeries, team, admin, blog,
+          messaging, broadcasts, notifications, availability,
+          unavailabilities, ipss, attachments, tools, notes, demo,
+          backups, etc.
+      • Final phase: split services (reg_no, email, notifications,
+        pdf, telegram).
