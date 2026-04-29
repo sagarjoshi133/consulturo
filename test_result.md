@@ -10570,3 +10570,93 @@ agent_communication_2026_04_30_phase3_modularization_smoke:
       Behaviour is byte-identical. No 5xx, no startup errors, no
       DB pollution (every CRUD smoke create paired with delete).
       Recommend Main Agent finalize this phase.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 3 (11 Router Batch)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Goal
+    Continue mechanical extraction of well-bounded, low-coupling
+    domains from server.py into the routers/ package. Phase 3 chose
+    11 domains where the route handlers reference few cross-domain
+    helpers (mostly db, models, auth deps + a small server-helper
+    surface).
+
+  Files created (11 routers, 38 handlers)
+    • routers/health.py            (1)   GET  /api/health
+    • routers/calculators.py       (1)   GET  /api/calculators
+    • routers/education.py         (3)   GET  /api/education /{eid} /videos
+    • routers/consent.py           (2)   GET, POST  /api/consent
+    • routers/medicines.py         (4)   /api/medicines/{catalog,categories,
+                                          custom,custom/{id}}
+    • routers/notes.py             (5)   /api/notes CRUD + /labels
+    • routers/availability.py      (7)   /api/availability/{me,doctors,slots}
+                                          + /api/unavailabilities CRUD
+    • routers/ipss.py              (2)   POST /api/ipss + /history
+    • routers/referrers.py         (4)   /api/referrers CRUD
+    • routers/patients.py          (3)   /api/patients/{lookup,history,reg_no}
+    • routers/tools.py             (6)   /api/tools/{scores,bladder-diary} CRUD
+
+  Files changed
+    • /app/backend/server.py
+        - 8239 → 7471 lines (−768 this phase).
+        - Cumulative across Phase 1+2+3: −1408 lines (−15.9% from
+          original 8879-line monolith).
+        - 11 new include_router() calls appended at end-of-file.
+
+  Tooling
+    • /tmp/extract_phase3.py (rewritten)
+        - Generic, dependency-aware extractor.
+        - For each handler block, walks the body's free names and
+          auto-resolves which imports the new router file needs:
+            db.py     → db, client
+            auth_deps → role helpers + lazy require_* re-exports
+            models.py → Pydantic schemas
+            server.py → fallback for everything else (works because
+                        include_router is called at end-of-file).
+        - Splits FastAPI imports vs. fastapi.responses correctly.
+        - Tracks ImportFrom/Import nodes too so server-imported
+          aliases (e.g. `_edu_list_localized`) are properly
+          re-imported on the router side.
+
+  Backend smoke (deep_testing_backend_v2)
+    74/75 PASS — ZERO regressions.
+    The single "fail" line is a TEST-SIDE misclassification — the
+    smoke harness expected 401 from /api/availability/slots, but
+    that endpoint is intentionally PUBLIC (used by the patient
+    booking UI). Pre-Phase-3 behaviour preserved exactly.
+
+    CRUD smoke verified for: notes, referrers, medicines/custom,
+    tools/bladder-diary. All 13 auth-gated endpoints verified
+    (no token → 401, primary_owner → 200). Untouched domains
+    (/api/auth/me, /api/admin/partners, /api/team,
+    /api/bookings/all) all still 200.
+
+  Awaiting user verification + approval to proceed with Phase 4
+    Phase 4 plan (next iteration) — heavier, more interconnected:
+      • routers/team.py            (7 routes — invites, role mgmt)
+      • routers/admin_partners.py  (10 routes — partner/owner promote/demote)
+      • routers/messaging.py       (4 messages + 2 inbox + 1 admin perm)
+      • routers/broadcasts.py      (7 routes)
+      • routers/notifications.py   (4 routes)
+      • routers/push.py            (4 routes)
+      • routers/blog.py            (5 admin + 2 public)
+      • routers/auth.py            (14 routes — login, OTP, sessions)
+      • routers/me.py              (1: /api/me/tier)
+      • routers/settings.py        (2: /api/settings/homepage)
+    Then Phase 5 (CLINICAL HEART) — extracted last for max stability:
+      • routers/bookings.py        (8 routes — heaviest)
+      • routers/prescriptions.py   (6 routes)
+      • routers/surgeries.py       (8 routes)
+      • routers/records.py         (4 routes)
+      • routers/export.py          (3 routes)
+      • routers/analytics.py       (1)
+      • routers/admin_blog_demo.py (3-4 admin tail)
+      • routers/render.py          (1: PDF render)
+      • routers/rx.py              (1: /api/rx/verify)
+    Phase 6 (final): services/ (reg_no, email, telegram, pdf,
+    notifications dispatch, etc.) — remove dead DISEASES inline data.
