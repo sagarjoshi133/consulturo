@@ -32,6 +32,7 @@ import * as ImagePicker from 'expo-image-picker';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { useTier } from './tier';
+import { previewSampleRx } from './rx-pdf-preview';
 
 type Settings = Record<string, any>;
 
@@ -223,7 +224,30 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
           Need Help blocks rendered inside the PDF. */}
       {(!tier.isPartner || s.partner_can_edit_branding !== false) && (
         <>
-          <Text style={styles.sectionTitle}>Prescription Letterhead</Text>
+          {/* Preview Rx — opens a sample prescription rendered with
+              the CURRENT clinic settings so the user can see exactly
+              how their letterhead, custom Patient Education, and
+              Need-Help text will look on a real prescription. Sits at
+              the top of the section so it's the first thing visible
+              when the user opens the "Prescription Look" category. */}
+          <View style={styles.previewRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Prescription Letterhead</Text>
+              <Text style={[styles.help, { marginBottom: 0 }]}>
+                See exactly how your prescription will print.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => previewSampleRx(s)}
+              style={styles.previewBtn}
+              testID="branding-preview-rx"
+              accessibilityLabel="Preview a sample prescription"
+            >
+              <Ionicons name="eye" size={14} color="#fff" />
+              <Text style={styles.previewBtnText}>Preview Rx</Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.help}>
             Upload a banner image (recommended ~5:1 ratio — e.g. 1500 × 300 px).
             When the toggle below is on, this image will REPLACE the default
@@ -320,6 +344,100 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
             multiline
             testID="branding-need-help"
           />
+        </>
+      )}
+
+      {/* External Blog & YouTube — primary owner pastes their RSS
+          feed URL and YouTube channel URL + API key. The patient
+          clinic surfaces these in the public Blog & Videos screens.
+          Partner gating reuses partner_can_edit_blog +
+          partner_can_edit_videos so a Primary Owner can lock these
+          down per-section. */}
+      {!rxOnly && (!tier.isPartner || s.partner_can_edit_blog !== false) && (
+        <>
+          <Text style={styles.sectionTitle}>External Blog</Text>
+          <Text style={styles.help}>
+            Paste any RSS or Atom feed URL — WordPress, Medium, Substack,
+            Blogger, Ghost all work. Patients see your latest posts in the
+            in-app Blog screen alongside any owner-composed posts.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={s.external_blog_feed_url || ''}
+            onChangeText={(v) => set('external_blog_feed_url', v)}
+            onBlur={() => save({
+              external_blog_feed_url: s.external_blog_feed_url || '',
+              external_blog_feed_label: s.external_blog_feed_label || '',
+            })}
+            placeholder="https://yourblog.com/feed"
+            placeholderTextColor={COLORS.textDisabled}
+            autoCapitalize="none"
+            keyboardType={Platform.OS === 'ios' ? 'url' : 'default'}
+            testID="branding-blog-feed-url"
+          />
+          <TextInput
+            style={[styles.input, { marginTop: 6 }]}
+            value={s.external_blog_feed_label || ''}
+            onChangeText={(v) => set('external_blog_feed_label', v)}
+            onBlur={() => save({ external_blog_feed_label: s.external_blog_feed_label || '' })}
+            placeholder="Source label (optional · e.g. 'Dr Joshi's Blog')"
+            placeholderTextColor={COLORS.textDisabled}
+            testID="branding-blog-feed-label"
+          />
+        </>
+      )}
+
+      {!rxOnly && (!tier.isPartner || s.partner_can_edit_videos !== false) && (
+        <>
+          <Text style={styles.sectionTitle}>YouTube Channel</Text>
+          <Text style={styles.help}>
+            Paste your channel URL and a YouTube Data API v3 key. The latest
+            12 uploads appear automatically in the in-app Videos screen.
+            Your API key is stored securely server-side and is NEVER returned
+            to patients — they only see the rendered videos.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={s.external_youtube_channel_url || ''}
+            onChangeText={(v) => set('external_youtube_channel_url', v)}
+            onBlur={() => save({ external_youtube_channel_url: s.external_youtube_channel_url || '' })}
+            placeholder="https://youtube.com/@YourChannel"
+            placeholderTextColor={COLORS.textDisabled}
+            autoCapitalize="none"
+            keyboardType={Platform.OS === 'ios' ? 'url' : 'default'}
+            testID="branding-yt-channel-url"
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <TextInput
+              style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              value={s.external_youtube_api_key || ''}
+              onChangeText={(v) => set('external_youtube_api_key', v)}
+              onBlur={() => {
+                if (s.external_youtube_api_key) {
+                  save({
+                    external_youtube_api_key: s.external_youtube_api_key,
+                    external_youtube_channel_url: s.external_youtube_channel_url || '',
+                  });
+                }
+              }}
+              placeholder={s.external_youtube_api_key_set ? '••• Key configured (re-paste to update)' : 'YouTube Data API v3 key'}
+              placeholderTextColor={COLORS.textDisabled}
+              autoCapitalize="none"
+              secureTextEntry
+              testID="branding-yt-api-key"
+            />
+            {s.external_youtube_api_key_set ? (
+              <View style={styles.keyChip}>
+                <Ionicons name="checkmark-circle" size={12} color="#fff" />
+                <Text style={styles.keyChipText}>Key set</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={[styles.help, { marginTop: 4, fontSize: 11 }]}>
+            Get an API key at{' '}
+            <Text style={{ color: COLORS.primary }}>console.cloud.google.com</Text>
+            {' '}→ APIs & Services → Credentials → "+ Create credentials".
+          </Text>
         </>
       )}
 
@@ -444,4 +562,43 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dangerInlineBtnText: { color: '#B91C1C', fontSize: 11, fontFamily: 'Manrope_700Bold' },
+
+  // Preview Rx button — sits next to the section title at the top
+  // of "Prescription Letterhead" so it's the first thing the user
+  // sees when they enter the Rx category.
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  previewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  previewBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Manrope_700Bold' },
+
+  // Status chip — used next to the YouTube API key field to show
+  // "Key set ✓" without ever exposing the actual key value.
+  keyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: RADIUS.pill,
+    backgroundColor: '#10B981',
+  },
+  keyChipText: { color: '#fff', fontSize: 11, fontFamily: 'Manrope_700Bold' },
 });

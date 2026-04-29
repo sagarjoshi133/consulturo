@@ -973,35 +973,59 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web: render HTML in a hidden iframe → trigger browser print.
-      // No backend round-trip; the browser's print engine handles
-      // both paper-print AND "Save as PDF" via its dialog.
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '-9999px';
-      iframe.style.bottom = '-9999px';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-      const idoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!idoc) throw new Error('Could not open print iframe');
-      idoc.open();
-      idoc.write(html);
-      idoc.close();
-      // Give the browser a tick to lay out before printing.
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (e) {
-          window.alert('Could not open print dialog: ' + (e as any)?.message);
+      // Web print: open the HTML in a NEW WINDOW (not iframe) and
+      // trigger window.print() on its `load` event. Doing this in a
+      // top-level window — rather than a hidden iframe — sidesteps
+      // two real failure modes we saw in the Kubernetes-ingress
+      // preview environment:
+      //   1. Nested-iframe printing (the preview is itself iframed)
+      //      caused the browser to render the Rx HTML as plain text
+      //      in the parent doc instead of opening the print dialog.
+      //   2. Some browsers block `iframe.contentDocument.write()`
+      //      under strict CSP, which silently dropped the HTML.
+      // The popup approach matches the pattern most clinic PMS
+      // products use and works in Safari, Chrome, Firefox, Edge.
+      const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
+      if (!w) {
+        // Popup blocked — fall back to a Blob-URL navigation so the
+        // user at least lands on the Rx HTML and can hit the
+        // browser's own print menu (Ctrl/Cmd + P).
+        const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {}
+        }, 60000);
+        window.alert('Pop-up blocked. The Rx opened in a new tab — use the browser print menu (Ctrl/Cmd + P) to print or save as PDF.');
+        return;
+      }
+      // Write the HTML into the new document, then call print() once
+      // it has rendered. Some browsers fire `load` before the layout
+      // settles for image-heavy pages, so we also schedule a
+      // fallback print() after a 500ms safety timer.
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      const fire = () => {
+        try { w.focus(); w.print(); } catch (e) {
+          // Re-throw to surface in our outer catch.
+          throw e;
         }
-      }, 250);
-      // Clean up the iframe after print dialog closes (60 s safety).
-      setTimeout(() => {
-        try { document.body.removeChild(iframe); } catch {}
-      }, 60_000);
+      };
+      let printed = false;
+      const safe = () => { if (printed) return; printed = true; fire(); };
+      try {
+        // Best-effort: wait for the load event, then print.
+        w.addEventListener('load', () => setTimeout(safe, 200));
+      } catch {}
+      // Safety net for browsers that fire load before write() is
+      // observed (Safari < 16 was a notable offender).
+      setTimeout(safe, 500);
       return;
     }
 
@@ -1056,20 +1080,23 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
           try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
         }, 4000);
       } catch (e: any) {
-        // Last-resort fallback: open the print dialog so the user
-        // can still save a copy.
+        // Last-resort fallback: open the Rx in a new window so the
+        // user can use the browser's print → save-as-PDF dialog.
+        const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
+        if (!w) {
+          window.alert(
+            `Download failed (${e?.message || 'network error'}) and the popup was blocked. Please allow pop-ups for this site to receive a fallback PDF.`,
+          );
+          return;
+        }
         window.alert(
-          `Download failed (${e?.message || 'network error'}). Falling back to print → Save as PDF.`,
+          `Download failed (${e?.message || 'network error'}). Falling back to the browser's print dialog — choose "Save as PDF" to save the file.`,
         );
-        const ifr = document.createElement('iframe');
-        ifr.style.cssText =
-          'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-        ifr.srcdoc = html;
-        document.body.appendChild(ifr);
-        ifr.onload = () => {
-          try { ifr.contentWindow?.focus(); ifr.contentWindow?.print(); } catch {}
-          setTimeout(() => { try { document.body.removeChild(ifr); } catch {} }, 60000);
-        };
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        try { w.addEventListener('load', () => setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 200)); } catch {}
+        setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 500);
       }
       return;
     }
@@ -1155,60 +1182,52 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web has no reliable cross-browser way to silently produce a
-      // PDF without a backend round-trip (the previous flow hit
-      // /api/render/pdf which was painfully slow and the user
-      // complained about it). The fast path: open the browser's own
-      // "Print → Save as PDF" via a hidden iframe. After the user
-      // saves the PDF locally they can attach it from any client
-      // (WhatsApp / Email / etc.). The Web Share API path is kept
-      // as an opportunistic best-effort for browsers that natively
-      // support file sharing without a backend PDF.
-      const nav: any = typeof navigator !== 'undefined' ? navigator : null;
-      // Best-effort native share: only viable if the browser exposes
-      // canShare with file support AND we already have a small PDF
-      // blob. Skip this on desktop where canShare almost always
-      // returns false to avoid the slow round-trip.
+      // Web share: same window-popup approach as printPrescription
+      // (iframe-based was failing inside the Kubernetes-ingress
+      // preview which is itself iframed). The user gets a
+      // top-level window with the Rx and a print dialog so they
+      // can save it as PDF, then attach via WhatsApp / Email.
       const titledHtml = (() => {
         const t = `<title>${filename.replace(/\.pdf$/i, '')}<\/title>`;
-        return /<title>/i.test(html) ? html.replace(/<title>[^<]*<\/title>/i, t) : html.replace(/<head[^>]*>/i, (m) => `${m}${t}`);
+        return /<title>/i.test(html)
+          ? html.replace(/<title>[^<]*<\/title>/i, t)
+          : html.replace(/<head[^>]*>/i, (m) => `${m}${t}`);
       })();
-      const ifr = document.createElement('iframe');
-      ifr.style.cssText =
-        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-      ifr.srcdoc = titledHtml;
-      document.body.appendChild(ifr);
-      const cleanup = () => { try { document.body.removeChild(ifr); } catch {} };
-      const onLoad = () => {
-        try {
-          const w = ifr.contentWindow;
-          if (!w) { cleanup(); return; }
-          setTimeout(() => {
-            try { w.focus(); w.print(); } catch {}
-            // Hint the user how to share once they've saved the file.
-            // Using setTimeout so the alert appears AFTER the print
-            // dialog opens, not before it.
-            setTimeout(() => {
-              try {
-                window.alert('Save the PDF using the print dialog, then attach it from your downloads when you share.');
-              } catch {}
-            }, 600);
-            setTimeout(cleanup, 60000);
-          }, 350);
-        } catch {
-          cleanup();
-        }
-      };
-      ifr.onload = onLoad;
-      setTimeout(() => { if (ifr.parentNode) onLoad(); }, 1500);
-      // Retain the (rare) native Web Share path on mobile browsers
-      // that have nav.canShare({files}). We try it first; if it fails
-      // or isn't supported the iframe print above is what the user
-      // actually sees.
-      if (nav?.canShare && typeof navigator !== 'undefined') {
-        // Note: deliberately not awaiting — the iframe path is the
-        // primary UX. Most desktop browsers will return false here.
+      const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
+      if (!w) {
+        // Popup blocked — fall back to a Blob-URL "Save the file"
+        // hyperlink the user can open from a fresh tab.
+        const blob = new Blob([titledHtml], { type: 'text/html; charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {}
+        }, 60000);
+        window.alert('Pop-up blocked. The Rx opened in a new tab — use the browser print menu (Ctrl/Cmd + P) → "Save as PDF", then attach the file when you share it.');
+        return;
       }
+      w.document.open();
+      w.document.write(titledHtml);
+      w.document.close();
+      const fire = () => {
+        try { w.focus(); w.print(); } catch {}
+        // Hint the user how to attach the saved PDF in their
+        // sharing app — only after the print dialog opens.
+        setTimeout(() => {
+          try {
+            w.alert?.('Save the PDF using the print dialog, then attach it from your downloads when you share.');
+          } catch {}
+        }, 800);
+      };
+      let printed = false;
+      const safe = () => { if (printed) return; printed = true; fire(); };
+      try { w.addEventListener('load', () => setTimeout(safe, 200)); } catch {}
+      setTimeout(safe, 500);
       return;
     }
 

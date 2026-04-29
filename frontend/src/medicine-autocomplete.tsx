@@ -26,7 +26,9 @@ import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 export type CatalogMedicine = {
-  name: string;
+  name: string;            // canonical generic + strength (e.g. "Tamsulosin 0.4 mg")
+  display_name?: string;   // "Brandname (Generic name)" — what the UI shows
+  brand?: string;          // selected brand for display_name
   generic?: string;
   category?: string;
   dosage?: string;
@@ -77,9 +79,13 @@ export function MedicineAutocomplete({
           params: { q: q || undefined, limit: 10 },
         });
         if (reqId !== lastReqId.current) return;
-        // Hide the one that's already an exact match (nothing to pick)
+        // Hide rows whose display_name (brand+generic) already matches
+        // the current input verbatim — nothing left to pick.
         const filtered: CatalogMedicine[] = (data || []).filter(
-          (m: CatalogMedicine) => m.name.toLowerCase() !== q.toLowerCase()
+          (m: CatalogMedicine) => {
+            const dn = (m.display_name || m.name || '').toLowerCase();
+            return dn !== q.toLowerCase();
+          },
         );
         setItems(filtered);
       } catch {
@@ -92,8 +98,13 @@ export function MedicineAutocomplete({
   }, [value, focused, dismissed]);
 
   const commit = (m: CatalogMedicine) => {
-    onChangeText(m.name);
-    if (autofill) onSelect(m);
+    // Always commit the "Brandname (Generic name)" string so the
+    // printed prescription, the form field, AND any later edits
+    // share the same display format. Falls back to the bare generic
+    // name when no brand is configured.
+    const out = m.display_name || m.name;
+    onChangeText(out);
+    if (autofill) onSelect({ ...m, name: out });
     setItems([]);
     setDismissed(true);
     if (Platform.OS !== 'web') Keyboard.dismiss();
@@ -133,10 +144,12 @@ export function MedicineAutocomplete({
               testID={testID ? `${testID}-sug-${m.name.slice(0, 20)}` : undefined}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.dropName} numberOfLines={1}>{m.name}</Text>
-                {m.brands && m.brands.length > 0 ? (
+                <Text style={styles.dropName} numberOfLines={1}>
+                  {m.display_name || m.name}
+                </Text>
+                {m.brands && m.brands.length > 1 ? (
                   <Text style={styles.brandText} numberOfLines={1}>
-                    {m.brands.slice(0, 3).join(' · ')}
+                    Other brands: {m.brands.filter((b) => b !== m.brand).slice(0, 3).join(' · ')}
                   </Text>
                 ) : null}
                 <View style={styles.metaRow}>

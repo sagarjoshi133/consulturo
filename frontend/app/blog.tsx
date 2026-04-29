@@ -117,24 +117,36 @@ export default function Blog() {
             <TouchableOpacity
               key={p.id}
               onPress={() => router.push(`/blog/${p.id}` as any)}
-              activeOpacity={0.85}
+              activeOpacity={0.86}
               style={[styles.card, isWebDesktop && (isWebWide ? styles.cardDesktop3 : styles.cardDesktop2)]}
               testID={`blog-post-${p.id}`}
             >
-              {!!p.cover && <Image source={{ uri: p.cover }} style={styles.cover} resizeMode="cover" />}
-              <View style={{ padding: 14 }}>
-                {p.category ? (
-                  <View style={styles.categoryPill}>
+              {!!p.cover && (
+                <View style={styles.coverWrap}>
+                  <Image source={{ uri: p.cover }} style={styles.cover} resizeMode="cover" />
+                  <View style={styles.coverOverlay} pointerEvents="none" />
+                  {p.category ? (
+                    <View style={styles.categoryPill}>
+                      <Text style={styles.categoryText}>{p.category}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
+              <View style={styles.cardBody}>
+                {!p.cover && p.category ? (
+                  <View style={[styles.categoryPill, styles.categoryPillInline]}>
                     <Text style={styles.categoryText}>{p.category}</Text>
                   </View>
                 ) : null}
-                <Text style={styles.postTitle}>{p.title}</Text>
+                <Text style={styles.postTitle} numberOfLines={2}>{p.title}</Text>
                 {p.excerpt ? (
                   <Text style={styles.postExcerpt} numberOfLines={2}>{p.excerpt}</Text>
                 ) : null}
                 <View style={styles.postMeta}>
-                  <Ionicons name="calendar-outline" size={12} color={COLORS.textSecondary} />
+                  <Ionicons name="time-outline" size={11} color={COLORS.textSecondary} />
                   <Text style={styles.postDate}>{displayDate(p.published_at)}</Text>
+                  <View style={styles.metaSep} />
+                  <Text style={styles.readMore}>Read →</Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -193,30 +205,94 @@ const styles = StyleSheet.create({
   emptyText: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13 },
   card: {
     backgroundColor: '#fff',
-    borderRadius: RADIUS.lg,
+    borderRadius: 14,
     overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 12,
+    // Subtle shadow + hairline border combo for a premium editorial
+    // feel — replaces the heavier 1px border-only look.
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: '#EEF2F4',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 1,
   },
   desktopGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: 14,
   },
   cardDesktop2: { width: '48.5%' },
   cardDesktop3: { width: '32%' },
-  cover: { width: '100%', height: 200, backgroundColor: COLORS.bg },
+  // Cover wrapper houses the image + overlay + category chip so the
+  // pill floats over the picture instead of consuming a separate row.
+  coverWrap: { position: 'relative' },
+  cover: { width: '100%', height: 130, backgroundColor: COLORS.bg },
+  coverOverlay: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    height: 50,
+    // Gradient simulated via a single solid-with-opacity layer — RN
+    // doesn't ship a gradient component, but for legibility this is
+    // enough behind the floating category pill.
+    backgroundColor: 'rgba(15,23,42,0.18)',
+  },
+  cardBody: { padding: 12, paddingTop: 10 },
   categoryPill: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  categoryPillInline: {
+    position: 'relative',
+    top: 0, left: 0,
     alignSelf: 'flex-start',
     backgroundColor: COLORS.primary + '18',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
+    marginBottom: 6,
   },
-  categoryText: { ...FONTS.label, color: COLORS.primary, fontSize: 10 },
-  postTitle: { ...FONTS.h4, color: COLORS.textPrimary, marginTop: 8, lineHeight: 22 },
-  postExcerpt: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 4, lineHeight: 20 },
-  postMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
-  postDate: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12 },
+  categoryText: {
+    ...FONTS.label,
+    color: COLORS.primary,
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: 'Manrope_700Bold',
+  },
+  postTitle: {
+    ...FONTS.h4,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: 'Manrope_700Bold',
+  },
+  postExcerpt: {
+    ...FONTS.body,
+    color: COLORS.textSecondary,
+    marginTop: 5,
+    lineHeight: 18,
+    fontSize: 12.5,
+  },
+  postMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 9,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F8',
+  },
+  postDate: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11 },
+  metaSep: { flex: 1 },
+  readMore: {
+    ...FONTS.label,
+    color: COLORS.primary,
+    fontSize: 11.5,
+    fontFamily: 'Manrope_700Bold',
+    letterSpacing: 0.3,
+  },
 });

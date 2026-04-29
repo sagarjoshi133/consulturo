@@ -100,7 +100,34 @@ async def medicines_catalog(
 
     filtered = [m for m in combined if matches(m)]
     filtered.sort(key=rank_key)
-    return filtered[:limit]
+
+    # Compute display_name = "Brandname (Generic name)" so the UI &
+    # printed Rx use the user-facing format consistently. When a user
+    # searches by a specific brand we surface THAT brand first; for
+    # generic searches we use brands[0] as the canonical brand. Rows
+    # without any brands keep the bare generic+strength name.
+    out: List[Dict[str, Any]] = []
+    for m in filtered[:limit]:
+        brands = m.get("brands") or []
+        chosen_brand = ""
+        if isinstance(brands, list) and brands:
+            if qn:
+                # Prefer the first brand that contains the query so a
+                # user typing "Urimax" sees "Urimax (Tamsulosin 0.4 mg)"
+                # rather than getting "Veltam (..)" first.
+                for b in brands:
+                    if qn in str(b).lower():
+                        chosen_brand = str(b)
+                        break
+            if not chosen_brand:
+                chosen_brand = str(brands[0])
+        display_name = (
+            f"{chosen_brand} ({m.get('name') or ''})"
+            if chosen_brand and m.get("name")
+            else (m.get("name") or "")
+        )
+        out.append({**m, "display_name": display_name, "brand": chosen_brand})
+    return out
 
 @router.get("/api/medicines/categories")
 async def medicines_categories(user=Depends(require_prescriber)):

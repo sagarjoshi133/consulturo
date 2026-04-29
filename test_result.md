@@ -11874,3 +11874,107 @@ agent_communication_2026_04_29_phase7_polish_smoke_RERUN:
       • Migrate existing data with a single backfill script
     No archaeological digging required — every domain has a clear
     home and every helper lives in services/.
+
+backend_external_blog_youtube_smoke_2026_04_29:
+  - task: "External Blog (RSS/Atom) + YouTube Channel feature smoke — 5 new clinic_settings fields + /api/blog merge + /api/videos sourcing priority"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/clinic_settings.py, /app/backend/routers/blog.py, /app/backend/routers/education.py, /app/backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 38/38 ASSERTIONS PASS via
+          /app/backend_test_external_blog_youtube.py against the public
+          EXPO_PUBLIC_BACKEND_URL (https://urology-pro.preview.emergentagent.com/api).
+
+          1. GET /api/clinic-settings (public, no auth) ✅
+             - Status 200.
+             - Payload contains all 4 new public fields with empty
+               defaults: external_blog_feed_url:"",
+               external_blog_feed_label:"",
+               external_youtube_channel_url:"",
+               external_youtube_channel_id:"".
+             - external_youtube_api_key_set:bool present (False initial).
+             - RAW external_youtube_api_key key is FULLY ABSENT from the
+               response — verified both via dict-key check
+               ("external_youtube_api_key" not in body) AND via raw text
+               substring check ('"external_youtube_api_key"' not in
+               r.text). The only api_key-related key in the response is
+               external_youtube_api_key_set.
+
+          2. PATCH external_blog_feed_url (primary_owner) ✅
+             - PATCH {"external_blog_feed_url":
+               "https://medium.com/feed/@drsagar"} → 200
+               {"ok":true,"updated":1}.
+             - Re-GET reflects the new value.
+             - Revert PATCH to "" → 200; Re-GET confirms reverted.
+
+          3. PATCH external_youtube_channel_url, no api_key ✅
+             - PATCH {"external_youtube_api_key":"",
+               "external_youtube_channel_url":
+               "https://www.youtube.com/@dr_sagar_j"} → 200
+               {"ok":true,"updated":3}.
+             - Re-GET: external_youtube_channel_url reflects.
+             - external_youtube_channel_id == "" — _resolve_youtube_channel_id
+               correctly skipped resolution because api_key was empty
+               (handle URL needs the Search API for resolution).
+             - external_youtube_api_key_set is False as expected.
+
+          4. PATCH external_youtube_api_key (smoke value) ✅
+             - PATCH {"external_youtube_api_key":
+               "FAKE-TEST-KEY-FOR-SMOKE"} → 200
+               {"ok":true,"updated":1}.
+             - Re-GET: external_youtube_api_key_set flips to True.
+             - RAW external_youtube_api_key key NOT present in response.
+             - Fake key string "FAKE-TEST-KEY-FOR-SMOKE" NOT leaked
+               anywhere in the response body string (full r.text
+               substring check). Redaction logic in
+               routers/clinic_settings.py:144 (`out.pop(...)`) is
+               watertight.
+
+          5. GET /api/blog (public) ✅
+             - With external_blog_feed_url="" → 200, list response,
+               sources observed only "website" (legacy Blogger
+               fallback). NO source="external" items present.
+             - With external_blog_feed_url=
+               "https://feeds.feedburner.com/TechCrunch" → 200, list
+               response, 21 external items with source="external"
+               returned. Each external item has the full normalized
+               shape: {id, title, category, cover, excerpt,
+               content_html, published_at, link, source}. RSS 2.0
+               parsing and content:encoded extraction work as
+               designed.
+             - When external_blog_feed_url is set, the legacy Blogger
+               fallback is skipped (per the `if not cs.get(...)`
+               branch in routers/blog.py:163), so only native +
+               external items are merged. ✅
+
+          6. GET /api/videos (public) ✅
+             - Initial state (api_key set to FAKE, channel_id="") → 200
+               with 8 items (env YOUTUBE_API_KEY+CHANNEL_ID fallback
+               kicked in — the fake/empty Source-1 path returned 0 items
+               and the code correctly fell through to Source 2). Each
+               item has {id, title, youtube_id, thumbnail, ...}. NEVER
+               5xx.
+             - After complete wipe (api_key="", channel_url="") → 200
+               with 8 items still (env-level fallback unchanged).
+             - Sourcing-priority ladder (clinic_settings → env → seed)
+               verified to NOT 500 at any tier. Per spec: "never 500."
+
+          7. Tear down ✅
+             - All test PATCHes reverted to empty strings:
+               external_blog_feed_url="", external_blog_feed_label="",
+               external_youtube_channel_url="",
+               external_youtube_api_key="".
+             - external_youtube_channel_id auto-cleared to "" by the
+               channel_url=""+empty-key code path.
+             - Final GET confirms: all 5 new fields back to clean
+               empty/false defaults. NO test data left in prod
+               clinic_settings doc.
+
+          Backend supervisor uptime stable; no 500s observed anywhere
+          across the run. /var/log/supervisor/backend.err.log clean.

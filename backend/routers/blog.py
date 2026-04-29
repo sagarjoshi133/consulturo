@@ -1,29 +1,138 @@
 """ConsultUro — blog router.
 
-  · /api/blog
-  · /api/blog/{post_id}
-  · /api/admin/blog
+  · /api/blog               — public list (in-app + Blogger + external RSS)
+  · /api/blog/{post_id}     — public detail
+  · /api/admin/blog         — owner-only CRUD
   · /api/admin/blog/{post_id}
   · /api/admin/blog/{post_id}/review
 
 Extracted from server.py during Phase 3 modularization.
-Behaviour preserved EXACTLY.
 """
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+import re
 import uuid
+import logging
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
+
 from db import db
 from auth_deps import is_super_owner, require_blog_writer, require_owner
 from models import BlogPostBody, BlogReviewBody
-from server import _admin_to_html, _load_blog_from_blogger
+from server import _admin_to_html, _load_blog_from_blogger, _strip_html, _extract_first_img
 
+log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# 15-minute in-process cache for the per-clinic external RSS/Atom
+# feed — avoids hammering external blogs on every public list call.
+_EXT_FEED_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+async def _load_external_blog_feed(feed_url: str, label: str = "") -> List[Dict[str, Any]]:
+    """Fetch an arbitrary RSS 2.0 / Atom feed URL and convert items
+    into the same shape the public /api/blog endpoint returns.
+
+    Auto-detects the feed type by looking at the root element.
+    Returns an empty list on any failure — never raises (the public
+    list endpoint must keep working even if a Primary Owner pasted
+    a broken URL).
+    """
+    if not feed_url:
+        return []
+    cached = _EXT_FEED_CACHE.get(feed_url)
+    now = datetime.now(timezone.utc)
+    if cached and (now - cached["at"]).total_seconds() < 900:
+        return cached["data"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as hc:
+            r = await hc.get(feed_url, headers={"User-Agent": "ConsultUro/1.0"})
+        if r.status_code != 200:
+            return []
+        try:
+            root = ET.fromstring(r.text)
+        except ET.ParseError:
+            return []
+        items: List[Dict[str, Any]] = []
+        # Atom feeds use <feed><entry>; RSS 2.0 uses <rss><channel><item>.
+        ATOM_NS = "{http://www.w3.org/2005/Atom}"
+        if root.tag.endswith("feed"):
+            entries = root.findall(f"{ATOM_NS}entry")
+            for e in entries[:25]:
+                title = (e.findtext(f"{ATOM_NS}title") or "").strip()
+                content = (
+                    e.findtext(f"{ATOM_NS}content")
+                    or e.findtext(f"{ATOM_NS}summary")
+                    or ""
+                )
+                published = e.findtext(f"{ATOM_NS}published") or e.findtext(f"{ATOM_NS}updated") or ""
+                link_el = e.find(f"{ATOM_NS}link")
+                link = (link_el.get("href") if link_el is not None else "") or ""
+                items.append({"title": title, "content": content, "published": published, "link": link})
+        else:
+            entries = root.findall(".//item")
+            for e in entries[:25]:
+                title = (e.findtext("title") or "").strip()
+                # WordPress / Medium use content:encoded for full HTML.
+                content = (
+                    e.findtext("{http://purl.org/rss/1.0/modules/content/}encoded")
+                    or e.findtext("description")
+                    or ""
+                )
+                published = e.findtext("pubDate") or ""
+                link = e.findtext("link") or ""
+                items.append({"title": title, "content": content, "published": published, "link": link})
+
+        # Normalise to the public /api/blog post shape
+        out: List[Dict[str, Any]] = []
+        for it in items:
+            content_html = it["content"]
+            cover = _extract_first_img(content_html) or ""
+            stripped = _strip_html(content_html)
+            excerpt = (stripped[:240] + "…") if len(stripped) > 240 else stripped
+            try:
+                # RFC 2822 (RSS) or ISO 8601 (Atom) — try both.
+                from email.utils import parsedate_to_datetime
+                if it["published"]:
+                    try:
+                        dt = parsedate_to_datetime(it["published"])
+                    except Exception:
+                        dt = datetime.fromisoformat(it["published"].replace("Z", "+00:00"))
+                else:
+                    dt = now
+                published_str = dt.strftime("%Y-%m-%d")
+            except Exception:
+                published_str = now.strftime("%Y-%m-%d")
+            slug = re.sub(r"[^a-z0-9]+", "-", it["title"].lower())[:60].strip("-")
+            out.append({
+                "id": f"ext-{slug}-{abs(hash(it['link'] or it['title'])) % 1000000}",
+                "title": it["title"],
+                "category": label or "Latest",
+                "cover": cover,
+                "excerpt": excerpt,
+                "content_html": content_html,
+                "published_at": published_str,
+                "link": it["link"],
+                "source": "external",
+            })
+        _EXT_FEED_CACHE[feed_url] = {"at": now, "data": out}
+        return out
+    except Exception as e:
+        log.warning("External blog feed fetch failed for %s — %s", feed_url, e)
+        return []
+
 
 
 @router.get("/api/blog")
 async def list_blog():
-    # Merge owner-composed posts (first) with live Blogger posts.
+    """Merges 3 sources, in priority order:
+      1. Owner-composed posts (db.blog_posts)
+      2. The clinic's configured external RSS/Atom feed (any platform)
+      3. The legacy /consulturo Blogger feed (kept for backwards compat)
+    """
     admin_cursor = db.blog_posts.find({"published": True}, {"_id": 0}).sort("created_at", -1)
     admin_posts_raw = await admin_cursor.to_list(length=100)
     admin_posts = [
@@ -40,10 +149,22 @@ async def list_blog():
         }
         for p in admin_posts_raw
     ]
-    blogger_posts = await _load_blog_from_blogger()
-    for bp in blogger_posts:
-        bp["source"] = "website"
-    return admin_posts + blogger_posts
+    # External RSS / Atom — pulled from clinic_settings.external_blog_feed_url.
+    cs = await db.clinic_settings.find_one(
+        {"_id": "default"},
+        {"external_blog_feed_url": 1, "external_blog_feed_label": 1},
+    ) or {}
+    external_posts = await _load_external_blog_feed(
+        cs.get("external_blog_feed_url") or "",
+        cs.get("external_blog_feed_label") or "",
+    )
+    # Legacy Blogger feed (kept on as a default if no external_blog_feed_url is set).
+    blogger_posts: List[Dict[str, Any]] = []
+    if not cs.get("external_blog_feed_url"):
+        blogger_posts = await _load_blog_from_blogger()
+        for bp in blogger_posts:
+            bp["source"] = "website"
+    return admin_posts + external_posts + blogger_posts
 
 @router.get("/api/blog/{post_id}")
 async def get_blog(post_id: str):

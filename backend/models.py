@@ -418,6 +418,15 @@ class ClinicSettingsPatch(BaseModel):
     social_youtube: Optional[str] = None
     social_whatsapp: Optional[str] = None
     external_blog_links: Optional[List[Dict[str, str]]] = None  # [{title,url}]
+    # External Blog (RSS / Atom) — patient-facing /api/blog merges
+    # native posts with items pulled from this URL when set.
+    external_blog_feed_url: Optional[str] = None
+    external_blog_feed_label: Optional[str] = None
+    # External YouTube — Primary Owner provides their own YouTube
+    # Data API v3 key + channel URL. We auto-resolve channel_id and
+    # cache the latest 12 videos for /api/videos.
+    external_youtube_channel_url: Optional[str] = None
+    external_youtube_api_key: Optional[str] = None
     # Partner-permission toggles (controlled by primary_owner only).
     # `partner_can_edit_branding` is the legacy umbrella toggle (still
     # honoured for backwards compat as a fallback). New granular flags
