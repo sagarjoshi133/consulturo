@@ -80,30 +80,44 @@ export async function previewSampleRx(settings?: ClinicSettings): Promise<void> 
     const html = await buildRxHtml(SAMPLE_RX, s);
 
     if (Platform.OS === 'web') {
-      // Open in a new tab so the Branding panel itself stays put
-      // and the user can flip back-and-forth to compare edits.
-      const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
-      if (!w) {
-        // Popup blocked — fall back to a Blob-URL navigation in the
-        // current tab so the user at least sees the preview.
-        const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
-        const blobUrl = URL.createObjectURL(blob);
+      // Open the preview in a new tab via a Blob URL — same-origin
+      // navigation that browsers render reliably even inside iframed
+      // previews. We deliberately AVOID the legacy
+      // `window.open('') + document.write()` pattern because it
+      // (a) returned null inside the Kubernetes-ingress preview
+      // iframe and (b) sometimes fell back to navigating the
+      // parent frame, replacing the React app with the raw HTML.
+      const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+      const blobUrl = URL.createObjectURL(blob);
+      let opened: Window | null = null;
+      try {
+        opened = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      } catch {}
+      if (opened) {
+        // Defer revoke so the new tab has time to fetch the blob.
+        setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, 60000);
+        return;
+      }
+      // Popup blocked — try an anchor-click fallback (some browsers
+      // permit this when window.open is denied). Then revoke either
+      // way so we don't leak Blob memory.
+      try {
         const a = document.createElement('a');
         a.href = blobUrl;
         a.target = '_blank';
-        a.rel = 'noopener';
+        a.rel = 'noopener noreferrer';
         document.body.appendChild(a);
         a.click();
         setTimeout(() => {
           try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {}
         }, 60000);
-        window.alert('Pop-up blocked. The sample Rx opened in a new tab.');
-        return;
+        window.alert(
+          'Allow pop-ups for this site to see the sample Rx in a new tab. If a tab did not open, check your browser pop-up blocker.',
+        );
+      } catch {
+        try { URL.revokeObjectURL(blobUrl); } catch {}
+        window.alert('Could not open the sample Rx preview. Please allow pop-ups for this site.');
       }
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      try { w.document.title = 'Sample Prescription — Preview'; } catch {}
       return;
     }
 
@@ -112,7 +126,14 @@ export async function previewSampleRx(settings?: ClinicSettings): Promise<void> 
     // exactly like a real Rx flow.
     await Print.printAsync({ html });
   } catch (e: any) {
-    const msg = e?.message || 'Could not render sample preview';
+    // Sanitise message — never let the Rx HTML template leak into an alert.
+    let raw: any = e?.message ?? e;
+    let msg: string = (typeof raw === 'string' ? raw : String(raw ?? ''))
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (msg.length > 240) msg = msg.slice(0, 237) + '…';
+    if (!msg) msg = 'Could not render sample preview';
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert('Preview failed', msg);
   }

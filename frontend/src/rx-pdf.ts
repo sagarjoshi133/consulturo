@@ -885,30 +885,157 @@ export async function loadClinicSettings(): Promise<ClinicSettings> {
   };
 }
 
-// Opens the Rx HTML in a new browser tab. Used by both Print and PDF actions
-// on web. Returns the opened Window (or null if popup was blocked).
-function openRxInNewTab(html: string, autoPrint: boolean): Window | null {
-  if (typeof window === 'undefined') return null;
-  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
-  const blobUrl = URL.createObjectURL(blob);
-  const w = window.open(blobUrl, '_blank', 'noopener');
-  if (!w) {
-    window.location.assign(blobUrl);
-    return null;
+// Sanitises any error/value into a short, plain-text message safe to put into
+// window.alert / Alert.alert. Strips HTML tags (so we NEVER leak the Rx
+// template HTML), collapses whitespace, and truncates aggressively. The full
+// error is still console.error'd for engineering diagnosis.
+function safeMsg(e: any, fallback: string): string {
+  try {
+    // eslint-disable-next-line no-console
+    console.error('[rx-pdf] action failed:', e);
+  } catch {}
+  let m: any = e?.response?.data?.detail ?? e?.message ?? e;
+  if (m == null) return fallback;
+  if (typeof m !== 'string') {
+    try { m = String(m); } catch { return fallback; }
   }
-  if (autoPrint) {
-    try {
-      w.addEventListener('load', () => {
-        setTimeout(() => {
+  // Strip HTML tags & control chars so the alert can't render an entire
+  // Rx template if some upstream code accidentally surfaces it as a message.
+  m = m.replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001F]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!m) return fallback;
+  // Some backends prefix detail with the full HTML on render failure — guard.
+  if (m.length > 240) m = m.slice(0, 237) + '…';
+  return m;
+}
+
+// Show a clean, user-friendly alert. Always strips HTML / unsafe content.
+function showWebAlert(message: string) {
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  }
+}
+
+/**
+ * Web-only: Print the supplied HTML using a hidden <iframe srcdoc>.
+ *
+ * Why iframe (srcdoc) and not window.open?
+ *  • The Emergent preview, the EAS preview, and many corporate intranets
+ *    embed our app inside an outer iframe. Inside such an iframe,
+ *    window.open() is frequently blocked or returns a Window that can't
+ *    receive document.write() — both modes manifested as "raw HTML on
+ *    screen" earlier.
+ *  • A same-document iframe with `srcdoc` always renders, never triggers
+ *    a popup blocker, and lets us call iframe.contentWindow.print()
+ *    which behaves identically to a real top-level print on every modern
+ *    browser (Chrome/Edge/Safari/Firefox).
+ *  • The previous Blob+anchor fallback could navigate the parent frame
+ *    in some browsers, replacing the React app with the raw Rx HTML —
+ *    the visual bug the user reported.
+ */
+function webPrintViaIframe(html: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      return reject(new Error('Print is only available on Web'));
+    }
+    // Tear down any leftover iframe from a prior print; otherwise multiple
+    // attempts stack up and trigger duplicate print dialogs.
+    const prev = document.getElementById('__rx_print_frame__');
+    if (prev && prev.parentNode) {
+      try { prev.parentNode.removeChild(prev); } catch {}
+    }
+    const iframe = document.createElement('iframe');
+    iframe.id = '__rx_print_frame__';
+    iframe.setAttribute('aria-hidden', 'true');
+    // Off-screen but ATTACHED so the browser actually lays out & paints
+    // (visibility:hidden / display:none would skip paint, breaking print).
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    let settled = false;
+    const cleanup = (delay = 60_000) => {
+      // Defer DOM removal so the browser can keep painting the
+      // iframe while the user interacts with the print dialog.
+      setTimeout(() => {
+        try { iframe.parentNode?.removeChild(iframe); } catch {}
+      }, delay);
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup(0);
+      reject(err);
+    };
+    iframe.onload = () => {
+      try {
+        const w = iframe.contentWindow;
+        if (!w) return fail(new Error('Print frame unavailable'));
+        // Wait for any embedded images (logo, signature, QR, letterhead)
+        // to finish loading before invoking print() — otherwise a fast
+        // print() can fire before the layout settles and produce a blank
+        // page on Safari/Firefox.
+        const doc = w.document;
+        const imgs = Array.from(doc?.images || []);
+        const wait = imgs.length === 0
+          ? Promise.resolve()
+          : Promise.all(
+              imgs.map((img) =>
+                new Promise<void>((r) => {
+                  if ((img as HTMLImageElement).complete) return r();
+                  img.addEventListener('load', () => r(), { once: true });
+                  img.addEventListener('error', () => r(), { once: true });
+                  setTimeout(r, 3000);
+                })
+              )
+            );
+        wait.then(() => {
           try { w.focus(); w.print(); } catch {}
-        }, 400);
-      });
-    } catch {}
-  }
-  setTimeout(() => {
-    try { URL.revokeObjectURL(blobUrl); } catch {}
-  }, 60000);
-  return w;
+          finish();
+        });
+      } catch (err: any) {
+        fail(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    iframe.onerror = () => fail(new Error('Failed to load print frame'));
+    document.body.appendChild(iframe);
+    // `srcdoc` is set after appending so onload fires reliably (Safari).
+    try {
+      iframe.srcdoc = html;
+    } catch (e: any) {
+      // Older browsers without srcdoc — fall back to document.write.
+      try {
+        const w = iframe.contentWindow;
+        if (w) {
+          w.document.open();
+          w.document.write(html);
+          w.document.close();
+        } else {
+          fail(new Error('Print frame unsupported'));
+        }
+      } catch (err: any) {
+        fail(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+    // Safety net for browsers where onload never fires (rare).
+    setTimeout(() => {
+      if (settled) return;
+      try {
+        const w = iframe.contentWindow;
+        if (w) { w.focus(); w.print(); }
+      } catch {}
+      finish();
+    }, 5000);
+  });
 }
 
 // ─── Backend PDF bridge ────────────────────────────────────────────────────
@@ -973,59 +1100,16 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web print: open the HTML in a NEW WINDOW (not iframe) and
-      // trigger window.print() on its `load` event. Doing this in a
-      // top-level window — rather than a hidden iframe — sidesteps
-      // two real failure modes we saw in the Kubernetes-ingress
-      // preview environment:
-      //   1. Nested-iframe printing (the preview is itself iframed)
-      //      caused the browser to render the Rx HTML as plain text
-      //      in the parent doc instead of opening the print dialog.
-      //   2. Some browsers block `iframe.contentDocument.write()`
-      //      under strict CSP, which silently dropped the HTML.
-      // The popup approach matches the pattern most clinic PMS
-      // products use and works in Safari, Chrome, Firefox, Edge.
-      const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
-      if (!w) {
-        // Popup blocked — fall back to a Blob-URL navigation so the
-        // user at least lands on the Rx HTML and can hit the
-        // browser's own print menu (Ctrl/Cmd + P).
-        const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {}
-        }, 60000);
-        window.alert('Pop-up blocked. The Rx opened in a new tab — use the browser print menu (Ctrl/Cmd + P) to print or save as PDF.');
-        return;
-      }
-      // Write the HTML into the new document, then call print() once
-      // it has rendered. Some browsers fire `load` before the layout
-      // settles for image-heavy pages, so we also schedule a
-      // fallback print() after a 500ms safety timer.
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      const fire = () => {
-        try { w.focus(); w.print(); } catch (e) {
-          // Re-throw to surface in our outer catch.
-          throw e;
-        }
-      };
-      let printed = false;
-      const safe = () => { if (printed) return; printed = true; fire(); };
-      try {
-        // Best-effort: wait for the load event, then print.
-        w.addEventListener('load', () => setTimeout(safe, 200));
-      } catch {}
-      // Safety net for browsers that fire load before write() is
-      // observed (Safari < 16 was a notable offender).
-      setTimeout(safe, 500);
+      // Web print: render the Rx into a hidden <iframe srcdoc> and
+      // call iframe.contentWindow.print(). This is the most robust
+      // approach for our environment because:
+      //   • It works inside the Emergent Kubernetes-ingress preview
+      //     (which is itself iframed and blocks window.open).
+      //   • It never opens a top-level navigation that could replace
+      //     the React app with the raw Rx HTML — the visual bug the
+      //     user reported earlier.
+      //   • It sidesteps popup-blockers entirely.
+      await webPrintViaIframe(html);
       return;
     }
 
@@ -1034,8 +1118,8 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
     // and shows the native print dialog — no network, no timeout.
     await Print.printAsync({ html });
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || 'Could not print prescription';
-    if (Platform.OS === 'web') window.alert(msg);
+    const msg = safeMsg(e, 'Could not print prescription');
+    if (Platform.OS === 'web') showWebAlert(msg);
     else Alert.alert('Print failed', msg);
   }
 }
@@ -1080,23 +1164,21 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
           try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
         }, 4000);
       } catch (e: any) {
-        // Last-resort fallback: open the Rx in a new window so the
-        // user can use the browser's print → save-as-PDF dialog.
-        const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
-        if (!w) {
-          window.alert(
-            `Download failed (${e?.message || 'network error'}) and the popup was blocked. Please allow pop-ups for this site to receive a fallback PDF.`,
-          );
-          return;
-        }
-        window.alert(
-          `Download failed (${e?.message || 'network error'}). Falling back to the browser's print dialog — choose "Save as PDF" to save the file.`,
+        // Last-resort fallback: open the print dialog via iframe so
+        // the user can choose "Save as PDF" from the browser's own
+        // print sheet. We deliberately AVOID writing the HTML into a
+        // top-level window or alerting the raw error — both modes
+        // were visibly leaking the Rx template HTML to the screen
+        // earlier.
+        const reason = safeMsg(e, 'network error');
+        showWebAlert(
+          `PDF service is unavailable (${reason}). Falling back to the browser print dialog — choose "Save as PDF" to download the file.`,
         );
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-        try { w.addEventListener('load', () => setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 200)); } catch {}
-        setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 500);
+        try {
+          await webPrintViaIframe(html);
+        } catch (e2: any) {
+          showWebAlert(safeMsg(e2, 'Could not open print dialog. Please try again.'));
+        }
       }
       return;
     }
@@ -1160,8 +1242,8 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
       Alert.alert('PDF generated', `File saved at: ${uri}`);
     }
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || 'Could not generate PDF';
-    if (Platform.OS === 'web') window.alert(msg);
+    const msg = safeMsg(e, 'Could not generate PDF');
+    if (Platform.OS === 'web') showWebAlert(msg);
     else Alert.alert('PDF preview failed', msg);
   }
 }
@@ -1182,52 +1264,76 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web share: same window-popup approach as printPrescription
-      // (iframe-based was failing inside the Kubernetes-ingress
-      // preview which is itself iframed). The user gets a
-      // top-level window with the Rx and a print dialog so they
-      // can save it as PDF, then attach via WhatsApp / Email.
-      const titledHtml = (() => {
-        const t = `<title>${filename.replace(/\.pdf$/i, '')}<\/title>`;
-        return /<title>/i.test(html)
-          ? html.replace(/<title>[^<]*<\/title>/i, t)
-          : html.replace(/<head[^>]*>/i, (m) => `${m}${t}`);
-      })();
-      const w = window.open('', '_blank', 'width=900,height=1200,noopener=no,noreferrer=no');
-      if (!w) {
-        // Popup blocked — fall back to a Blob-URL "Save the file"
-        // hyperlink the user can open from a fresh tab.
-        const blob = new Blob([titledHtml], { type: 'text/html; charset=utf-8' });
-        const blobUrl = URL.createObjectURL(blob);
+      // Web share strategy:
+      //   1. Best path → Web Share API with the real PDF File
+      //      (Chrome on Android, Safari on iOS Web). The user
+      //      gets the native share sheet and can attach the PDF
+      //      directly to WhatsApp / Mail / Drive.
+      //   2. Otherwise → download the PDF locally and instruct the
+      //      user to attach it from Downloads. We do NOT write the
+      //      HTML into a top-level window (that's what was visibly
+      //      dumping the Rx template HTML to the screen earlier).
+      let blob: Blob | undefined;
+      try {
+        const r = await fetchPdfFromBackend(html);
+        blob = r.blob;
+      } catch (e: any) {
+        // Backend renderer unavailable — fall through to print-dialog
+        // path so the doctor can still produce a PDF locally.
+        try {
+          await webPrintViaIframe(html);
+          showWebAlert(
+            'PDF service is unavailable. Use "Save as PDF" in the print dialog, then attach the saved file when sharing with the patient.',
+          );
+        } catch (e2: any) {
+          showWebAlert(safeMsg(e2, 'Could not share prescription'));
+        }
+        return;
+      }
+
+      if (!blob) {
+        showWebAlert('No PDF received from server. Please try again.');
+        return;
+      }
+
+      // Try the Web Share API with the actual file attachment.
+      try {
+        const FileCtor: any = (typeof File !== 'undefined') ? File : null;
+        if (FileCtor && (navigator as any)?.canShare) {
+          const file = new FileCtor([blob], filename, { type: 'application/pdf' });
+          if ((navigator as any).canShare({ files: [file] })) {
+            await (navigator as any).share({
+              files: [file],
+              title: filename,
+              text: filename,
+            });
+            return;
+          }
+        }
+      } catch (e: any) {
+        // User dismissed the share-sheet or the platform refused —
+        // gracefully fall through to the download path. Don't alert.
+        if (e?.name === 'AbortError') return;
+      }
+
+      // Fallback: silent download + instructional alert.
+      try {
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = blobUrl;
-        a.target = '_blank';
+        a.href = url;
+        a.download = filename;
         a.rel = 'noopener';
         document.body.appendChild(a);
         a.click();
         setTimeout(() => {
-          try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {}
-        }, 60000);
-        window.alert('Pop-up blocked. The Rx opened in a new tab — use the browser print menu (Ctrl/Cmd + P) → "Save as PDF", then attach the file when you share it.');
-        return;
+          try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
+        }, 4000);
+        showWebAlert(
+          `Saved "${filename}" to your Downloads. Attach it from there to share with your patient (WhatsApp, Email, etc.).`,
+        );
+      } catch (e: any) {
+        showWebAlert(safeMsg(e, 'Could not share prescription'));
       }
-      w.document.open();
-      w.document.write(titledHtml);
-      w.document.close();
-      const fire = () => {
-        try { w.focus(); w.print(); } catch {}
-        // Hint the user how to attach the saved PDF in their
-        // sharing app — only after the print dialog opens.
-        setTimeout(() => {
-          try {
-            w.alert?.('Save the PDF using the print dialog, then attach it from your downloads when you share.');
-          } catch {}
-        }, 800);
-      };
-      let printed = false;
-      const safe = () => { if (printed) return; printed = true; fire(); };
-      try { w.addEventListener('load', () => setTimeout(safe, 200)); } catch {}
-      setTimeout(safe, 500);
       return;
     }
 
@@ -1244,8 +1350,8 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
       Alert.alert('Sharing unavailable', `File saved at: ${uri}`);
     }
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || 'Could not share prescription';
-    if (Platform.OS === 'web') window.alert(msg);
+    const msg = safeMsg(e, 'Could not share prescription');
+    if (Platform.OS === 'web') showWebAlert(msg);
     else Alert.alert('Share failed', msg);
   }
 }
@@ -1259,8 +1365,8 @@ export async function fetchRxAndRun(
     const { data } = await api.get(`/prescriptions/${prescription_id}`);
     await action(data);
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || 'Could not load prescription';
-    if (Platform.OS === 'web') window.alert(msg);
+    const msg = safeMsg(e, 'Could not load prescription');
+    if (Platform.OS === 'web') showWebAlert(msg);
     else Alert.alert('Error', msg);
   }
 }
