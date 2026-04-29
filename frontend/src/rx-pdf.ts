@@ -920,54 +920,41 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
     if (Platform.OS === 'web') {
-      // Web: render via the browser's own print engine. Spawning a
-      // hidden iframe and calling its `print()` is near-instant
-      // (no network round-trip / no WeasyPrint queue) and the browser
-      // shows the standard "Save as PDF" destination so the user can
-      // save with the correct filename. Replaces the previous slow
-      // `/api/render/pdf` flow which round-tripped 1-3 MB through a
-      // remote server.
-      const ok = window.confirm(`Save ${filename} as PDF?`);
-      if (!ok) return;
-      const ifr = document.createElement('iframe');
-      ifr.style.cssText =
-        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-      // Fix the document title so most browsers default the saved
-      // filename to it (Chrome / Edge / Brave / new Safari).
-      const titledHtml = html.replace(
-        /<title>[^<]*<\/title>/i,
-        `<title>${filename.replace(/\.pdf$/i, '')}<\/title>`,
-      );
-      const wrappedHtml = /<title>/i.test(titledHtml)
-        ? titledHtml
-        : titledHtml.replace(
-            /<head[^>]*>/i,
-            (m) => `${m}<title>${filename.replace(/\.pdf$/i, '')}<\/title>`,
-          );
-      ifr.srcdoc = wrappedHtml;
-      document.body.appendChild(ifr);
-      const cleanup = () => {
-        try { document.body.removeChild(ifr); } catch {}
-      };
-      const onLoad = () => {
-        try {
-          const w = ifr.contentWindow;
-          if (!w) { cleanup(); return; }
-          // Give the iframe a moment to lay out images / SVG / QR before
-          // popping the print dialog — browsers race the load event.
-          setTimeout(() => {
-            try { w.focus(); w.print(); } catch {}
-            // The print dialog is modal; clean up shortly after the
-            // user closes it. 60 s is generous for slow saves.
-            setTimeout(cleanup, 60000);
-          }, 350);
-        } catch {
-          cleanup();
-        }
-      };
-      ifr.onload = onLoad;
-      // Safety net for browsers that don't fire load on srcdoc.
-      setTimeout(() => { if (ifr.parentNode) onLoad(); }, 1500);
+      // Web Download must produce an actual file in the user's
+      // Downloads folder — NOT pop the browser's print dialog. So
+      // we go through the backend renderer (slow but real PDF).
+      // Print + Share continue to use the fast iframe.print() path
+      // because their UX is not "save a file silently".
+      if (!window.confirm(`Download ${filename}?`)) return;
+      try {
+        const { blob } = await fetchPdfFromBackend(html);
+        if (!blob) throw new Error('No PDF blob received');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
+        }, 4000);
+      } catch (e: any) {
+        // Last-resort fallback: open the print dialog so the user
+        // can still save a copy.
+        window.alert(
+          `Download failed (${e?.message || 'network error'}). Falling back to print → Save as PDF.`,
+        );
+        const ifr = document.createElement('iframe');
+        ifr.style.cssText =
+          'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+        ifr.srcdoc = html;
+        document.body.appendChild(ifr);
+        ifr.onload = () => {
+          try { ifr.contentWindow?.focus(); ifr.contentWindow?.print(); } catch {}
+          setTimeout(() => { try { document.body.removeChild(ifr); } catch {} }, 60000);
+        };
+      }
       return;
     }
 

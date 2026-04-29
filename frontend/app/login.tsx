@@ -283,15 +283,21 @@ export default function Login() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Brand header — compact on small phones */}
+          {/* Brand header — compact on small phones; on desktop the
+              parent ScrollView is overridden to a white card, so the
+              white-on-teal text becomes white-on-white (invisible).
+              Switch to dark on the desktop card. */}
           <View style={[styles.top, COMPACT && { marginTop: 12, paddingHorizontal: 20 }]}>
             <Image
               source={{ uri: LOGO_URL }}
               style={[styles.logo, COMPACT && { width: 78, height: 78, borderRadius: 20 }]}
             />
-            <Text style={[styles.brand, COMPACT && { fontSize: 26, marginTop: 12 }]}>ConsultUro</Text>
-            <Text style={styles.tagline}>Dr. Sagar Joshi</Text>
-            <Text style={styles.sub} numberOfLines={2}>
+            <Text style={[styles.brand, isDesktop && { color: COLORS.textPrimary }]}>ConsultUro</Text>
+            <Text style={[styles.tagline, isDesktop && { color: COLORS.primary }]}>Dr. Sagar Joshi</Text>
+            <Text
+              style={[styles.sub, isDesktop && { color: COLORS.textSecondary, opacity: 1 }]}
+              numberOfLines={2}
+            >
               Consultant Urologist · Laparoscopic & Transplant Surgeon
             </Text>
           </View>

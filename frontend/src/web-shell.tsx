@@ -681,20 +681,25 @@ function NotificationPopover({
 
 const popoverStyles = StyleSheet.create({
   overlay: {
-    position: 'absolute',
-    top: -800,
-    right: -2000,
-    bottom: -2000,
-    left: -2000,
-    width: 4000,
-    height: 4000,
+    // On web we use a viewport-anchored fixed overlay so clicking
+    // anywhere on the page closes the popover without distorting the
+    // surrounding layout. The previous huge negative-inset absolute
+    // overlay was relative to the topbar and could be clipped by an
+    // ancestor's overflow:hidden, leaving the page below visually
+    // collapsed (the user's "minimized appearance" complaint).
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed' as any, top: 0, right: 0, bottom: 0, left: 0 } as any)
+      : { position: 'absolute', top: -800, right: -2000, bottom: -2000, left: -2000, width: 4000, height: 4000 }),
     backgroundColor: 'transparent',
     zIndex: 998,
   },
   panel: {
-    position: 'absolute',
-    top: 44,
-    right: 0,
+    // Anchored to the topbar bell on web (fixed) and to the row on
+    // native (absolute). Keeps the panel visible regardless of how
+    // the page below is scrolled / collapsed.
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed' as any, top: 60, right: 16 } as any)
+      : { position: 'absolute', top: 44, right: 0 }),
     width: 360,
     maxHeight: 480,
     backgroundColor: '#fff',

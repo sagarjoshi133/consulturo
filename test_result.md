@@ -9536,3 +9536,61 @@ agent_communication_2026_04_28_session3:
           (which sections feel mis-aligned, what viewport width)
           to make a targeted fix without churning the layout.
           Will pick up once you point at the offending block.
+
+  - agent: main
+    message: |
+      [bundle: 3 follow-up fixes — notification popover layout,
+       sign-in desktop contrast, Download is true file save]
+
+      1) Notification popover on desktop no longer "minimises" the
+         page. The TouchableOpacity click-catcher used a 4000×4000
+         absolute-positioned overlay anchored inside the topbar.
+         When the topbar's ancestor had overflow:hidden the overlay
+         couldn't reach the rest of the page — clicks below the
+         topbar fell through to children, which sometimes mounted
+         the page in a collapsed state. Switched both the overlay
+         and the panel to position:fixed on web (top:0,right:0,
+         bottom:0,left:0 for the overlay; top:60/right:16 for the
+         panel anchored to the bell). Native (iOS / APK) keeps the
+         existing absolute positioning since RN doesn't know
+         "fixed".
+
+      2) Sign-in page on desktop showed white "Dr. Sagar Joshi" /
+         "Consultant Urologist · Laparoscopic & Transplant Surgeon"
+         text on the white card → invisible. Cause: the desktop
+         override turns the ScrollView contentContainer into a
+         white card, but the brand block kept its mobile colours
+         (#fff brand, #E0F7FA tagline/sub) which were designed for
+         the teal gradient. Added isDesktop colour overrides:
+           • brand     → COLORS.textPrimary (dark)
+           • tagline   → COLORS.primary (teal)
+           • sub       → COLORS.textSecondary (gray, opacity 1)
+         Verified visually — header now reads cleanly inside the
+         white desktop card.
+
+      3) Download Prescription on web no longer pops the print
+         dialog — it actually saves a PDF file. Reverted the
+         web Download path to the backend `/api/render/pdf`
+         renderer (slow but produces a real file the browser
+         downloads silently). Print + Share continue to use the
+         fast iframe `window.print()` flow because their UX is
+         "print" / "share-after-save", not "download silently".
+         A safety fallback prompts the user to use Print → Save
+         as PDF if the backend renderer fails.
+
+      Files changed:
+        • /app/frontend/src/web-shell.tsx
+            — popoverStyles overlay + panel use position:fixed on web
+        • /app/frontend/app/login.tsx
+            — brand/tagline/sub colour overrides on isDesktop
+        • /app/frontend/src/rx-pdf.ts
+            — web Download path → backend PDF blob → `<a download>`
+              with print-fallback on failure
+
+      Verified:
+        • Sign-in screenshot at 1920×800 shows ConsultUro / Dr.
+          Sagar Joshi / Consultant Urologist subtitle clearly
+          legible inside the white card (teal/gray).
+        • Web bundle compiles fresh.
+
+      Backend untouched. No DB migration. No mocks.
