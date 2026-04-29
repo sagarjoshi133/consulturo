@@ -10809,3 +10809,74 @@ agent_communication_2026_04_29_phase4_modularization_smoke:
       /bookings/all, /prescriptions, /surgeries) pass exactly per
       spec. Recommend main agent close out Phase 4 and proceed to
       Phase 5 (clinical-heart extraction).
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 4 (10 Router Batch)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Files created (10 routers, 68 handlers)
+    • routers/me_tier.py            (1)
+    • routers/settings_homepage.py  (2)
+    • routers/blog.py               (7 — public + admin)
+    • routers/push.py               (4 — incl. test send)
+    • routers/notifications.py      (4 — list/detail/read/read-all)
+    • routers/broadcasts.py         (7 — CRUD + inbox + pending_count)
+    • routers/messaging.py          (8 — chat send / sent / inbox + admin
+                                          messaging-permission control)
+    • routers/team.py               (7 — invites + role mgmt + custom
+                                          role registry)
+    • routers/admin_owners.py       (11 — primary-owners + partners
+                                           promote/demote/dashboard-perm/
+                                           analytics)
+    • routers/auth.py               (17 — entire /api/auth/* surface
+                                           plus /auth-callback/* and
+                                           /auth/magic/redirect)
+
+  Files changed
+    • /app/backend/server.py
+        - 7471 → 5316 lines (−2155 this phase).
+        - Cumulative across Phase 1+2+3+4: −3563 lines (−40.1% from
+          original 8879-line monolith).
+        - 10 new include_router() calls appended at end-of-file.
+
+  Backend smoke (deep_testing_backend_v2)
+    32/32 PASS — ZERO regressions.
+      • Auth flow: no-token 401, empty OTP 422, valid OTP 200,
+        owner /auth/me 200 (role=primary_owner),
+        /me/tier owner 200 (is_primary_owner=true)
+      • Public: /api/blog → 200
+      • Owner-tier reads: /team /admin/partners /admin/primary-owners
+        (super_owner) /admin/primary-owner-analytics /notifications
+        /broadcasts /messages/recipients → all 200
+      • Settings homepage: GET 200, PATCH+revert (tagline) 200
+      • Blog admin CRUD: POST → list includes → DELETE → list excludes
+      • Team CRUD: POST invite + DELETE — all 200
+      • Untouched-domain regressions: /bookings/all /prescriptions
+        /surgeries → all 200 for primary_owner
+
+  Awaiting user verification + approval to proceed with Phase 5
+    Phase 5 plan (next iteration) — CLINICAL HEART:
+      • routers/bookings.py     (8 routes — heaviest, with
+                                  conflict-detection + slot-capacity)
+      • routers/prescriptions.py (6 routes + reg-no allocation)
+      • routers/surgeries.py    (8 routes + import + presets)
+      • routers/records.py      (4 routes — me + prostate-volume)
+      • routers/export.py       (3 routes — CSV exports)
+      • routers/analytics.py    (1 route — dashboard analytics)
+      • routers/render.py       (1 route — PDF render)
+      • routers/rx.py           (1 route — /api/rx/verify)
+      • routers/admin_demo.py   (3-4 admin tail — backup status,
+                                  demo create, etc.)
+    These are extracted last because they (a) hold the heaviest
+    business logic and (b) cross-domain reference each other a
+    lot (booking → prescription → surgery → records → analytics).
+    Doing them after the auth/team/admin/messaging foundations
+    are stable means we can test each isolated extraction on top
+    of a clean substrate.
+
+    Phase 6 (final): services/* (reg_no, email, telegram, pdf,
+    notifications dispatch). Then drop dead inline DISEASES list.
