@@ -916,6 +916,78 @@ backend_letterhead_smoke_2026_04_29:
           need_help_html="" — exactly the pre-test state. SO test
           session purged.
 
+backend_phase1_refactor_smoke_2026_04_29:
+  - task: "Phase 1 server.py modularization smoke — extracted models.py / db.py / auth_deps.py, NO behaviour change intended"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/models.py, /app/backend/db.py, /app/backend/auth_deps.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 35/35 assertions PASS via
+          /app/backend_test_phase1_refactor_smoke.py against
+          http://localhost:8001. Post-refactor (server.py 8879→8548
+          lines; 49 BaseModel classes extracted to models.py; Mongo
+          client moved to db.py; auth helpers + lazy-import re-exports
+          in auth_deps.py) — zero regressions detected on the
+          user-facing surface area covered by the smoke checks.
+
+          1. GET /api/clinic-settings (PUBLIC, no auth) ✅
+             - 200. Payload contains all 4 Letterhead fields
+               (letterhead_image_b64:str, use_letterhead:bool,
+               patient_education_html:str, need_help_html:str) plus
+               clinic_name. Types match. Same shape as pre-refactor
+               (cross-checked with backend_letterhead_smoke history).
+
+          2. GET /api/diseases (PUBLIC) ✅
+             - 200 with non-empty list (each item carries id/name/title
+               structure intact).
+
+          3. GET /api/doctor (PUBLIC) ✅
+             - 200, returns dict.
+
+          4. /api/auth/me ✅
+             - No Authorization header → 401 (auth dep still wired).
+             - With OWNER token test_session_1776770314741 → 200 with
+               role:'primary_owner', user_id and email present.
+
+          5. PATCH /api/clinic-settings as primary_owner ✅
+             - PATCH {"clinic_name":"Phase1 Smoke Test"} → 200.
+             - Subsequent GET reflects the new value.
+             - Reverted to original value via second PATCH; final GET
+               restored. No prod data pollution.
+
+          6. PATCH /api/admin/partners/{user_id}/dashboard-perm ✅
+             - Seeded a fresh partner row (smoke-partner-<ts>,
+               role:'partner') via mongosh.
+             - PATCH false (OWNER) → 200 with
+               {ok:true, dashboard_full_access:false}.
+             - PATCH true (OWNER) → 200 with dashboard_full_access:true.
+             - Auth-gating preserved (no-token → 401 — bonus check #8).
+             - Cleanup: partner row + audit_log rows for that email
+               purged.
+
+          7. POST /api/team/invites (primary_owner) ✅
+             - POST {email:smoke-invite-<ts>@example.com, name, role:
+               doctor} → 200 with {ok:true, email, role:'doctor'}.
+             - Auth-gating preserved (no-token → 401 — bonus check #8).
+             - Cleanup: team_invites row deleted.
+
+          Imports verified: server.py:23 `from models import *`. db.py
+          and auth_deps.py loaded fine (backend supervisor uptime
+          stable, no startup errors). The lazy `__getattr__` re-exports
+          in auth_deps.py resolve back to the canonical require_*
+          objects in server.py via late-binding — confirmed by the fact
+          that all auth-gated endpoints (5/6/7) returned the same auth
+          codes (200/401/403) as before the refactor.
+
+          End state: zero test fixtures left in DB. Backend healthy
+          (GET /api/health → 200 {ok:true,db:'connected'}).
+
 test_plan:
   current_focus:
     - "FRONTEND REGRESSION + NEW FEATURE PASS — Verify the UI on both DESKTOP (≥1280px) and MOBILE (390x844) using primary_owner credentials (token: test_session_1776770314741, email sagar.joshi133@gmail.com). Required tests: (1) DESKTOP SIDEBAR — confirm sections render in order Account → Dashboard → Practice → Administration → Explore → App → About. Account/Dashboard/Practice expanded by default; Administration/Explore/App/About collapsed by default. Tapping a section header toggles its items and persists across reload. View mode pill in App section cycles Auto/Desktop/Mobile and triggers a layout refresh. (2) DESKTOP HOME (/) — for staff (primary_owner), the hero shows 3 quick-action pills: Bookings · Consult · Prescription which navigate to dashboard tabs. Patients still see the single 'Book Consultation' pill. (3) MOBILE HOME (/) — for clinical roles (primary_owner / partner / doctor), the second quick-action card shows 'Consult' (medkit) instead of 'WhatsApp'. Tapping it goes to /dashboard?tab=consultations. (4) MOBILE MORE TAB — sections render in order Account → Dashboard → Practice → Administration → Explore → App → About with same default-collapsed behavior. Tapping a section title toggles its rows. (5) APPOINTMENT PAGE (/bookings/[id]) — Communication card buttons (Call/WhatsApp/Message) NEVER overflow or wrap to 2 lines on a 360px viewport. Single-line truncation works. (6) DASHBOARD BOOKINGS TAB — booking card action row (Call·WhatsApp·Copy·Confirm·Reschedule·Reject·Message) wraps gracefully — NO buttons spilling outside the card edge. (7) PROFILE → SHORTCUTS row labelled 'Inbox' (was 'Notifications') routes to /inbox. (8) PERMISSION MANAGER → DEMO ACCOUNTS — as super_owner, after creating a demo via OwnersPanel, the demo (signed_in:false) appears immediately in the list with a 'Revoke' button. (9) PERMISSION MANAGER → PARTNERS — as primary_owner, after promoting an email to partner, that pending entry appears with '(pending sign-in)' suffix and a 'Revoke' button. Revoke removes it. (10) i18n — toggle language EN→HI→GU; sidebar section headers and item labels translate (Administration → प्रशासन / વ્યવસ્થાપન; Consults → कंसल्ट्स / કન્સલ્ટ્સ; etc). (11) PRESCRIPTION PDF — verify the patient summary band shows 5 distinct cells: Patient · Age/Sex · Phone · Visit · Reg. No. with no overlaps. Login with token test_session_1776770314741 (already extended 7 days)."
@@ -1345,6 +1417,29 @@ frontend_session_2026_04_28_regression:
           `can_create_blog` field (evaluated: None); this may indicate backend
           is NOT exposing the flag on /api/me/tier yet. Recommend backend
           verification + re-run after clearing consent state.
+
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      PHASE 1 MODULARIZATION SMOKE — server.py refactor (49 BaseModels →
+      models.py; Mongo client → db.py; auth helpers + lazy re-exports →
+      auth_deps.py). 35/35 assertions PASS via
+      /app/backend_test_phase1_refactor_smoke.py against
+      http://localhost:8001. Tests cover all 7 review-requested checks:
+      (1) GET /api/clinic-settings 200 with letterhead_image_b64 +
+      use_letterhead + patient_education_html + need_help_html;
+      (2) GET /api/diseases 200 non-empty; (3) GET /api/doctor 200;
+      (4) /api/auth/me 401 no-token / 200 primary_owner with token;
+      (5) PATCH /api/clinic-settings clinic_name → 200 + revert;
+      (6) PATCH /api/admin/partners/<uid>/dashboard-perm flips
+      dashboard_full_access true⇄false (seeded test partner, cleaned up);
+      (7) POST /api/team/invites 200 (cleaned up). All auth gates intact
+      (no-token → 401 on admin endpoints). Zero DB pollution post-test.
+      No 5xx, no regressions. Backend imports cleanly
+      (`from models import *` at server.py:23). The auth_deps.py lazy
+      __getattr__ pattern verified working: same require_* function
+      objects accessible from both server.py and auth_deps.py.
 
 
 agent_communication:
