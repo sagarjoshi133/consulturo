@@ -1156,27 +1156,46 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
  *  no on-device "HTML→PDF→file" API short of a print dialog.
  */
 export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettings) {
-  try {
-    const s = settings || (await loadClinicSettings());
-    const html = await buildRxHtml(rx, s);
+  // ── Web flow — fully isolated from native, with silent step-by-step
+  //    fallbacks so the user ALWAYS gets a working path to a PDF and
+  //    never sees an unhelpful "Could not generate PDF" alert if the
+  //    real cause is recoverable.
+  if (Platform.OS === 'web') {
+    let html: string;
+    try {
+      const s = settings || (await loadClinicSettings());
+      html = await buildRxHtml(rx, s);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('[rx-pdf v3] buildRxHtml failed:', e);
+      showWebAlert(safeMsg(e, 'Could not generate PDF. Please retry.'));
+      return;
+    }
 
     const safeName = (rx.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     const suffix = rx.registration_no || rx.prescription_id;
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
-    if (Platform.OS === 'web') {
-      // Web Download flow:
-      //   1. Try backend WeasyPrint → real PDF in Downloads folder.
-      //   2. If anything goes wrong (mobile network blip, blob parse,
-      //      backend cold-start), SILENTLY fall through to the
-      //      iframe-print dialog — the user picks "Save as PDF" and
-      //      still ends up with the same file. NO error alerts in
-      //      between (the "Could not generate PDF" / "PDF service
-      //      is unavailable" alerts were the bug we just fixed).
-      let downloadedViaBackend = false;
+    // Detect mobile web — mobile browsers handle <a download> for
+    // axios-blob inconsistently and the backend WeasyPrint round-trip
+    // can stall over flaky mobile networks. Their built-in print dialog
+    // ("Save as PDF") is faster and 100% reliable, so on mobile we
+    // skip the backend entirely. Desktop continues to use the
+    // backend → real .pdf file → instant download path.
+    const isMobileWeb = (() => {
+      try {
+        if (typeof navigator === 'undefined') return false;
+        const ua = (navigator.userAgent || '').toLowerCase();
+        return /android|iphone|ipad|ipod|mobile|opera mini/i.test(ua) ||
+          (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches === true);
+      } catch { return false; }
+    })();
+
+    if (!isMobileWeb) {
+      // Desktop — try backend WeasyPrint for a real .pdf download.
       try {
         const { blob } = await fetchPdfFromBackend(html);
-        if (blob) {
+        if (blob && blob.size > 0) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -1187,28 +1206,41 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
           setTimeout(() => {
             try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
           }, 4000);
-          downloadedViaBackend = true;
+          return;
         }
       } catch (e: any) {
-        // Log for diagnosis only — never surface as an alert.
         // eslint-disable-next-line no-console
         console.error('[rx-pdf v3] backend PDF unavailable, falling back to print dialog:', e);
       }
-      if (!downloadedViaBackend) {
-        // Open the browser's own print dialog so the user can choose
-        // "Save as PDF" — same result, just one extra tap.
-        try {
-          await webPrintViaIframe(html);
-        } catch (e2: any) {
-          // Truly catastrophic — both backend AND browser print failed.
-          // Show a clean fallback message (safeMsg blocks code leaks).
-          showWebAlert(safeMsg(e2, 'Could not generate PDF. Please retry.'));
-        }
-      }
-      return;
     }
 
-    // Native: render PDF on-device via expo-print. Skips the entire
+    // Open the browser print dialog → user picks "Save as PDF".
+    // Works reliably on mobile (Android Chrome / iOS Safari) and is
+    // the universal desktop fallback when the backend is offline.
+    try {
+      await webPrintViaIframe(html);
+      return;
+    } catch (e2: any) {
+      // eslint-disable-next-line no-console
+      console.error('[rx-pdf v3] iframe print failed too:', e2);
+    }
+
+    // Last resort — both paths failed. One clean alert (v3.2 marker
+    // so we can confirm in the wild whether the new bundle is loaded).
+    showWebAlert('Could not generate PDF on this device. Please retry — if it keeps failing, switch to a desktop browser. (rx v3.2)');
+    return;
+  }
+
+  // ─── Native (iOS / Android) ─────────────────────────────────────────
+  try {
+    const s = settings || (await loadClinicSettings());
+    const html = await buildRxHtml(rx, s);
+
+    const safeName = (rx.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    const suffix = rx.registration_no || rx.prescription_id;
+    const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
+
+    // Render PDF on-device via expo-print. Skips the entire
     // network round-trip so it's near-instant and never times out.
     const { uri } = await Print.printToFileAsync({ html });
     if (!uri) throw new Error('No PDF file generated');
@@ -1250,7 +1282,7 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
           `Saved as ${filename}\nFiles → On My iPhone → ConsultUro → Prescriptions`,
         );
       } catch (e: any) {
-        Alert.alert('Save failed', e?.message || 'Could not save the PDF.');
+        Alert.alert('Save failed', safeMsg(e, 'Could not save the PDF.'));
       }
       return;
     }
@@ -1267,9 +1299,7 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
       Alert.alert('PDF generated', `File saved at: ${uri}`);
     }
   } catch (e: any) {
-    const msg = safeMsg(e, 'Could not generate PDF');
-    if (Platform.OS === 'web') showWebAlert(msg);
-    else Alert.alert('PDF preview failed', msg);
+    Alert.alert('PDF preview failed', safeMsg(e, 'Could not generate PDF'));
   }
 }
 
