@@ -88,3 +88,17 @@ After setting the token, reload. Works for `/my-records`, `/my-bookings`, `/dash
 - Owner chat_id: `532551507`.
 - On new booking the backend posts an HTML-formatted alert to the owner.
 - **Setup step for Dr. Sagar Joshi (one-time):** open https://t.me/consultanturoBot on your phone and tap **Start** — until you do, Telegram responds `chat not found` because bots can't DM a user who hasn't initiated contact.
+
+## Multi-tenant (Phase A-E, 2026-06-15)
+- Default clinic: `clinic_a97b903f2fb2` (slug=`dr-joshi-uro`, "Dr Joshi's Uro Clinic")
+- Public landing URL: `/c/dr-joshi-uro` (anonymous access)
+- All 17 prescriptions / 78 bookings / 401 surgeries / 62 patients backfilled with this clinic_id
+- 4 active memberships (primary_owner sagar.joshi133 + 3 doctors/staff)
+- To test tenant scoping: pass `X-Clinic-Id: clinic_a97b903f2fb2` header alongside `Authorization: Bearer <TOKEN>`
+- Endpoints scoped (Phase E): `/api/bookings/all`, `/api/prescriptions`, `/api/surgeries`. Wrong clinic_id → 403.
+- Invitation flow: `POST /api/clinics/<clinic_id>/invitations` body `{email,role,note?}` → returns `{token, accept_url}`. Public preview: `GET /api/invitations/<token>`. Accept (auth): `POST /api/invitations/<token>/accept`.
+- Frontend: TenantSwitcher pill in dashboard hero. /c/<slug> public landing. /invite/<token> accept page.
+
+## Migration
+- Run idempotent migration: `cd /app/backend && python -m migrations.001_multi_tenant`
+- Container resets occasionally lose pymongo from venv — fix: `pip install -r /app/backend/requirements.txt` then restart backend.
