@@ -11978,3 +11978,135 @@ backend_external_blog_youtube_smoke_2026_04_29:
 
           Backend supervisor uptime stable; no 500s observed anywhere
           across the run. /var/log/supervisor/backend.err.log clean.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: 5-Issue Batch (Print Bug + Med Format + Preview +
+#                          External Blog/YT + Card Redesign)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Issues addressed
+    #1 Demo prescription preview in Branding panel
+    #2 Medications in "Brandname (Generic name)" format
+    #3 Print/Download/Share buttons showed HTML code (CRITICAL bug)
+    #4 External Blog (RSS) + YouTube channel integration
+    #5 Card redesign for Blog & Videos pages — premium feel
+
+  Files changed
+    Frontend
+      • /app/frontend/src/rx-pdf.ts
+          - printPrescription web path: replaced fragile hidden-iframe
+            pattern with window.open() popup (top-level window so
+            print dialog actually opens in K8s-ingress-iframed preview).
+            Popup-blocked fallback opens HTML in a new tab via
+            Blob URL so the user can use Ctrl/Cmd+P manually.
+          - sharePrescriptionPdf web path: same window.open() pattern.
+          - downloadPrescriptionPdf fallback (when /api/render/pdf
+            errors): opens HTML in new window with print dialog.
+      • /app/frontend/src/medicine-autocomplete.tsx
+          - Type CatalogMedicine extended with `display_name`, `brand`.
+          - Picker dropdown now shows "Brandname (Generic name)" as
+            the primary line + "Other brands: …" as secondary hint.
+          - commit() writes display_name into the form field so the
+            same string flows into the printed Rx.
+      • /app/frontend/src/rx-pdf-preview.ts (NEW)
+          - previewSampleRx(settings) — opens a fully-populated
+            sample Rx (BPH patient · 2 medications · IPSS · vitals ·
+            advice · follow-up) using current clinic_settings so the
+            Primary Owner can verify their letterhead, custom
+            Patient-Education, and Need-Help text BEFORE writing
+            real prescriptions. Web: new tab. Native: expo-print
+            preview screen.
+      • /app/frontend/src/branding-panel.tsx
+          - "Preview Rx" button mounted at the top of Prescription
+            Letterhead section (visible whenever rxOnly category is
+            shown — Branding > "Prescription Look" chip).
+          - New section "External Blog" — RSS/Atom feed URL +
+            optional source label.
+          - New section "YouTube Channel" — channel URL + secure
+            API key field (write-only — backend never echoes).
+            "Key set ✓" green chip rendered when api_key_set:true.
+            Inline help links to Google Cloud Console for key.
+      • /app/frontend/app/blog.tsx
+          - Card redesign: 130 px cover (was 200), floating category
+            pill over the image, hairline border + soft shadow,
+            tighter typography, "Read →" CTA in a subtle meta row.
+      • /app/frontend/app/videos.tsx
+          - Full rewrite for the same premium feel: 140 px thumb,
+            44 px play button, floating category chip, "YouTube ·
+            Watch →" meta row.
+          - Surfaces the clinic's own configured channel URL on
+            the "Open YouTube Channel" CTA when set; falls back to
+            the legacy ConsultUro handle.
+
+    Backend
+      • /app/backend/routers/medicines.py
+          - GET /api/medicines/catalog now returns each row with a
+            computed `display_name = "Brand (Generic + strength)"`.
+            When the search query matches a specific brand we surface
+            THAT brand in the display_name (so typing "Urimax" gives
+            "Urimax (Tamsulosin 0.4 mg)"), otherwise brands[0].
+      • /app/backend/routers/clinic_settings.py
+          - 5 new fields on _DEFAULT_CLINIC_SETTINGS:
+              external_blog_feed_url        (string, public)
+              external_blog_feed_label      (string, public)
+              external_youtube_channel_url  (string, public)
+              external_youtube_api_key      (string, REDACTED in GET)
+              external_youtube_channel_id   (string, auto-resolved)
+          - GET strips api_key and emits external_youtube_api_key_set
+            boolean flag instead — patient bundle never sees the key.
+          - PATCH auto-resolves YouTube channel_id from URL using the
+            stored api_key (4 URL shapes supported: /channel/UCxxx,
+            /@handle, /c/CustomName, /user/LegacyName). Failure is
+            non-blocking.
+      • /app/backend/routers/blog.py
+          - GET /api/blog now merges 3 sources:
+              1. Native owner posts (db.blog_posts)
+              2. clinic_settings.external_blog_feed_url — auto-detects
+                 RSS 2.0 / Atom; supports WordPress / Medium /
+                 Substack / Blogger / Ghost / any standards-compliant
+                 feed. 15-min in-process cache per feed URL.
+              3. Legacy Blogger feed (kept as fallback when no
+                 external_blog_feed_url is set).
+      • /app/backend/routers/education.py
+          - GET /api/videos sourcing ladder:
+              1. clinic_settings.external_youtube_* (Primary-Owner)
+              2. env-level YOUTUBE_API_KEY + YOUTUBE_CHANNEL_ID
+              3. VIDEOS_SEED hard-coded fallback
+          - 10-min cache. Never 500 — every level falls through.
+      • /app/backend/models.py
+          - ClinicSettingsPatch extended with the 4 new fields.
+
+  Backend smoke (deep_testing_backend_v2)
+    38/38 PASS via /app/backend_test_external_blog_youtube.py
+      • api_key redaction watertight (substring-checked raw body)
+      • RSS/Atom feed merge works (TechCrunch test feed → 21 items)
+      • PATCH/GET round-trip preserved across all 5 new fields
+      • YouTube videos ladder verified (clinic → env → seed)
+      • Tear-down clean
+
+  Awaiting user verification (frontend)
+    1. Open Dashboard → Branding → "Prescription Look" chip → tap
+       "Preview Rx" → confirm sample PDF opens with current
+       letterhead + custom Education / Need-Help text rendered.
+    2. New Prescription → start typing "Urimax" → confirm dropdown
+       suggests "Urimax (Tamsulosin 0.4 mg)" → tap → confirm field
+       commits the full "Brand (Generic)" string → finalise + save +
+       open the PDF → confirm same format on the printed Rx.
+    3. Existing Rx → tap Print / Download / Share buttons →
+       confirm they NO LONGER show raw HTML; print dialog or new
+       tab opens cleanly.
+    4. Branding → "Clinic Branding" chip → scroll to External Blog
+       → paste an RSS URL (e.g. your Medium feed) → save → open
+       Blog tab as a patient → confirm posts appear with
+       source-label badge.
+    5. Same panel → YouTube Channel → paste channel URL + API key
+       → save → "Key set ✓" chip appears → open Videos tab → confirm
+       the channel's latest 12 videos load (or VIDEOS_SEED fallback
+       on quota issue).
+    6. Blog & Videos lists — verify cards look noticeably more
+       compact + premium (smaller cover, hairline shadow, floating
+       category chip, "Read →" / "Watch →" CTA).
