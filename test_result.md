@@ -11014,3 +11014,80 @@ backend_phase5_clinical_smoke_2026_04_29:
           role-gate (see 2b above). Backend healthy, all 36
           routers loaded, no startup errors in
           /var/log/supervisor/backend.err.log.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Backend Modularization — Phase 5 (CLINICAL HEART)
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Files created (10 routers, 39 handlers)
+    • routers/bookings.py      (8)  POST + GET me/all/guest/check-duplicate
+                                    + GET/PATCH/cancel/{id}
+    • routers/prescriptions.py (6)  CRUD + GET me + GET list + GET /{id}
+    • routers/surgeries.py     (8)  CRUD + export.csv + import + presets +
+                                    suggestions
+    • routers/records.py       (4)  GET /me + prostate-volume CRUD
+    • routers/export.py        (3)  bookings/prescriptions/referrers CSV
+    • routers/analytics.py     (1)  /api/analytics/dashboard
+    • routers/render.py        (1)  POST /api/render/pdf
+    • routers/rx_verify.py     (1)  GET /api/rx/verify/{id} (public)
+    • routers/admin_extras.py  (6)  backup/status, demo CRUD,
+                                    platform-stats, audit-log
+    • routers/api_root.py      (1)  GET /api/ (versioned root)
+
+  Files changed
+    • /app/backend/server.py
+        - 5316 → 3662 lines (−1654 this phase).
+        - Cumulative across Phase 1-5: −5217 lines (−58.7% from
+          original 8879-line monolith).
+        - 10 new include_router() calls appended at end-of-file.
+
+  Backend smoke (deep_testing_backend_v2)
+    50/50 PASS — ZERO regressions.
+    Highlights:
+      • Bookings CRUD: POST → GET-all (incl) → GET /{id} → PATCH
+        completed → cancel-after-completed (400 per business rule)
+      • Prescriptions CRUD: POST → GET → PUT — all 200
+      • Surgeries CRUD: POST → GET → PATCH → DELETE — all 200
+      • Records prostate-volume CRUD: full lifecycle 200
+      • Auth gating: bookings/prescriptions/surgeries/analytics/
+        audit-log without token → 401
+      • Analytics owner → 200 with full payload
+      • Admin demo super_owner: create → list → revoke (pending) — 200
+      • CSV exports: all 4 endpoints 200 with text/csv
+      • RX verify public: live id → 200 HTML; non-existent → 404
+      • Untouched domains (auth/me, team, notifications, broadcasts,
+        blog): all 200 for primary_owner
+
+  Pre-existing observations preserved (NOT introduced by refactor)
+    1. routers/prescriptions.py DELETE gate uses `user.role == "owner"`
+       (legacy literal) — no live user matches after the
+       primary_owner migration. Will be cleaned up in a follow-up
+       once we're sure no callers rely on this.
+    2. routers/admin_extras.py /api/admin/audit-log uses require_owner
+       (broad owner-tier) — primary_owner gets 200, not 403. If the
+       spec wants super-owner-only audit, switch to
+       require_super_owner in a follow-up.
+    These were preserved EXACTLY by the AST extractor — they are
+    pre-existing. Cleanup planned for after Phase 6.
+
+  Awaiting user verification + approval to proceed with Phase 6
+    Phase 6 plan (final) — services & cleanup:
+      • Create services/ package
+          - services/reg_no.py        (allocate_reg_no, get_or_set_reg_no)
+          - services/email.py         (_send_email + Resend integration)
+          - services/notifications.py (push/email/whatsapp dispatch helpers)
+          - services/pdf.py           (HTML → PDF, signed url generation)
+          - services/telegram.py      (audit + admin alerts)
+      • Move helpers from server.py into the appropriate service.
+        Update routers to import from services/ instead of server.
+      • Remove dead inline DISEASES list in server.py (~450 lines —
+        unreferenced after Phase 2 extraction).
+      • Optional: tighten the two pre-existing gating issues noted
+        above.
+      • Final server.py target: <1500 lines (just middleware,
+        startup hooks, exception handlers, app instance, router
+        registrations).
