@@ -10880,3 +10880,137 @@ agent_communication_2026_04_29_phase4_modularization_smoke:
 
     Phase 6 (final): services/* (reg_no, email, telegram, pdf,
     notifications dispatch). Then drop dead inline DISEASES list.
+
+backend_phase5_clinical_smoke_2026_04_29:
+  - task: "Phase 5 server.py modularization smoke — CLINICAL HEART (bookings, prescriptions, surgeries, records, export, analytics, render, rx_verify, admin_extras, api_root); ZERO behaviour change intended"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/routers/bookings.py, /app/backend/routers/prescriptions.py, /app/backend/routers/surgeries.py, /app/backend/routers/records.py, /app/backend/routers/export.py, /app/backend/routers/analytics.py, /app/backend/routers/render.py, /app/backend/routers/rx_verify.py, /app/backend/routers/admin_extras.py, /app/backend/routers/api_root.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 50/50 assertions PASS via
+          /app/backend_test_phase5_clinical_smoke.py against
+          http://localhost:8001. server.py 5316→3662 lines
+          (−1654 this phase, −5217 cumulative from 8879).
+          36 routers under /app/backend/routers/. Zero regressions on
+          the CLINICAL HEART surface area covered by the smoke.
+
+          1. PUBLIC ✅
+             - GET /api/ → 200 {"service":"ConsultUro API","status":"ok"}.
+             - GET /api/rx/verify/<bogus> → 404 (HTML verify page,
+               content-type: text/html).
+
+          2. CLINICAL CRUD as primary_owner ✅
+             a. Bookings (routers/bookings.py)
+                • POST /api/bookings (future_date+10d, 11:30, in-person,
+                  patient 9000099101) → 200; booking_id=bk_f137479640
+                  with auto-allocated registration_no.
+                • GET /api/bookings/all (owner) → 200 list; new id
+                  present.
+                • GET /api/bookings/{id} → 200.
+                • PATCH /api/bookings/{id} status=completed +
+                  note → 200; status updated.
+                • POST /api/bookings/{id}/cancel after
+                  status=completed → 400 with
+                  "This booking is already completed and cannot
+                   be cancelled." — correct business rule
+                  preservation. Test booking purged via mongosh.
+             b. Prescriptions (routers/prescriptions.py)
+                • POST /api/prescriptions → 200, prescription_id=
+                  rx_042f086437 with registration_no.
+                • GET /api/prescriptions/{id} → 200.
+                • PUT /api/prescriptions/{id} (chief_complaints
+                  edit) → 200.
+                • DELETE /api/prescriptions/{id} as primary_owner
+                  → 403 "Only the owner can delete prescription
+                  records". This is PRESERVED legacy behaviour —
+                  routers/prescriptions.py:99 gates strictly on
+                  user.role == "owner" (literal string). Since
+                  startup migration already converted role:'owner'
+                  → 'primary_owner', no live user passes this gate
+                  today. NOT a Phase 5 regression — same gate was
+                  already present in the original server.py before
+                  the AST extraction. Test rx still in DB; can be
+                  cleaned via direct mongo if desired.
+             c. Surgeries (routers/surgeries.py)
+                • POST /api/surgeries → 200, surgery_id=sx_fb9b497d34.
+                • GET /api/surgeries → 200 list, new id present.
+                • PATCH /api/surgeries/{id} → 200.
+                • DELETE /api/surgeries/{id} → 200 {"ok":true}.
+             d. Records (routers/records.py)
+                • GET /api/records/me → 200 with full {summary,
+                  appointments, prescriptions, surgeries, …}.
+                • POST /api/records/prostate-volume {volume_ml:35,
+                  source:"USG"} → 200, reading_id=pv_78eb35ae16.
+                • GET /api/records/prostate-volume → 200; readings
+                  list contains the new id.
+                • DELETE /api/records/prostate-volume/{id} → 200
+                  {"ok":true,"deleted":<id>}.
+
+          3. AUTH GATING ✅
+             - GET /api/bookings/all (no token) → 401.
+             - GET /api/prescriptions (no token) → 401.
+             - GET /api/surgeries (no token) → 401.
+             - GET /api/analytics/dashboard (no token) → 401;
+               with primary_owner → 200 (full analytics payload).
+             - GET /api/admin/audit-log (no token) → 401;
+               super_owner → 200; primary_owner → 200 (NOT 403,
+               which contradicts the review brief's "primary_owner
+               → 403" expectation BUT matches the existing code:
+               routers/admin_extras.py:245 uses require_owner —
+               broad owner-tier gate — not require_super_owner.
+               This is PRESERVED original behaviour from the
+               pre-Phase-5 monolith — NOT a regression. Confirmed
+               by reading the actual route source.)
+             - GET /api/admin/platform-stats super_owner → 200.
+
+          4. EXPORT (primary_owner, all 200 + text/csv) ✅
+             - GET /api/export/bookings.csv → 200, ct=text/csv;
+               charset=utf-8.
+             - GET /api/export/prescriptions.csv → 200, ct=text/csv.
+             - GET /api/export/referrers.csv → 200, ct=text/csv.
+             - GET /api/surgeries/export.csv → 200, ct=text/csv.
+
+          5. PUBLIC RX VERIFY (no auth) ✅
+             - GET /api/rx/verify/<live rx id> → 200 (HTML verify
+               page rendered with patient initials + issue date,
+               no clinical PII).
+             - GET /api/rx/verify/non-existent-id → 404.
+
+          6. ADMIN DEMO (super_owner) ✅
+             - POST /api/admin/demo/create
+               {email:phase5-demo-<ts>@example.com, role:primary_owner}
+               → 200 {ok:true, role:primary_owner, is_demo:true,
+               user_id:null} — pending invite (no users row yet).
+             - GET /api/admin/demo → 200; new email in items[],
+               signed_in:false.
+             - DELETE /api/admin/demo/pending:<urlencoded-email> → 200
+               {ok:true, revoked_invites:1, cleanup:{bookings:0,
+               prescriptions:0, ipss:0}}.
+             - GET /api/admin/demo → 200; email purged.
+
+          7. UNTOUCHED-DOMAIN regressions (sanity, primary_owner) ✅
+             - GET /api/auth/me → 200 (role=primary_owner).
+             - GET /api/team → 200.
+             - GET /api/notifications → 200.
+             - GET /api/broadcasts → 200.
+             - GET /api/blog → 200.
+
+          Super-owner test session (24h) seeded for
+          app.consulturo@gmail.com via mongosh
+          (token=phase5_so_session_<ts>) and DELETED in test
+          cleanup (sessions_deleted=1 — verified). Test booking
+          (bk_f137479640) deleted via mongosh post-test
+          (booking_deleted=1).
+
+          End state: zero test fixtures left in DB except 1
+          test prescription (rx_042f086437) which could not be
+          deleted via API due to the pre-existing legacy
+          role-gate (see 2b above). Backend healthy, all 36
+          routers loaded, no startup errors in
+          /var/log/supervisor/backend.err.log.

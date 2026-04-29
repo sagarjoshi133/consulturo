@@ -1903,247 +1903,26 @@ async def require_approver(user=Depends(require_user)) -> Dict[str, Any]:
     raise HTTPException(status_code=403, detail="Not allowed to approve bookings")
 
 
-@app.post("/api/bookings")
-@limiter.limit("10/minute")
-async def create_booking(request: Request, payload: BookingCreate, user=Depends(get_current_user)):
-    # ── Soft block: phone-first signups must add an email before
-    # they can book. Guests (anonymous) are still allowed (the front-
-    # end captures their phone in the booking form). The `code` is
-    # used by the frontend to show the email-link sheet inline. ──
-    if user and not user.get("email"):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "EMAIL_REQUIRED_FOR_BOOKING",
-                "message": "Please add an email address to your profile before booking. We use it to send appointment confirmations and prescriptions.",
-            },
-        )
-
-    # Per-slot capacity: allow up to MAX_BOOKINGS_PER_SLOT patients per
-    # (date, time, mode). Overbooking is explicitly supported up to the
-    # cap (clinic OPDs run that way); only reject when the cap is hit.
-    slot_count = await db.bookings.count_documents({
-        "booking_date": payload.booking_date,
-        "booking_time": payload.booking_time,
-        "mode": payload.mode,
-        "status": {"$in": ["requested", "confirmed"]},
-    })
-    if slot_count >= MAX_BOOKINGS_PER_SLOT:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This slot is full ({MAX_BOOKINGS_PER_SLOT} bookings already). Please pick another time.",
-        )
-
-    # Honour the doctor's holiday / unavailability rules at WRITE time
-    # too — the slot listing already filters them, but a hand-crafted
-    # POST could otherwise still slip through.
-    block_reason = await _unavailability_block_reason(
-        payload.booking_date, payload.booking_time
-    )
-    if block_reason:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Doctor unavailable on this date/time. {block_reason}",
-        )
-
-    # Reject past slots (always evaluated in IST so the clock is consistent
-    # with the doctor's clinic timezone, regardless of where the request
-    # originates from).
-    try:
-        from zoneinfo import ZoneInfo
-        ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
-    except Exception:
-        ist_now = datetime.now()
-    try:
-        slot_dt = datetime.strptime(
-            f"{payload.booking_date} {payload.booking_time}", "%Y-%m-%d %H:%M"
-        ).replace(tzinfo=ist_now.tzinfo)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid booking date/time format")
-    if slot_dt < ist_now - timedelta(minutes=5):
-        raise HTTPException(status_code=400, detail="That slot is in the past. Please pick a future slot.")
-
-    booking_id = f"bk_{uuid.uuid4().hex[:10]}"
-    reg_no = await get_or_set_reg_no(payload.patient_phone, payload.registration_no, payload.patient_name)
-    doc = {
-        "booking_id": booking_id,
-        "user_id": user["user_id"] if user else None,
-        "patient_name": payload.patient_name,
-        "patient_phone": payload.patient_phone,
-        "country_code": (payload.country_code or "+91").strip(),
-        "patient_age": payload.patient_age,
-        "patient_gender": payload.patient_gender,
-        "registration_no": reg_no,
-        "reason": payload.reason,
-        "booking_date": payload.booking_date,
-        "booking_time": payload.booking_time,
-        "original_date": payload.booking_date,
-        "original_time": payload.booking_time,
-        "mode": payload.mode,
-        "status": "requested",
-        "confirmed_by": None,
-        "confirmed_at": None,
-        "patient_notified_at": None,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.bookings.insert_one(doc)
-
-    mode_label = "Online (WhatsApp)" if payload.mode == "online" else "In-person"
-    # Build wa.me link with country-code-prefixed digits so the doctor / staff
-    # can DM the patient with one tap from the Telegram alert.
-    _phone_local = re.sub(r"\D", "", payload.patient_phone or "")
-    _cc = re.sub(r"\D", "", payload.country_code or "+91") or "91"
-    _wa_digits = _phone_local if len(_phone_local) > 10 else (_cc + _phone_local)
-    _wa_text = (
-        f"Hello {payload.patient_name}, regarding your appointment request on "
-        f"{payload.booking_date} at {payload.booking_time}. — Dr. Sagar Joshi's clinic"
-    )
-    wa_link = f"https://wa.me/{_wa_digits}?text={_urlencode(_wa_text)}"
-    msg = (
-        "🔔 <b>NEW APPOINTMENT REQUEST</b>\n"
-        f"👤 <b>{htmllib.escape(payload.patient_name)}</b>"
-        f"{' · ' + str(payload.patient_age) + 'y' if payload.patient_age else ''}"
-        f"{' · ' + htmllib.escape(payload.patient_gender) if payload.patient_gender else ''}\n"
-        f"📞 {htmllib.escape(payload.country_code or '+91')} {htmllib.escape(payload.patient_phone)}\n"
-        f"📅 {payload.booking_date} · 🕘 {payload.booking_time} ({mode_label})\n"
-        f"📝 {htmllib.escape(payload.reason)[:400]}\n"
-        f"🆔 <code>{booking_id}</code>\n"
-        f'<a href="{wa_link}">📲 Send WhatsApp to patient</a>\n'
-        f"⚠️ Awaiting your confirmation in the app."
-    )
-    await notify_telegram(msg)
-    # Push to owner's devices too
-    await push_to_owner(
-        "New appointment request",
-        f"{payload.patient_name} — {payload.booking_date} {payload.booking_time}",
-        {"type": "new_booking", "booking_id": booking_id},
-    )
-    # Persist an in-app notification for every user who can approve bookings
-    # (owner-tier + team members with can_approve_bookings) so the bell
-    # lights up and they can action it from the notifications screen.
-    approvers_cursor = db.users.find(
-        {"$or": [
-            {"role": {"$in": list(OWNER_TIER_ROLES)}},
-            {"can_approve_bookings": True},
-        ]},
-        {"user_id": 1},
-    )
-    approver_uids = [u["user_id"] async for u in approvers_cursor if u.get("user_id")]
-    for uid in approver_uids:
-        await create_notification(
-            user_id=uid,
-            title="New appointment request",
-            body=f"{payload.patient_name} — {payload.booking_date} {payload.booking_time}",
-            kind="booking",
-            data={"type": "new_booking", "booking_id": booking_id, "status": "requested"},
-            push=True,
-        )
-
-    doc.pop("_id", None)
-    return doc
+# (moved) bookings block (L1906-2043) → /app/backend/routers/bookings.py
 
 
-@app.get("/api/bookings/me")
-async def my_bookings(user=Depends(require_user)):
-    # Merge by user_id OR by phone number so guests who later sign in see their history.
-    email_phones = await db.users.find({"user_id": user["user_id"]}, {"_id": 0, "phone": 1}).to_list(length=1)
-    phone = (email_phones[0].get("phone") if email_phones else None) or None
-    q = {"$or": [{"user_id": user["user_id"]}]}
-    if phone:
-        q["$or"].append({"patient_phone": phone})
-    cursor = db.bookings.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=200)
+# (moved) bookings block (L2046-2055) → /app/backend/routers/bookings.py
 
 
-@app.get("/api/bookings/all")
-async def all_bookings(user=Depends(require_staff)):
-    cursor = db.bookings.find({}, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=500)
+# (moved) bookings block (L2058-2061) → /app/backend/routers/bookings.py
 
 
 # ---- Guest (anonymous) bookings lookup by phone ---------------------------
 # Declared BEFORE /api/bookings/{booking_id} so that the literal path
 # segment "guest" is matched before the path parameter catches it.
-@app.get("/api/bookings/guest")
-async def guest_bookings_by_phone(phone: str):
-    """Allows unauthenticated patients to see their own bookings by entering
-    their phone number. Matches against the last 10 digits to be tolerant
-    of +91 / formatting differences."""
-    digits = re.sub(r"\D", "", phone or "")
-    if len(digits) < 6:
-        raise HTTPException(status_code=400, detail="Please provide a valid phone number")
-    suffix = digits[-10:] if len(digits) >= 10 else digits
-    cursor = db.bookings.find(
-        {"patient_phone": {"$regex": f"{suffix}$"}},
-        {"_id": 0},
-    ).sort("created_at", -1)
-    return await cursor.to_list(length=100)
+# (moved) bookings block (L2067-2080) → /app/backend/routers/bookings.py
 
 
 # Declared BEFORE /api/bookings/{booking_id} for the same reason as /guest.
-@app.get("/api/bookings/check-duplicate")
-async def check_duplicate_booking(phone: str = ""):
-    """Public (no-auth) endpoint so the /book flow can warn users that
-    they already have open (pending/confirmed) bookings for the same
-    phone number. Returns only aggregate info — no PII payload."""
-    digits = re.sub(r"\D", "", phone or "")
-    if len(digits) < 6:
-        return {"count": 0, "open_count": 0, "next": None}
-    suffix = digits[-10:] if len(digits) >= 10 else digits
-    cursor = db.bookings.find(
-        {"patient_phone": {"$regex": f"{suffix}$"}},
-        {"_id": 0, "booking_date": 1, "booking_time": 1, "status": 1, "booking_id": 1},
-    ).sort("created_at", -1)
-    rows = await cursor.to_list(length=50)
-    open_rows = [r for r in rows if r.get("status") in ("requested", "confirmed")]
-    nxt = None
-    if open_rows:
-        nxt = {
-            "booking_date": open_rows[0].get("booking_date"),
-            "booking_time": open_rows[0].get("booking_time"),
-            "status": open_rows[0].get("status"),
-        }
-    return {"count": len(rows), "open_count": len(open_rows), "next": nxt}
+# (moved) bookings block (L2084-2106) → /app/backend/routers/bookings.py
 
 
-@app.get("/api/bookings/{booking_id}")
-async def get_booking(
-    booking_id: str,
-    phone: Optional[str] = None,
-    user=Depends(get_current_user),
-):
-    """Full booking detail. Patients can only fetch their own; staff can
-    fetch any. Anonymous callers may pass `?phone=` that matches the
-    booking's phone number as a lightweight ownership proof (used by
-    guest booking flow)."""
-    doc = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    if user:
-        role = user.get("role")
-        is_staff = role in {"owner", "doctor", "assistant", "staff"} or user.get("can_approve_bookings")
-        if is_staff:
-            return doc
-        # Patient: allow if either user_id or phone matches
-        uid_match = doc.get("user_id") == user["user_id"]
-        phone_match = (
-            user.get("phone")
-            and doc.get("patient_phone")
-            and re.sub(r"\D", "", user["phone"]) == re.sub(r"\D", "", doc["patient_phone"])
-        )
-        if uid_match or phone_match:
-            return doc
-        raise HTTPException(status_code=403, detail="Not allowed")
-    # Anonymous path: phone must match (last 10 digits)
-    if not phone:
-        raise HTTPException(status_code=401, detail="Authentication or phone required")
-    _d1 = re.sub(r"\D", "", phone)
-    _d2 = re.sub(r"\D", "", doc.get("patient_phone", ""))
-    _d1 = _d1[-10:] if len(_d1) >= 10 else _d1
-    _d2 = _d2[-10:] if len(_d2) >= 10 else _d2
-    if not _d1 or _d1 != _d2:
-        raise HTTPException(status_code=403, detail="Phone does not match this booking")
-    return doc
+# (moved) bookings block (L2109-2146) → /app/backend/routers/bookings.py
 
 
 # ============================================================
@@ -2178,501 +1957,20 @@ def _fmt_dt(v: Any) -> str:
     return str(v)
 
 
-@app.get("/api/export/bookings.csv")
-async def export_bookings_csv(user=Depends(require_owner)):
-    # Projection: only fields needed for the CSV to keep the payload small on large exports
-    cursor = db.bookings.find(
-        {},
-        {
-            "_id": 0,
-            "booking_id": 1,
-            "patient_name": 1,
-            "patient_phone": 1,
-            "patient_age": 1,
-            "patient_gender": 1,
-            "booking_date": 1,
-            "booking_time": 1,
-            "mode": 1,
-            "status": 1,
-            "reason": 1,
-            "registration_no": 1,
-            "created_at": 1,
-        },
-    ).sort("created_at", -1)
-    docs = await cursor.to_list(length=10000)
-    rows: List[List[Any]] = [[
-        "booking_id", "patient_name", "patient_phone", "patient_age",
-        "patient_gender", "booking_date", "booking_time", "mode",
-        "status", "reason", "registration_no", "created_at",
-    ]]
-    for d in docs:
-        rows.append([
-            d.get("booking_id"),
-            d.get("patient_name"),
-            d.get("patient_phone"),
-            d.get("patient_age"),
-            d.get("patient_gender"),
-            d.get("booking_date"),
-            d.get("booking_time"),
-            d.get("mode"),
-            d.get("status"),
-            (d.get("reason") or "").replace("\n", " ").replace("\r", " "),
-            d.get("registration_no"),
-            _fmt_dt(d.get("created_at")),
-        ])
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _csv_response(rows, f"bookings-{today}.csv")
+# (moved) export block (L2181-2224) → /app/backend/routers/export.py
 
 
-@app.get("/api/export/prescriptions.csv")
-async def export_prescriptions_csv(user=Depends(require_owner)):
-    cursor = db.prescriptions.find({}, {"_id": 0}).sort("created_at", -1)
-    docs = await cursor.to_list(length=10000)
-    rows: List[List[Any]] = [[
-        "prescription_id", "patient_name", "patient_phone", "patient_age",
-        "patient_gender", "registration_no", "visit_date", "diagnosis",
-        "medicines_count", "ref_doctor", "created_at", "updated_at",
-    ]]
-    for d in docs:
-        meds = d.get("medicines") or []
-        rows.append([
-            d.get("prescription_id"),
-            d.get("patient_name"),
-            d.get("patient_phone"),
-            d.get("patient_age"),
-            d.get("patient_gender"),
-            d.get("registration_no"),
-            d.get("visit_date"),
-            (d.get("diagnosis") or "").replace("\n", " ").replace("\r", " "),
-            len(meds),
-            d.get("ref_doctor"),
-            _fmt_dt(d.get("created_at")),
-            _fmt_dt(d.get("updated_at")),
-        ])
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _csv_response(rows, f"prescriptions-{today}.csv")
+# (moved) export block (L2227-2253) → /app/backend/routers/export.py
 
 
-@app.get("/api/export/referrers.csv")
-async def export_referrers_csv(user=Depends(require_owner)):
-    cursor = db.referrers.find({}, {"_id": 0}).sort("created_at", -1)
-    docs = await cursor.to_list(length=10000)
-    rows: List[List[Any]] = [[
-        "referrer_id", "name", "phone", "email", "specialty",
-        "hospital", "city", "referrals_count", "notes", "created_at",
-    ]]
-    for d in docs:
-        rows.append([
-            d.get("referrer_id") or d.get("id"),
-            d.get("name"),
-            d.get("phone"),
-            d.get("email"),
-            d.get("specialty"),
-            d.get("hospital"),
-            d.get("city"),
-            d.get("referrals_count", 0),
-            (d.get("notes") or "").replace("\n", " ").replace("\r", " "),
-            _fmt_dt(d.get("created_at")),
-        ])
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _csv_response(rows, f"referrers-{today}.csv")
+# (moved) export block (L2256-2278) → /app/backend/routers/export.py
 
 
-@app.patch("/api/bookings/{booking_id}")
-async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(require_approver)):
-    existing = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    updates: Dict[str, Any] = {}
-    status_label = existing["status"]
-
-    if body.booking_date and body.booking_date != existing["booking_date"]:
-        updates["booking_date"] = body.booking_date
-    if body.booking_time and body.booking_time != existing["booking_time"]:
-        updates["booking_time"] = body.booking_time
-
-    # Conflict + capacity check if rescheduling to a new date/time.
-    # Same rules as POST: allow up to MAX_BOOKINGS_PER_SLOT bookings
-    # per (date, time, mode), and honour any unavailability rule.
-    if "booking_date" in updates or "booking_time" in updates:
-        new_date = updates.get("booking_date", existing["booking_date"])
-        new_time = updates.get("booking_time", existing["booking_time"])
-        slot_count = await db.bookings.count_documents({
-            "booking_id": {"$ne": booking_id},
-            "booking_date": new_date,
-            "booking_time": new_time,
-            "mode": existing.get("mode"),
-            "status": {"$in": ["requested", "confirmed"]},
-        })
-        if slot_count >= MAX_BOOKINGS_PER_SLOT:
-            raise HTTPException(
-                status_code=409,
-                detail=f"That slot is full ({MAX_BOOKINGS_PER_SLOT} bookings already at {new_date} {new_time}).",
-            )
-        block_reason = await _unavailability_block_reason(new_date, new_time)
-        if block_reason:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Doctor unavailable on {new_date} {new_time}. {block_reason}",
-            )
-
-    if body.status and body.status != existing["status"]:
-        if body.status not in ["confirmed", "completed", "cancelled", "rejected"]:
-            raise HTTPException(status_code=400, detail="Invalid status")
-        updates["status"] = body.status
-        status_label = body.status
-        if body.status == "confirmed":
-            updates["confirmed_by"] = user["user_id"]
-            updates["confirmed_by_name"] = user.get("name") or (user.get("email", "") or "").split("@")[0] or "Team"
-            updates["confirmed_by_email"] = user.get("email")
-            updates["confirmed_at"] = datetime.now(timezone.utc)
-            updates["patient_notified_at"] = datetime.now(timezone.utc)
-            # If the approver attached a note on confirmation, store it
-            # specifically so it shows up on the booking detail screen
-            # separate from subsequent generic status notes.
-            if body.note:
-                updates["approver_note"] = body.note
-        elif body.status == "rejected":
-            if body.reason:
-                updates["rejection_reason"] = body.reason.strip()
-            updates["rejected_by"] = user["user_id"]
-            updates["rejected_by_name"] = user.get("name") or (user.get("email", "") or "").split("@")[0] or "Team"
-            updates["rejected_at"] = datetime.now(timezone.utc)
-        elif body.status == "cancelled":
-            if body.reason:
-                updates["cancellation_reason"] = body.reason.strip()
-            updates["cancelled_by"] = "staff"
-            updates["cancelled_by_name"] = user.get("name") or (user.get("email", "") or "").split("@")[0] or "Team"
-            updates["cancelled_at"] = datetime.now(timezone.utc)
-
-    # Capture a dedicated reschedule_reason even when status is unchanged
-    # (pure reschedule) or when reschedule happens alongside confirm.
-    if (body.booking_date or body.booking_time) and body.reason:
-        updates["reschedule_reason"] = body.reason.strip()
-        updates["rescheduled_by"] = user["user_id"]
-        updates["rescheduled_by_name"] = user.get("name") or (user.get("email", "") or "").split("@")[0] or "Team"
-        updates["rescheduled_at"] = datetime.now(timezone.utc)
-
-    if body.note:
-        updates["last_note"] = body.note
-
-    # Doctor's private note — stored separately from `approver_note` (patient
-    # visible) and `last_note`. Empty string clears it; `None` is ignored.
-    if body.doctor_note is not None:
-        updates["doctor_note"] = body.doctor_note.strip()
-        updates["doctor_note_at"] = datetime.now(timezone.utc)
-        updates["doctor_note_by"] = user.get("user_id")
-        updates["doctor_note_by_name"] = user.get("name") or (user.get("email", "") or "").split("@")[0]
-
-    if not updates:
-        return existing
-
-    # If booking time/date/status changed, reset any already-fired reminder
-    # flags so the scheduler can re-evaluate against the NEW time.
-    status_changed = ("status" in updates) and (updates.get("status") != existing.get("status"))
-    time_changed = ("booking_date" in updates) or ("booking_time" in updates)
-    if status_changed or time_changed:
-        updates["reminder_24h_fired_at"] = None
-        updates["reminder_2h_fired_at"] = None
-
-    await db.bookings.update_one({"booking_id": booking_id}, {"$set": updates})
-
-    final_date = updates.get("booking_date", existing["booking_date"])
-    final_time = updates.get("booking_time", existing["booking_time"])
-    rescheduled = ("booking_date" in updates) or ("booking_time" in updates)
-
-    # Telegram ping to owner on confirm/reschedule/cancel — serves as the "only confirmed bookings
-    # go to external channels" rule and a single source of truth for the doctor.
-    # Only fire status-transition notifications when the status ACTUALLY
-    # changed — otherwise a note-only or pure-reschedule update on a
-    # confirmed booking would double-fire "Appointment confirmed".
-    status_just_changed = ("status" in updates) and (updates.get("status") != existing.get("status"))
-
-    if status_just_changed and status_label == "confirmed":
-        note_line = f"\nNote: {body.note}" if (body.note and body.note.strip()) else ""
-        wa_text = (
-            f"Dear {existing['patient_name']}, your appointment with Dr. Sagar Joshi is "
-            f"CONFIRMED on {final_date} at {final_time}"
-            f"{' (rescheduled from ' + existing['original_date'] + ' ' + existing['original_time'] + ')' if rescheduled else ''}. "
-            f"Clinic: Sterling Hospitals, Vadodara. Ref: {booking_id}. — ConsultUro"
-        )
-        phone_digits_local = re.sub(r"\D", "", existing["patient_phone"])
-        cc_digits = re.sub(r"\D", "", existing.get("country_code") or "+91") or "91"
-        # If patient_phone already contains the country code (>10 digits)
-        # use as-is, otherwise prefix the stored country_code so wa.me
-        # opens correctly without a manual fix on the doctor's side.
-        wa_digits = phone_digits_local if len(phone_digits_local) > 10 else (cc_digits + phone_digits_local)
-        wa_link = f"https://wa.me/{wa_digits}?text={_urlencode(wa_text)}"
-        await notify_telegram(
-            "✅ <b>APPOINTMENT CONFIRMED</b>\n"
-            f"👤 {htmllib.escape(existing['patient_name'])} — {htmllib.escape(existing['patient_phone'])}\n"
-            f"📅 {final_date} · 🕘 {final_time}"
-            f"{' (rescheduled)' if rescheduled else ''}\n"
-            f"🆔 <code>{booking_id}</code>\n"
-            f'<a href="{wa_link}">📲 Send WhatsApp to patient</a>'
-        )
-        push_body = (
-            f"Your visit on {final_date} at {final_time} is confirmed by Dr. Sagar Joshi."
-            + note_line
-        )
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            "Appointment confirmed ✅",
-            push_body,
-            {"type": "booking_confirmed", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="Appointment confirmed ✅",
-            body=(
-                f"Your visit on {final_date} at {final_time} is confirmed by Dr. Sagar Joshi."
-                + (" (Rescheduled)" if rescheduled else "")
-                + note_line
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": "confirmed"},
-            push=False,
-        )
-    elif status_just_changed and status_label == "completed":
-        # Newly-introduced notification for when staff marks a visit as
-        # completed so the patient gets a gentle acknowledgement in their
-        # bell + push (e.g. "your visit is marked complete; here are next
-        # steps…"). The approver can attach a note that flows through.
-        note_line = (body.note or "").strip()
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            "Visit marked complete 🎉",
-            (f"{note_line} — " if note_line else "")
-            + f"Thank you for visiting Dr. Sagar Joshi on {final_date}. Your prescription (if any) will appear shortly.",
-            {"type": "booking_completed", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="Visit marked complete",
-            body=(
-                (f"{note_line}\n" if note_line else "")
-                + f"Thank you for visiting Dr. Sagar Joshi on {final_date}. Your prescription (if any) will appear shortly."
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": "completed"},
-            push=False,
-        )
-    elif status_just_changed and status_label == "rejected":
-        reason_text = (body.reason or "").strip()
-        await notify_telegram(
-            f"❌ <b>Appointment REJECTED</b>\n"
-            f"👤 {htmllib.escape(existing['patient_name'])} · {existing['patient_phone']}\n"
-            f"🆔 <code>{booking_id}</code>"
-            + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
-        )
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            "Appointment could not be confirmed",
-            (f"Reason: {reason_text[:100]} — " if reason_text else "")
-            + f"Please contact clinic to reschedule. Ref: {booking_id}",
-            {"type": "booking_rejected", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="Appointment rejected",
-            body=(
-                (f"Reason: {reason_text}. " if reason_text else "")
-                + "Please contact the clinic to reschedule."
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": "rejected"},
-            push=False,
-        )
-    elif status_just_changed and status_label == "cancelled":
-        reason_text = (body.reason or "").strip()
-        await notify_telegram(
-            f"🚫 <b>Appointment CANCELLED</b>\n"
-            f"👤 {htmllib.escape(existing['patient_name'])}\n"
-            f"🆔 <code>{booking_id}</code>"
-            + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
-        )
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            "Appointment cancelled",
-            (f"Reason: {reason_text[:100]} — " if reason_text else "")
-            + f"Your {final_date} {final_time} appointment has been cancelled.",
-            {"type": "booking_cancelled", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="Appointment cancelled",
-            body=(
-                (f"Reason: {reason_text}. " if reason_text else "")
-                + f"Your {final_date} {final_time} appointment has been cancelled."
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": "cancelled"},
-            push=False,
-        )
-
-    doc = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
-    doc["rescheduled"] = rescheduled
-    # If the status was not changed but the date/time was (pure reschedule),
-    # the block above skipped sending patient-facing alerts because those
-    # live under the status-change branches. Send a dedicated reschedule
-    # notification so the patient always knows.
-    if rescheduled and (not body.status or body.status == existing["status"]):
-        reason_text = (body.reason or "").strip()
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            "Appointment rescheduled",
-            (f"Reason: {reason_text[:100]} — " if reason_text else "")
-            + f"Your appointment has been moved to {final_date} at {final_time}.",
-            {"type": "booking_rescheduled", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="Appointment rescheduled",
-            body=(
-                (f"Reason: {reason_text}. " if reason_text else "")
-                + f"Your appointment has been moved to {final_date} at {final_time}"
-                + (f" (from {existing['original_date']} {existing['original_time']})."
-                   if existing.get("original_date") and existing.get("original_time") else ".")
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": existing["status"]},
-            push=False,
-        )
-        await notify_telegram(
-            f"🔁 <b>Appointment rescheduled</b>\n"
-            f"👤 {htmllib.escape(existing['patient_name'])} · {existing.get('patient_phone','')}\n"
-            f"📅 {final_date} · 🕘 {final_time}\n"
-            f"🆔 <code>{booking_id}</code>"
-            + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
-        )
-
-    # --- Note-only update ---------------------------------------------------
-    # If the staff attached a note WITHOUT changing status and WITHOUT
-    # rescheduling, still send a notification so the patient sees the
-    # message in their bell + device push area.
-    note_only = (
-        body.note
-        and (not body.status or body.status == existing["status"])
-        and not rescheduled
-    )
-    if note_only:
-        note_text = body.note.strip()
-        current_status_label = (existing.get("status") or "").capitalize() or "Booking"
-        await push_to_user(
-            existing.get("user_id"),
-            existing.get("patient_phone"),
-            f"New note on your {current_status_label.lower()} booking",
-            note_text[:160],
-            {"type": "booking_note", "booking_id": booking_id},
-        )
-        await create_notification(
-            user_id=existing.get("user_id"),
-            title="📝 Note from the clinic",
-            body=(
-                f"On your {final_date} {final_time} appointment:\n{note_text}"
-            ),
-            kind="booking",
-            data={"booking_id": booking_id, "status": existing.get("status")},
-            push=False,
-        )
-        await notify_telegram(
-            f"📝 <b>Clinic note on booking</b>\n"
-            f"👤 {htmllib.escape(existing['patient_name'])}\n"
-            f"📅 {final_date} · 🕘 {final_time}\n"
-            f"🆔 <code>{booking_id}</code>\n"
-            f"{htmllib.escape(note_text)[:500]}"
-        )
-
-    return doc
+# (moved) bookings block (L2281-2592) → /app/backend/routers/bookings.py
 
 
 # ---- Patient-initiated cancellation ---------------------------------------
-@app.post("/api/bookings/{booking_id}/cancel")
-async def patient_cancel_booking(
-    booking_id: str, body: PatientCancelBody, user=Depends(get_current_user)
-):
-    """The patient themselves (authenticated OR anonymous guest) can cancel
-    a pending/confirmed booking with a reason. For anonymous guests we
-    require a phone match as a lightweight ownership proof."""
-    existing = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Booking not found")
-
-    # Ownership / auth check
-    def _last10(s: str) -> str:
-        d = re.sub(r"\D", "", s or "")
-        return d[-10:] if len(d) >= 10 else d
-
-    if user:
-        owner_uid_match = existing.get("user_id") and existing.get("user_id") == user["user_id"]
-        # Some users link via phone (guest booking → later signed in). Allow phone match too.
-        owner_phone_match = (
-            user.get("phone")
-            and existing.get("patient_phone")
-            and _last10(user["phone"]) == _last10(existing["patient_phone"])
-            and _last10(user["phone"])  # non-empty
-        )
-        if not (owner_uid_match or owner_phone_match):
-            raise HTTPException(status_code=403, detail="Not allowed")
-    else:
-        # Anonymous: phone number must match the booking's phone (last 10 digits)
-        if not body.patient_phone:
-            raise HTTPException(status_code=400, detail="Phone number required for guest cancellation")
-        if _last10(body.patient_phone) != _last10(existing.get("patient_phone", "")) or not _last10(body.patient_phone):
-            raise HTTPException(status_code=403, detail="Phone number does not match this booking")
-
-    if existing["status"] not in ("requested", "confirmed"):
-        raise HTTPException(status_code=400, detail=f"This booking is already {existing['status']} and cannot be cancelled.")
-
-    reason = (body.reason or "").strip()
-    if not reason:
-        raise HTTPException(status_code=400, detail="A reason is required to cancel")
-
-    updates = {
-        "status": "cancelled",
-        "cancelled_by": "patient",
-        "cancellation_reason": reason,
-        "cancelled_at": datetime.now(timezone.utc),
-        "last_note": f"Cancelled by patient: {reason}",
-    }
-    await db.bookings.update_one({"booking_id": booking_id}, {"$set": updates})
-
-    # Inform staff via Telegram + in-app notification
-    await notify_telegram(
-        "🚫 <b>Patient cancelled appointment</b>\n"
-        f"👤 {htmllib.escape(existing['patient_name'])} · {existing.get('patient_phone','')}\n"
-        f"📅 {existing['booking_date']} · 🕘 {existing['booking_time']}\n"
-        f"🆔 <code>{booking_id}</code>\n"
-        f"📝 {htmllib.escape(reason)[:400]}"
-    )
-    approvers_cursor = db.users.find(
-        {"$or": [
-            {"role": {"$in": list(OWNER_TIER_ROLES)}},
-            {"can_approve_bookings": True},
-        ]},
-        {"user_id": 1},
-    )
-    async for u in approvers_cursor:
-        uid = u.get("user_id")
-        if not uid:
-            continue
-        await create_notification(
-            user_id=uid,
-            title="Patient cancelled appointment",
-            body=f"{existing['patient_name']} — {existing['booking_date']} {existing['booking_time']}: {reason[:80]}",
-            kind="booking",
-            data={"type": "booking_cancelled_by_patient", "booking_id": booking_id, "status": "cancelled"},
-            push=True,
-        )
-
-    doc = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
-    return doc
+# (moved) bookings block (L2596-2675) → /app/backend/routers/bookings.py
 
 
 def _urlencode(s: str) -> str:
@@ -2706,41 +2004,7 @@ def _urlencode(s: str) -> str:
 # (moved) class RenderPdfBody → /app/backend/models.py
 
 
-@app.post("/api/render/pdf")
-async def render_pdf(body: RenderPdfBody, user=Depends(require_user)):
-    if not body.html or len(body.html) < 50:
-        raise HTTPException(status_code=400, detail="HTML payload missing or too short")
-    try:
-        # Lazy import so the app can boot even if the wheel isn't installed
-        # in dev — the route just 503s instead of crashing the server.
-        from weasyprint import HTML  # type: ignore
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"PDF engine unavailable: {e}")
-
-    # Run the (synchronous, CPU-bound) render in a worker thread so we
-    # don't block the asyncio event loop. WeasyPrint itself is CPU-heavy
-    # (~1-3 s for a typical Rx); offloading frees the loop to serve
-    # other requests in parallel.
-    import asyncio
-    def _do_render() -> bytes:
-        return HTML(string=body.html, base_url="https://www.drsagarjoshi.com/").write_pdf()
-    try:
-        pdf_bytes = await asyncio.to_thread(_do_render)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF render failed: {e}")
-
-    fname = (body.filename or "prescription.pdf").strip().replace('"', '')
-    if not fname.lower().endswith(".pdf"):
-        fname += ".pdf"
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{fname}"',
-            "Cache-Control": "no-store",
-        },
-    )
+# (moved) render block (L2709-2743) → /app/backend/routers/render.py
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -2775,229 +2039,25 @@ async def _kickoff_pdf_warmup() -> None:
     asyncio.create_task(_warmup_pdf_engine())
 
 
-@app.post("/api/prescriptions")
-async def create_prescription(payload: PrescriptionCreate, user=Depends(require_staff)):
-    # Staff (reception/nursing/assistant) can only create DRAFT consultations
-    # — they pre-fill patient details / vitals / complaints / IPSS so the
-    # doctor can resume and finalise quickly. Only prescribers (owner /
-    # doctor) can save a `final` Rx.
-    is_rx = await is_prescriber(user)
-    status = (payload.status or "final").lower().strip()
-    if status not in ("draft", "final"):
-        status = "final"
-    if not is_rx:
-        status = "draft"
-    prescription_id = f"rx_{uuid.uuid4().hex[:10]}"
-    # Auto-link to patient account via matching phone number so it appears in their My Records.
-    patient_user_id = None
-    if payload.patient_phone:
-        digits = re.sub(r"\D", "", payload.patient_phone)
-        if digits:
-            match = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
-            if match:
-                patient_user_id = match["user_id"]
-    reg_no = await get_or_set_reg_no(payload.patient_phone, payload.registration_no, payload.patient_name)
-    payload_data = payload.model_dump()
-    payload_data["registration_no"] = reg_no
-    payload_data["status"] = status
-    doc = {
-        "prescription_id": prescription_id,
-        "doctor_user_id": user["user_id"] if is_rx else None,
-        "patient_user_id": patient_user_id,
-        "created_by_user_id": user["user_id"],
-        "created_by_name": user.get("name") or (user.get("email", "") or "").split("@")[0],
-        "created_by_role": user.get("role"),
-        **payload_data,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.prescriptions.insert_one(doc)
-    doc.pop("_id", None)
-    # When this Rx was created from a confirmed booking via the "Start
-    # Consultation" flow, close the loop only when finalised. Drafts keep
-    # the booking as `confirmed` so it stays in the upcoming consultations
-    # list and the doctor can still resume.
-    src_booking = (payload.source_booking_id or "").strip()
-    if src_booking:
-        try:
-            if status == "final":
-                await db.bookings.update_one(
-                    {"booking_id": src_booking},
-                    {
-                        "$set": {
-                            "status": "completed",
-                            "consultation_rx_id": prescription_id,
-                            "consultation_completed_at": datetime.now(timezone.utc),
-                        }
-                    },
-                )
-            else:
-                # Mark which Rx is the active draft so the consults tab
-                # can show "Resume draft" instead of "Start" — booking
-                # status itself stays `confirmed`.
-                await db.bookings.update_one(
-                    {"booking_id": src_booking},
-                    {
-                        "$set": {
-                            "draft_rx_id": prescription_id,
-                            "draft_started_at": datetime.now(timezone.utc),
-                            "draft_started_by": user.get("name")
-                            or (user.get("email", "") or "").split("@")[0],
-                        }
-                    },
-                )
-        except Exception:
-            pass
-    return doc
+# (moved) prescriptions block (L2778-2850) → /app/backend/routers/prescriptions.py
 
 
-@app.delete("/api/prescriptions/{prescription_id}")
-async def delete_prescription(prescription_id: str, user=Depends(require_user)):
-    """Only the owner can delete a prescription record."""
-    if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Only the owner can delete prescription records")
-    result = await db.prescriptions.delete_one({"prescription_id": prescription_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True}
+# (moved) prescriptions block (L2853-2861) → /app/backend/routers/prescriptions.py
 
 
-@app.put("/api/prescriptions/{prescription_id}")
-async def update_prescription(prescription_id: str, payload: PrescriptionCreate, user=Depends(require_staff)):
-    """Edit an existing prescription. Staff can edit DRAFTS; only prescribers
-    (owner + doctor) can edit a `final` Rx or upgrade a draft → final."""
-    existing = await db.prescriptions.find_one({"prescription_id": prescription_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    is_rx = await is_prescriber(user)
-    cur_status = (existing.get("status") or "final").lower()
-    new_status = (payload.status or cur_status).lower().strip()
-    if new_status not in ("draft", "final"):
-        new_status = cur_status
-    if not is_rx:
-        # Non-prescribers may only edit a draft and must keep it as draft.
-        if cur_status != "draft":
-            raise HTTPException(status_code=403, detail="Only doctor can edit a finalised prescription")
-        new_status = "draft"
-    # Re-link patient user by phone (may have changed)
-    patient_user_id = existing.get("patient_user_id")
-    if payload.patient_phone:
-        digits = re.sub(r"\D", "", payload.patient_phone)
-        if digits:
-            match = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
-            if match:
-                patient_user_id = match["user_id"]
-    reg_no = await get_or_set_reg_no(payload.patient_phone, payload.registration_no, payload.patient_name)
-    payload_data = payload.model_dump()
-    payload_data["registration_no"] = reg_no
-    payload_data["patient_user_id"] = patient_user_id
-    payload_data["status"] = new_status
-    payload_data["updated_at"] = datetime.now(timezone.utc)
-    payload_data["updated_by"] = user["user_id"]
-    if is_rx and cur_status == "draft" and new_status == "final":
-        payload_data["doctor_user_id"] = user["user_id"]
-        payload_data["finalised_at"] = datetime.now(timezone.utc)
-    await db.prescriptions.update_one(
-        {"prescription_id": prescription_id},
-        {"$set": payload_data},
-    )
-    updated = await db.prescriptions.find_one({"prescription_id": prescription_id}, {"_id": 0})
-    # Mirror booking status: if a draft was just finalised, complete the
-    # source booking and clear its `draft_rx_id` pointer.
-    src_booking = (existing.get("source_booking_id") or payload.source_booking_id or "").strip()
-    if src_booking and is_rx and new_status == "final":
-        try:
-            await db.bookings.update_one(
-                {"booking_id": src_booking},
-                {
-                    "$set": {
-                        "status": "completed",
-                        "consultation_rx_id": prescription_id,
-                        "consultation_completed_at": datetime.now(timezone.utc),
-                    },
-                    "$unset": {"draft_rx_id": "", "draft_started_at": "", "draft_started_by": ""},
-                },
-            )
-        except Exception:
-            pass
-    return updated
+# (moved) prescriptions block (L2864-2922) → /app/backend/routers/prescriptions.py
 
 
-@app.get("/api/prescriptions/me")
-async def my_prescriptions(user=Depends(require_user)):
-    # A patient may have multiple phone numbers across bookings; surface all rxs by user_id OR phone match.
-    q = {"$or": [{"patient_user_id": user["user_id"]}]}
-    digits = user.get("phone_digits") or None
-    if digits:
-        q["$or"].append({"patient_phone": {"$regex": digits[-10:]}})
-    cursor = db.prescriptions.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=200)
+# (moved) prescriptions block (L2925-2933) → /app/backend/routers/prescriptions.py
 
 
-@app.get("/api/prescriptions")
-async def list_prescriptions(user=Depends(require_staff)):
-    cursor = db.prescriptions.find({}, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=500)
+# (moved) prescriptions block (L2936-2939) → /app/backend/routers/prescriptions.py
 
 
-@app.get("/api/prescriptions/{prescription_id}")
-async def get_prescription(prescription_id: str, user=Depends(require_user)):
-    """Return a prescription. Prescribers (owner/doctor/staff) can read any
-    prescription; regular patients can read ONLY prescriptions issued to them
-    (matched by user_id or by registration number tied to their profile)."""
-    doc = await db.prescriptions.find_one({"prescription_id": prescription_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    role = user.get("role") or "patient"
-    if role not in STAFF_ROLES and role not in {"prescriber", "doctor"}:
-        uid = user.get("user_id")
-        reg_no = (user.get("registration_no") or "").strip()
-        # Patient can view ONLY their own Rx — check by linked user_id or by
-        # patient registration number (the number printed on the Rx that
-        # uniquely identifies this patient across visits).
-        rx_uid = doc.get("user_id") or doc.get("patient_user_id")
-        rx_reg = (doc.get("registration_no") or "").strip()
-        owns = (uid and rx_uid and uid == rx_uid) or (
-            reg_no and rx_reg and reg_no == rx_reg
-        )
-        if not owns:
-            raise HTTPException(status_code=404, detail="Not found")
-    return doc
+# (moved) prescriptions block (L2942-2964) → /app/backend/routers/prescriptions.py
 
 
-@app.get("/api/rx/verify/{prescription_id}")
-async def verify_prescription(prescription_id: str):
-    """Public verification page for a prescription QR code.
-    Only exposes issue metadata (no clinical details) to protect patient privacy."""
-    doc = await db.prescriptions.find_one({"prescription_id": prescription_id}, {"_id": 0})
-    if not doc:
-        return HTMLResponse(
-            status_code=404,
-            content=_verify_page_html(
-                ok=False,
-                rx_id=prescription_id,
-                issued_at=None,
-                patient_initials=None,
-                med_count=0,
-            ),
-        )
-    # Patient privacy: only expose initials like "R.S." and the issue date.
-    name = (doc.get("patient_name") or "").strip()
-    initials = ".".join([p[0].upper() for p in name.split() if p])[:6] or "—"
-    created = doc.get("created_at")
-    if isinstance(created, datetime):
-        issued_at = created.strftime("%d-%m-%Y %H:%M UTC")
-    else:
-        issued_at = str(created) if created else "—"
-    med_count = len(doc.get("medicines") or [])
-    return HTMLResponse(
-        content=_verify_page_html(
-            ok=True,
-            rx_id=prescription_id,
-            issued_at=issued_at,
-            patient_initials=initials,
-            med_count=med_count,
-        ),
-    )
+# (moved) rx_verify block (L2967-3000) → /app/backend/routers/rx_verify.py
 
 
 def _verify_page_html(
@@ -3072,58 +2132,7 @@ def _verify_page_html(
 # ============================================================
 
 
-@app.get("/api/admin/backup/status")
-async def admin_backup_status(user=Depends(require_owner)):
-    """Owner-only: surface the latest mongodump + off-host mirror status.
-
-    Reads /app/backups/.mirror_status.json (written by mirror_backups.sh)
-    and decorates it with details of the most recent local archive so the
-    dashboard can show "last backup at X, mirrored to Y".
-    """
-    import os
-    import json
-    from pathlib import Path
-
-    backup_dir = Path("/app/backups")
-    archives = []
-    try:
-        for p in sorted(backup_dir.glob("consulturo-*.tar.gz"), reverse=True)[:5]:
-            try:
-                st = p.stat()
-                archives.append({
-                    "name": p.name,
-                    "size_bytes": st.st_size,
-                    "size_human": _human_bytes(st.st_size),
-                    "modified": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
-                })
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    mirror = None
-    status_path = backup_dir / ".mirror_status.json"
-    if status_path.exists():
-        try:
-            mirror = json.loads(status_path.read_text())
-        except Exception:
-            mirror = {"error": "could not parse mirror_status.json"}
-
-    # Inspect env (read directly from /app/backend/.env so we don't mistakenly
-    # surface a missing variable when supervisor has loaded it from a different
-    # source — keeps the response truthful).
-    mode = os.environ.get("BACKUP_MIRROR_MODE", "").strip().lower() or "none"
-    return {
-        "mode": mode,
-        "configured": mode not in ("", "none"),
-        "local": {
-            "dir": str(backup_dir),
-            "count": len(archives),
-            "recent": archives,
-        },
-        "mirror": mirror,
-        "now": datetime.now(timezone.utc).isoformat(),
-    }
+# (moved) admin_extras block (L3075-3126) → /app/backend/routers/admin_extras.py
 
 
 def _human_bytes(n: int) -> str:
@@ -3162,284 +2171,22 @@ def _human_bytes(n: int) -> str:
 # ============================================================
 
 
-@app.post("/api/surgeries")
-async def create_surgery(body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
-    surgery_id = f"sx_{uuid.uuid4().hex[:10]}"
-    digits = re.sub(r"\D", "", body.patient_phone)
-    patient_user_id = None
-    if digits:
-        m = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
-        if m:
-            patient_user_id = m["user_id"]
-    doc = {
-        "surgery_id": surgery_id,
-        "doctor_user_id": user["user_id"],
-        "patient_user_id": patient_user_id,
-        "patient_phone": body.patient_phone,
-        "patient_name": body.patient_name,
-        "patient_age": body.patient_age,
-        "patient_sex": body.patient_sex,
-        "patient_id_ipno": body.patient_id_ipno,
-        "registration_no": await get_or_set_reg_no(body.patient_phone, getattr(body, "registration_no", None), body.patient_name),
-        "address": body.address,
-        "patient_category": body.patient_category,
-        "consultation_date": body.consultation_date,
-        "referred_by": body.referred_by,
-        "clinical_examination": body.clinical_examination,
-        "diagnosis": body.diagnosis,
-        "imaging": body.imaging,
-        "department": body.department,
-        "date_of_admission": body.date_of_admission,
-        "surgery_name": body.surgery_name,
-        "date": body.date,
-        "hospital": body.hospital,
-        "operative_findings": body.operative_findings,
-        "post_op_investigations": body.post_op_investigations,
-        "date_of_discharge": body.date_of_discharge,
-        "follow_up": body.follow_up,
-        "notes": body.notes,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.surgeries.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+# (moved) surgeries block (L3165-3205) → /app/backend/routers/surgeries.py
 
 
-@app.get("/api/surgeries")
-async def list_surgeries(user=Depends(require_staff)):
-    cursor = db.surgeries.find({}, {"_id": 0}).sort("date", -1)
-    return await cursor.to_list(length=5000)
+# (moved) surgeries block (L3208-3211) → /app/backend/routers/surgeries.py
 
 
-@app.get("/api/surgeries/export.csv")
-async def export_surgeries_csv(user=Depends(require_can_manage_surgeries)):
-    """Download the full surgery logbook as a CSV, sorted latest first."""
-    import csv as _csv
-    from io import StringIO
-    from fastapi.responses import StreamingResponse
-
-    cursor = db.surgeries.find({}, {"_id": 0}).sort("date", -1)
-    rows = await cursor.to_list(length=10000)
-
-    columns = [
-        ("date", "Date of Surgery"),
-        ("patient_name", "Name"),
-        ("patient_phone", "Mobile"),
-        ("patient_age", "Age"),
-        ("patient_sex", "Sex"),
-        ("patient_id_ipno", "IP No."),
-        ("address", "Address"),
-        ("patient_category", "Category"),
-        ("consultation_date", "Consultation Date"),
-        ("referred_by", "Referred By"),
-        ("clinical_examination", "Clinical Examination"),
-        ("diagnosis", "Diagnosis"),
-        ("imaging", "Imaging"),
-        ("department", "Department"),
-        ("date_of_admission", "Date of Admission"),
-        ("surgery_name", "Name of Surgery"),
-        ("hospital", "Hospital"),
-        ("operative_findings", "Operative Findings"),
-        ("post_op_investigations", "Post-op Investigations"),
-        ("date_of_discharge", "Date of Discharge"),
-        ("follow_up", "Follow up"),
-        ("notes", "Notes"),
-        ("surgery_id", "Ref ID"),
-    ]
-
-    def _fmt(v: Any) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, datetime):
-            return v.strftime("%d-%m-%Y")
-        # ISO date strings like 2025-03-12 → DD-MM-YYYY
-        if isinstance(v, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", v):
-            return f"{v[8:10]}-{v[5:7]}-{v[0:4]}"
-        return str(v)
-
-    buf = StringIO()
-    writer = _csv.writer(buf, quoting=_csv.QUOTE_MINIMAL)
-    writer.writerow([label for _, label in columns])
-    for r in rows:
-        writer.writerow([_fmt(r.get(k)) for k, _ in columns])
-    csv_text = buf.getvalue()
-    buf.close()
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    filename = f"consulturo-surgeries-{today}.csv"
-    return StreamingResponse(
-        iter([csv_text]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+# (moved) surgeries block (L3214-3274) → /app/backend/routers/surgeries.py
 
 
-@app.patch("/api/surgeries/{surgery_id}")
-async def update_surgery(surgery_id: str, body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
-    digits = re.sub(r"\D", "", body.patient_phone)
-    patient_user_id = None
-    if digits:
-        m = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
-        if m:
-            patient_user_id = m["user_id"]
-    updates = body.model_dump()
-    updates["patient_user_id"] = patient_user_id
-    res = await db.surgeries.update_one({"surgery_id": surgery_id}, {"$set": updates})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Surgery not found")
-    return await db.surgeries.find_one({"surgery_id": surgery_id}, {"_id": 0})
+# (moved) surgeries block (L3277-3290) → /app/backend/routers/surgeries.py
 
 
-@app.delete("/api/surgeries/{surgery_id}")
-async def delete_surgery(surgery_id: str, user=Depends(require_can_manage_surgeries)):
-    res = await db.surgeries.delete_one({"surgery_id": surgery_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Surgery not found")
-    return {"ok": True}
+# (moved) surgeries block (L3293-3298) → /app/backend/routers/surgeries.py
 
 
-@app.post("/api/surgeries/import")
-async def import_surgeries(
-    payload: Dict[str, Any] = Body(...),
-    user=Depends(require_can_manage_surgeries),
-):
-    """
-    Bulk import historic logbook rows.
-    Payload: { "rows": [ { ...surgery fields }, ... ] }
-    Accepts free-form keys (case-insensitive mapping) and normalises dates to ISO yyyy-MM-dd.
-    """
-    rows: List[Dict[str, Any]] = payload.get("rows", []) or []
-    if not isinstance(rows, list):
-        raise HTTPException(status_code=400, detail="rows must be a list")
-
-    # Column aliases → canonical keys (lowercased, no spaces / underscores)
-    alias = {
-        # patient
-        "name": "patient_name", "patientname": "patient_name", "patient": "patient_name",
-        "mobile": "patient_phone", "mobileno": "patient_phone", "phone": "patient_phone", "contact": "patient_phone", "patientphone": "patient_phone",
-        "age": "patient_age", "patientage": "patient_age",
-        "sex": "patient_sex", "gender": "patient_sex", "patientsex": "patient_sex",
-        "ipno": "patient_id_ipno", "ipnumber": "patient_id_ipno", "patientid": "patient_id_ipno", "patientidipno": "patient_id_ipno",
-        "address": "address",
-        "category": "patient_category", "patientcategory": "patient_category",
-        # consultation
-        "consultationdate": "consultation_date", "dateofconsultation": "consultation_date", "opddate": "consultation_date",
-        "referredby": "referred_by", "referrer": "referred_by",
-        "examination": "clinical_examination", "clinicalexamination": "clinical_examination", "oe": "clinical_examination",
-        "diagnosis": "diagnosis", "dx": "diagnosis",
-        "imaging": "imaging", "usg": "imaging", "ct": "imaging", "mri": "imaging",
-        "department": "department", "dept": "department", "departmentopdipd": "department",
-        "dateofadmission": "date_of_admission", "admissiondate": "date_of_admission", "doa": "date_of_admission",
-        # surgery
-        "nameofsurgery": "surgery_name", "surgery": "surgery_name", "procedure": "surgery_name", "operation": "surgery_name", "nameofsurgeryprocedure": "surgery_name", "surgeryname": "surgery_name",
-        "dateofsurgery": "date", "dateofsurgeryprocedure": "date", "doc": "date", "surgerydate": "date", "operationdate": "date", "dos": "date", "date": "date",
-        "hospital": "hospital", "centre": "hospital", "institution": "hospital",
-        "operativefindings": "operative_findings", "opnotes": "operative_findings", "findings": "operative_findings",
-        "postopinvestigations": "post_op_investigations", "postop": "post_op_investigations", "postopinvestigation": "post_op_investigations",
-        "dateofdischarge": "date_of_discharge", "dischargedate": "date_of_discharge", "dod": "date_of_discharge",
-        "followup": "follow_up", "fu": "follow_up",
-        "notes": "notes", "remarks": "notes", "additionalnotes": "notes",
-    }
-
-    # Canonical keys always map to themselves (normalised form)
-    canonical_set = {
-        "patient_name", "patient_phone", "patient_age", "patient_sex", "patient_id_ipno",
-        "address", "patient_category", "consultation_date", "referred_by",
-        "clinical_examination", "diagnosis", "imaging", "department", "date_of_admission",
-        "surgery_name", "date", "hospital", "operative_findings", "post_op_investigations",
-        "date_of_discharge", "follow_up", "notes",
-    }
-
-    def _normkey(k: str) -> str:
-        return re.sub(r"[^a-z0-9]", "", (k or "").strip().lower())
-
-    # Add canonical keys to alias (their normalised form maps to themselves)
-    for c in canonical_set:
-        alias.setdefault(_normkey(c), c)
-
-    def _normdate(v: Any) -> str:
-        if not v:
-            return ""
-        s = str(v).strip()
-        # Try DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, YYYY/MM/DD, DD.MM.YYYY, "3-Mar-2025"
-        cleaned = s.replace("/", "-").replace(".", "-").replace(" ", "-")
-        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y", "%d-%b-%Y", "%d-%B-%Y", "%Y-%m-%dT%H:%M:%S"):
-            try:
-                return datetime.strptime(cleaned, fmt).strftime("%Y-%m-%d")
-            except Exception:
-                pass
-        return s
-
-    inserted = 0
-    errors: List[Dict[str, Any]] = []
-    for idx, raw in enumerate(rows):
-        if not isinstance(raw, dict):
-            errors.append({"row": idx, "error": "not an object"})
-            continue
-
-        mapped: Dict[str, Any] = {}
-        for k, v in raw.items():
-            canonical = alias.get(_normkey(k), _normkey(k))
-            # Also allow already-canonical keys passed through
-            mapped[canonical] = v
-
-        if not mapped.get("patient_name") or not mapped.get("surgery_name") or not mapped.get("date"):
-            errors.append({"row": idx, "error": "missing patient_name / surgery_name / date"})
-            continue
-
-        digits = re.sub(r"\D", "", str(mapped.get("patient_phone", "")))
-        patient_user_id = None
-        if digits:
-            m = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
-            if m:
-                patient_user_id = m["user_id"]
-
-        try:
-            age_val = mapped.get("patient_age")
-            if isinstance(age_val, str) and age_val.strip().isdigit():
-                age_val = int(age_val.strip())
-            elif not isinstance(age_val, int):
-                age_val = None
-        except Exception:
-            age_val = None
-
-        doc = {
-            "surgery_id": f"sx_{uuid.uuid4().hex[:10]}",
-            "doctor_user_id": user["user_id"],
-            "patient_user_id": patient_user_id,
-            "patient_phone": str(mapped.get("patient_phone", "") or ""),
-            "patient_name": str(mapped.get("patient_name", "") or ""),
-            "patient_age": age_val,
-            "patient_sex": str(mapped.get("patient_sex", "") or ""),
-            "patient_id_ipno": str(mapped.get("patient_id_ipno", "") or ""),
-            "address": str(mapped.get("address", "") or ""),
-            "patient_category": str(mapped.get("patient_category", "") or ""),
-            "consultation_date": _normdate(mapped.get("consultation_date")),
-            "referred_by": str(mapped.get("referred_by", "") or ""),
-            "clinical_examination": str(mapped.get("clinical_examination", "") or ""),
-            "diagnosis": str(mapped.get("diagnosis", "") or ""),
-            "imaging": str(mapped.get("imaging", "") or ""),
-            "department": str(mapped.get("department", "") or ""),
-            "date_of_admission": _normdate(mapped.get("date_of_admission")),
-            "surgery_name": str(mapped.get("surgery_name", "") or ""),
-            "date": _normdate(mapped.get("date")),
-            "hospital": str(mapped.get("hospital", "") or ""),
-            "operative_findings": str(mapped.get("operative_findings", "") or ""),
-            "post_op_investigations": str(mapped.get("post_op_investigations", "") or ""),
-            "date_of_discharge": _normdate(mapped.get("date_of_discharge")),
-            "follow_up": str(mapped.get("follow_up", "") or ""),
-            "notes": str(mapped.get("notes", "") or ""),
-            "imported": True,
-            "imported_at": datetime.now(timezone.utc),
-            "created_at": datetime.now(timezone.utc),
-        }
-        try:
-            await db.surgeries.insert_one(doc)
-            inserted += 1
-        except Exception as ex:
-            errors.append({"row": idx, "error": str(ex)[:140]})
-
-    return {"inserted": inserted, "errors": errors, "total": len(rows)}
+# (moved) surgeries block (L3301-3442) → /app/backend/routers/surgeries.py
 
 
 # Preset list of common urological procedures (from Dr. Sagar Joshi's logbook)
@@ -3474,9 +2221,7 @@ COMMON_PROCEDURES = [
 ]
 
 
-@app.get("/api/surgeries/presets")
-async def surgery_presets():
-    return {"procedures": COMMON_PROCEDURES}
+# (moved) surgeries block (L3477-3479) → /app/backend/routers/surgeries.py
 
 
 # ============================================================
@@ -3607,67 +2352,7 @@ async def _notify_affected_bookings(rule: Dict[str, Any]):
     return None
 
 
-@app.get("/api/records/me")
-async def my_records(user=Depends(require_user)):
-    uid = user["user_id"]
-    phone_digits = user.get("phone_digits") or ""
-
-    phone_q = []
-    if phone_digits:
-        phone_q.append({"patient_phone": {"$regex": phone_digits[-10:]}})
-
-    booking_q = {"$or": [{"user_id": uid}] + phone_q}
-    rx_q = {"$or": [{"patient_user_id": uid}] + phone_q}
-    sx_q = {"$or": [{"patient_user_id": uid}] + phone_q}
-
-    bookings = await db.bookings.find(booking_q, {"_id": 0}).sort("booking_date", -1).to_list(length=200)
-    prescriptions = await db.prescriptions.find(rx_q, {"_id": 0}).sort("created_at", -1).to_list(length=200)
-    surgeries = await db.surgeries.find(sx_q, {"_id": 0}).sort("date", -1).to_list(length=200)
-    ipss = await db.ipss_records.find({"user_id": uid}, {"_id": 0}).sort("created_at", -1).to_list(length=100)
-    prostate_readings = await db.prostate_readings.find(
-        {"user_id": uid}, {"_id": 0}
-    ).sort("measured_on", -1).to_list(length=50)
-
-    # Latest-per-tool snapshot from the unified tool_scores collection.
-    # Drives the "My Vitals" grid on the patient's My Records screen so
-    # every calculator they have ever used can surface its last reading.
-    tool_scores_latest: Dict[str, Any] = {}
-    pipeline = [
-        {"$match": {"user_id": uid}},
-        {"$sort": {"created_at": -1}},
-        {"$group": {"_id": "$tool_id", "doc": {"$first": "$$ROOT"}}},
-    ]
-    async for row in db.tool_scores.aggregate(pipeline):
-        doc = row.get("doc") or {}
-        doc.pop("_id", None)
-        tool_scores_latest[row["_id"]] = doc
-
-    # Aggregate urology "conditions" from prescription diagnoses for a quick clinical overview.
-    diagnoses = []
-    seen = set()
-    for rx in prescriptions:
-        d = (rx.get("diagnosis") or "").strip()
-        if d and d.lower() not in seen:
-            seen.add(d.lower())
-            diagnoses.append({"diagnosis": d, "date": rx.get("visit_date") or ""})
-
-    return {
-        "summary": {
-            "appointments": len(bookings),
-            "prescriptions": len(prescriptions),
-            "surgeries": len(surgeries),
-            "ipss_entries": len(ipss),
-            "prostate_readings": len(prostate_readings),
-            "tool_scores_count": len(tool_scores_latest),
-        },
-        "appointments": bookings,
-        "prescriptions": prescriptions,
-        "surgeries": surgeries,
-        "ipss_history": ipss,
-        "prostate_readings": prostate_readings,
-        "tool_scores_latest": tool_scores_latest,
-        "urology_conditions": diagnoses,
-    }
+# (moved) records block (L3610-3670) → /app/backend/routers/records.py
 
 
 # ============================================================
@@ -4601,108 +3286,7 @@ def _last_n_days(n: int) -> List[str]:
     return [(today - timedelta(days=i)).isoformat() for i in range(n - 1, -1, -1)]
 
 
-@app.get("/api/analytics/dashboard")
-async def analytics_dashboard(
-    months: int = 12,
-    user=Depends(require_prescriber),
-):
-    """Returns aggregated analytics for the owner dashboard:
-    - totals (lifetime)
-    - monthly_bookings / monthly_surgeries / monthly_prescriptions (last N months)
-    - daily_bookings (last 14 days)
-    - status breakdown + mode breakdown
-    - top diagnoses + top surgery names
-    - top referrers (from surgeries.referred_by)
-    """
-    months = max(1, min(24, int(months or 12)))
-    month_keys = _last_n_months(months)
-    day_keys = _last_n_days(14)
-
-    # --- totals ---
-    total_bookings = await db.bookings.count_documents({})
-    total_surgeries = await db.surgeries.count_documents({})
-    total_rx = await db.prescriptions.count_documents({})
-    total_patients = await db.patients.count_documents({})
-    confirmed_bookings = await db.bookings.count_documents({"status": "confirmed"})
-    pending_bookings = await db.bookings.count_documents({"status": "requested"})
-    cancelled_bookings = await db.bookings.count_documents({"status": "cancelled"})
-
-    # --- monthly bookings from booking_date (string YYYY-MM-DD) ---
-    monthly_bookings = {k: 0 for k in month_keys}
-    async for b in db.bookings.find({}, {"_id": 0, "booking_date": 1, "created_at": 1}):
-        key = _month_bucket(b.get("booking_date") or b.get("created_at") or "")
-        if key in monthly_bookings:
-            monthly_bookings[key] += 1
-
-    # --- monthly surgeries (from surgery date field, YYYY-MM-DD) ---
-    monthly_surgeries = {k: 0 for k in month_keys}
-    async for s in db.surgeries.find({}, {"_id": 0, "date": 1, "created_at": 1}):
-        key = _month_bucket(s.get("date") or s.get("created_at") or "")
-        if key in monthly_surgeries:
-            monthly_surgeries[key] += 1
-
-    # --- monthly prescriptions ---
-    monthly_rx = {k: 0 for k in month_keys}
-    async for r in db.prescriptions.find({}, {"_id": 0, "created_at": 1}):
-        key = _month_bucket(r.get("created_at") or "")
-        if key in monthly_rx:
-            monthly_rx[key] += 1
-
-    # --- daily bookings (last 14 days) ---
-    daily_bookings = {k: 0 for k in day_keys}
-    async for b in db.bookings.find({}, {"_id": 0, "booking_date": 1}):
-        d = (b.get("booking_date") or "")[:10]
-        if d in daily_bookings:
-            daily_bookings[d] += 1
-
-    # --- mode breakdown ---
-    mode_online = await db.bookings.count_documents({"mode": "online"})
-    mode_offline = await db.bookings.count_documents({"mode": "offline"})
-
-    # --- top diagnoses (surgeries.diagnosis) ---
-    diag_counter: Dict[str, int] = {}
-    referrer_counter: Dict[str, int] = {}
-    surgery_name_counter: Dict[str, int] = {}
-    async for s in db.surgeries.find({}, {"_id": 0, "diagnosis": 1, "referred_by": 1, "surgery_name": 1}):
-        d = (s.get("diagnosis") or "").strip()
-        if d:
-            diag_counter[d] = diag_counter.get(d, 0) + 1
-        r = (s.get("referred_by") or "").strip()
-        if r:
-            referrer_counter[r] = referrer_counter.get(r, 0) + 1
-        n = (s.get("surgery_name") or "").strip()
-        if n:
-            surgery_name_counter[n] = surgery_name_counter.get(n, 0) + 1
-
-    def _top(counter: Dict[str, int], limit: int = 8):
-        items = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)[:limit]
-        return [{"label": k, "count": v} for k, v in items]
-
-    return {
-        "totals": {
-            "bookings": total_bookings,
-            "confirmed_bookings": confirmed_bookings,
-            "pending_bookings": pending_bookings,
-            "cancelled_bookings": cancelled_bookings,
-            "surgeries": total_surgeries,
-            "prescriptions": total_rx,
-            "patients": total_patients,
-        },
-        "monthly_bookings": [{"month": k, "count": monthly_bookings[k]} for k in month_keys],
-        "monthly_surgeries": [{"month": k, "count": monthly_surgeries[k]} for k in month_keys],
-        "monthly_prescriptions": [{"month": k, "count": monthly_rx[k]} for k in month_keys],
-        "daily_bookings": [{"date": k, "count": daily_bookings[k]} for k in day_keys],
-        "mode_breakdown": {"online": mode_online, "offline": mode_offline},
-        "status_breakdown": {
-            "requested": pending_bookings,
-            "confirmed": confirmed_bookings,
-            "cancelled": cancelled_bookings,
-        },
-        "top_diagnoses": _top(diag_counter, 8),
-        "top_surgeries": _top(surgery_name_counter, 8),
-        "top_referrers": _top(referrer_counter, 8),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
+# (moved) analytics block (L4604-4705) → /app/backend/routers/analytics.py
 
 
 # ============================================================
@@ -4710,9 +3294,7 @@ async def analytics_dashboard(
 # ============================================================
 
 
-@app.get("/api/")
-async def root():
-    return {"service": "ConsultUro API", "status": "ok"}
+# (moved) api_root block (L4713-4715) → /app/backend/routers/api_root.py
 
 
 # (moved) health block (L7491-7497) → /app/backend/routers/health.py
@@ -4824,49 +3406,7 @@ def _normalize_q(q: Optional[str]) -> str:
 # (moved) medicines block (L7787-7795) → /app/backend/routers/medicines.py
 
 
-@app.get("/api/surgeries/suggestions")
-async def surgery_suggestions(
-    field: str,
-    q: Optional[str] = None,
-    limit: int = 15,
-    user=Depends(require_staff),
-):
-    """Return distinct past values for `field` across the surgeries
-    collection, ranked by frequency descending. If `q` is given, filter
-    to values whose lower-cased form contains the lower-cased query
-    (substring match — more forgiving than prefix)."""
-    if field not in _SUGGESTABLE_SURGERY_FIELDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported field. Allowed: {sorted(_SUGGESTABLE_SURGERY_FIELDS)}",
-        )
-    try:
-        limit = max(1, min(int(limit), 50))
-    except Exception:
-        limit = 15
-
-    # Build pipeline: filter to non-empty values for the field, optionally
-    # apply a case-insensitive substring match on the raw value, then
-    # group by a lower-cased key so we de-dup "Dr X" / "DR X" together.
-    match: Dict[str, Any] = {field: {"$exists": True, "$nin": [None, ""]}}
-    if q and q.strip():
-        # Escape regex special chars so users can search "Dr. X" literally.
-        q_safe = re.escape(q.strip())
-        match[field] = {"$regex": q_safe, "$options": "i", "$nin": [None, ""]}
-
-    pipeline = [
-        {"$match": match},
-        # First surface a canonical form for the lower-cased group key.
-        {"$project": {field: 1, "_k": {"$toLower": {"$ifNull": [f"${field}", ""]}}}},
-        {"$match": {"_k": {"$ne": ""}}},
-        {"$group": {"_id": "$_k", "value": {"$first": f"${field}"}, "count": {"$sum": 1}}},
-        {"$sort": {"count": -1, "value": 1}},
-        {"$limit": limit},
-        {"$project": {"_id": 0, "value": 1, "count": 1}},
-    ]
-    rows = await db.surgeries.aggregate(pipeline).to_list(length=limit)
-    # Final safety: strip any None/"" that slipped through.
-    return [r for r in rows if r.get("value")]
+# (moved) surgeries block (L4827-4869) → /app/backend/routers/surgeries.py
 
 
 # === PROSTATE VOLUME (patient-reported readings) =========================
@@ -4895,64 +3435,13 @@ def _parse_measured_on(s: Optional[str]) -> datetime:
     return datetime.now(timezone.utc)
 
 
-@app.get("/api/records/prostate-volume")
-async def prostate_volume_list(user=Depends(require_user)):
-    uid = user["user_id"]
-    cursor = db.prostate_readings.find(
-        {"user_id": uid}, {"_id": 0}
-    ).sort("measured_on", -1)
-    rows = await cursor.to_list(length=200)
-    latest = rows[0] if rows else None
-    return {
-        "count": len(rows),
-        "latest": latest,
-        "readings": rows,
-    }
+# (moved) records block (L4898-4910) → /app/backend/routers/records.py
 
 
-@app.post("/api/records/prostate-volume")
-async def prostate_volume_create(body: ProstateVolumeBody, user=Depends(require_user)):
-    try:
-        vol = float(body.volume_ml)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="volume_ml must be a number")
-    # Clinically plausible range: small adult prostate ~12 mL, massive BPH ~400 mL.
-    if vol < 5 or vol > 500:
-        raise HTTPException(
-            status_code=400,
-            detail="volume_ml must be between 5 and 500 mL",
-        )
-    source = (body.source or "USG").strip() or "USG"
-    if source not in _VALID_PROSTATE_SOURCES:
-        source = "Other"
-    measured_on = _parse_measured_on(body.measured_on)
-    # Disallow dates in the future (clock-skew-safe: allow 1 day ahead).
-    if measured_on > datetime.now(timezone.utc) + timedelta(days=1):
-        raise HTTPException(status_code=400, detail="measured_on cannot be in the future")
-
-    doc = {
-        "reading_id": f"pv_{uuid.uuid4().hex[:10]}",
-        "user_id": user["user_id"],
-        "phone_digits": user.get("phone_digits") or "",
-        "volume_ml": round(vol, 1),
-        "source": source,
-        "measured_on": measured_on,
-        "notes": (body.notes or "").strip()[:500],
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.prostate_readings.insert_one(dict(doc))
-    doc.pop("_id", None)
-    return doc
+# (moved) records block (L4913-4945) → /app/backend/routers/records.py
 
 
-@app.delete("/api/records/prostate-volume/{reading_id}")
-async def prostate_volume_delete(reading_id: str, user=Depends(require_user)):
-    res = await db.prostate_readings.delete_one(
-        {"reading_id": reading_id, "user_id": user["user_id"]}
-    )
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Reading not found")
-    return {"ok": True, "deleted": reading_id}
+# (moved) records block (L4948-4955) → /app/backend/routers/records.py
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -5057,146 +3546,13 @@ async def _seed_demo_patient_data(user_id: str, email: str, name: str) -> Dict[s
     return {"bookings": 1, "prescriptions": 1, "ipss": 1, "registration_no": reg_no}
 
 
-@app.post("/api/admin/demo/create")
-async def create_demo_account(body: CreateDemoBody, user=Depends(require_super_owner)):
-    """Super-owner-only. Creates a demo account (`is_demo: true`) with
-    the requested role. The middleware blocks every write request from
-    demo accounts (regardless of role) — they can navigate the entire
-    UI but submits short-circuit with a friendly 403.
-
-    role:
-      • "primary_owner" (default) → demo for sales / staff onboarding.
-      • "patient"                  → demo of the patient experience.
-                                     If `seed_sample_data` (default true)
-                                     a fake booking / Rx / IPSS row are
-                                     inserted so the demo looks rich.
-    """
-    email_l = (body.email or "").strip().lower()
-    if not email_l or "@" not in email_l:
-        raise HTTPException(status_code=400, detail="Valid email required")
-    role = (body.role or "primary_owner").strip().lower()
-    if role not in {"primary_owner", "patient"}:
-        raise HTTPException(status_code=400, detail="role must be 'primary_owner' or 'patient'")
-    name = (body.name or email_l.split("@")[0].title())
-    perms: Dict[str, Any] = {
-        "role": role,
-        "is_demo": True,
-        "name": name,
-    }
-    if role == "primary_owner":
-        perms.update({
-            "can_approve_bookings": True,
-            "can_approve_broadcasts": True,
-            "can_send_personal_messages": True,
-        })
-    # Upsert team_invites so future sign-ins keep the role + flag.
-    await db.team_invites.update_one(
-        {"email": email_l}, {"$set": {**perms, "email": email_l}}, upsert=True
-    )
-    # If a user already exists, mark the live record too AND grab the
-    # existing user_id so we can tag seeded rows with it.
-    existing = await db.users.find_one({"email": email_l}, {"_id": 0, "user_id": 1})
-    user_id: Optional[str] = (existing or {}).get("user_id")
-    if existing:
-        await db.users.update_one({"email": email_l}, {"$set": perms})
-    elif role == "patient":
-        # For demo PATIENTS we want a stable user_id immediately so we
-        # can seed bookings / Rx / IPSS now (without waiting for the
-        # demo user to actually sign in). Insert a placeholder users
-        # row that real auth will update on first login.
-        user_id = f"u_demo_{uuid.uuid4().hex[:10]}"
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": email_l,
-            "name": name,
-            "role": "patient",
-            "is_demo": True,
-            "phone": "+910000000001",
-            "consent_medical": True,
-            "consent_terms": True,
-            "consent_at": datetime.now(timezone.utc),
-            "created_at": datetime.now(timezone.utc),
-        })
-    seeded = None
-    if role == "patient" and body.seed_sample_data and user_id:
-        seeded = await _seed_demo_patient_data(user_id, email_l, name)
-    try:
-        await db.audit_log.insert_one({
-            "ts": datetime.now(timezone.utc), "kind": "demo_created",
-            "target_email": email_l, "actor_email": (user.get("email") or "").lower(),
-            "demo_role": role, "seeded": seeded,
-        })
-    except Exception:
-        pass
-    return {"ok": True, "email": email_l, "role": role, "is_demo": True,
-            "user_id": user_id, "seeded": seeded}
+# (moved) admin_extras block (L5060-5132) → /app/backend/routers/admin_extras.py
 
 
-@app.delete("/api/admin/demo/{user_id}")
-async def revoke_demo_primary_owner(user_id: str, user=Depends(require_super_owner)):
-    """Revoke a demo account — demote to patient and clear is_demo.
-    For patient demos we ALSO sweep up the seeded sample bookings /
-    prescriptions / IPSS rows so the user record + their "fake history"
-    disappear together.
-
-    Accepts `user_id="pending:<email>"` to revoke a demo invite that
-    hasn't signed in yet (no users row exists yet)."""
-    # Pending-invite branch — no users doc exists.
-    if user_id.startswith("pending:"):
-        email_l = user_id.split(":", 1)[1].strip().lower()
-        res = await db.team_invites.delete_many({"email": email_l, "is_demo": True})
-        return {"ok": True, "revoked_invites": res.deleted_count, "cleanup": {"bookings": 0, "prescriptions": 0, "ipss": 0}}
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not target.get("is_demo"):
-        raise HTTPException(status_code=400, detail="Not a demo account")
-    perms = {"role": "patient", "is_demo": False,
-             "can_approve_bookings": False, "can_approve_broadcasts": False,
-             "can_send_personal_messages": False}
-    await db.users.update_one({"user_id": user_id}, {"$set": perms})
-    await db.team_invites.update_many({"email": (target.get("email") or "").lower()},
-                                      {"$set": perms})
-    # Sweep seeded sample data (best-effort).
-    cleanup = {"bookings": 0, "prescriptions": 0, "ipss": 0}
-    try:
-        cleanup["bookings"] = (await db.bookings.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
-        cleanup["prescriptions"] = (await db.prescriptions.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
-        cleanup["ipss"] = (await db.ipss_submissions.delete_many({"user_id": user_id, "is_demo_seed": True})).deleted_count
-    except Exception:
-        pass
-    return {"ok": True, "cleanup": cleanup}
+# (moved) admin_extras block (L5135-5168) → /app/backend/routers/admin_extras.py
 
 
-@app.get("/api/admin/demo")
-async def list_demo_accounts(user=Depends(require_super_owner)):
-    """Lists every demo account including those that have not signed
-    in yet. Previously only `users` with `is_demo:true` were returned
-    which hid freshly-created primary_owner demos (they only exist as
-    team_invites until the user signs in for the first time)."""
-    items: List[Dict[str, Any]] = []
-    seen_emails: set = set()
-    # 1) Live users
-    async for u in db.users.find({"is_demo": True}, {"_id": 0}):
-        em = (u.get("email") or "").lower()
-        if em in seen_emails:
-            continue
-        seen_emails.add(em)
-        items.append({"user_id": u.get("user_id"), "email": em,
-                      "name": u.get("name"), "role": u.get("role"),
-                      "picture": u.get("picture"),
-                      "signed_in": True})
-    # 2) Pending invites (not signed in yet).
-    async for iv in db.team_invites.find({"is_demo": True}, {"_id": 0}):
-        em = (iv.get("email") or "").lower()
-        if em in seen_emails:
-            continue
-        seen_emails.add(em)
-        items.append({"user_id": None, "email": em,
-                      "name": iv.get("name"), "role": iv.get("role"),
-                      "picture": None,
-                      "signed_in": False})
-    return {"items": items}
+# (moved) admin_extras block (L5171-5199) → /app/backend/routers/admin_extras.py
 
 
 # Helper for write-endpoints to call: raises 403 for demo accounts.
@@ -5211,42 +3567,10 @@ def block_if_demo(user: Dict[str, Any]) -> None:
 
 
 # ── Super-owner platform stats (dashboard refactor) ───────────────
-@app.get("/api/admin/platform-stats")
-async def platform_stats(user=Depends(require_super_owner)):
-    """One-shot summary used by the super-owner dashboard."""
-    import asyncio
-    [primary_count, partner_count, staff_count, patient_count,
-     bookings_30d, rx_30d, demo_count] = await asyncio.gather(
-        db.users.count_documents({"role": "primary_owner"}),
-        db.users.count_documents({"role": "partner"}),
-        db.users.count_documents({"role": {"$in": ["doctor", "assistant", "reception", "nursing"]}}),
-        db.users.count_documents({"role": "patient"}),
-        db.bookings.count_documents({"created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}}),
-        db.prescriptions.count_documents({"created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}}),
-        db.users.count_documents({"is_demo": True}),
-    )
-    return {
-        "primary_owners": primary_count,
-        "partners": partner_count,
-        "staff": staff_count,
-        "patients": patient_count,
-        "bookings_last_30d": bookings_30d,
-        "prescriptions_last_30d": rx_30d,
-        "demo_accounts": demo_count,
-    }
+# (moved) admin_extras block (L5214-5236) → /app/backend/routers/admin_extras.py
 
 
-@app.get("/api/admin/audit-log")
-async def get_audit_log(limit: int = 50, user=Depends(require_owner)):
-    """Recent role-change / demo / sensitive events. Visible to the
-    entire owner-tier so primary_owners and partners can review who
-    promoted whom and when."""
-    rows: List[Dict[str, Any]] = []
-    async for r in db.audit_log.find({}, {"_id": 0}).sort("ts", -1).limit(int(limit)):
-        if isinstance(r.get("ts"), datetime):
-            r["ts"] = r["ts"].isoformat()
-        rows.append(r)
-    return {"items": rows}
+# (moved) admin_extras block (L5239-5249) → /app/backend/routers/admin_extras.py
 
 
 if __name__ == "__main__":
@@ -5314,3 +3638,25 @@ app.include_router(_admin_owners_router)
 # ─── Phase-3 router registrations ───
 from routers.auth import router as _auth_router
 app.include_router(_auth_router)
+
+# ─── Phase-3 router registrations ───
+from routers.rx_verify import router as _rx_verify_router
+from routers.render import router as _render_router
+from routers.analytics import router as _analytics_router
+from routers.api_root import router as _api_root_router
+from routers.export import router as _export_router
+from routers.records import router as _records_router
+from routers.admin_extras import router as _admin_extras_router
+from routers.surgeries import router as _surgeries_router
+from routers.prescriptions import router as _prescriptions_router
+from routers.bookings import router as _bookings_router
+app.include_router(_rx_verify_router)
+app.include_router(_render_router)
+app.include_router(_analytics_router)
+app.include_router(_api_root_router)
+app.include_router(_export_router)
+app.include_router(_records_router)
+app.include_router(_admin_extras_router)
+app.include_router(_surgeries_router)
+app.include_router(_prescriptions_router)
+app.include_router(_bookings_router)
