@@ -1308,60 +1308,10 @@ async def auth_me(user=Depends(require_user)):
 # Cheap to compute (count_documents on indexed fields). Refreshes on
 # screen focus.
 # ──────────────────────────────────────────────────────────────────
-STAFF_QUICKSTAT_ROLES = {"owner", "partner", "doctor", "assistant", "reception", "nursing"}
+# (moved) STAFF_QUICKSTAT_ROLES → /app/backend/routers/profile.py
 
 
-@app.get("/api/profile/quick-stats")
-async def profile_quick_stats(user=Depends(require_user)):
-    role = user.get("role") or "patient"
-    role_label = role
-    is_staff = role in STAFF_QUICKSTAT_ROLES
-    if not is_staff:
-        # Custom role labels also count as staff if categorised as such.
-        custom = await db.role_labels.find_one({"slug": role}, {"_id": 0, "category": 1})
-        if custom and custom.get("category") in ("staff", "doctor"):
-            is_staff = True
-
-    if is_staff:
-        try:
-            from zoneinfo import ZoneInfo
-            today = datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
-        except Exception:
-            today = datetime.utcnow().date().isoformat()
-        # Today's bookings — bookings store the date in `booking_date`
-        # (not `date`) and use lowercase status values.
-        today_count = await db.bookings.count_documents({"booking_date": today})
-        # Pending consultations — bookings flagged as awaiting consultation.
-        pending_count = await db.bookings.count_documents({
-            "$or": [
-                {"status": "requested"},
-                {"status": "confirmed", "consultation_done": {"$ne": True}},
-            ],
-        })
-        return {
-            "role": "staff",
-            "tiles": [
-                {"label": "Today",   "value": today_count,    "icon": "calendar",      "color": "#0E7C8B"},
-                {"label": "Pending", "value": pending_count,  "icon": "hourglass",     "color": "#F59E0B"},
-            ],
-        }
-
-    # Patient
-    total_bookings = await db.bookings.count_documents({"user_id": user["user_id"]})
-    total_records = 0
-    try:
-        total_records = await db.records.count_documents({"user_id": user["user_id"]})
-    except Exception:
-        # Records collection may not exist yet on a fresh DB — treat as 0.
-        total_records = 0
-    return {
-        "role": "patient",
-        "tiles": [
-            {"label": "Bookings", "value": total_bookings, "icon": "calendar",      "color": "#0E7C8B"},
-            {"label": "Records",  "value": total_records,  "icon": "folder-open",   "color": "#10B981"},
-        ],
-        "_role_label": role_label,
-    }
+# (moved) GET /api/profile/quick-stats → /app/backend/routers/profile.py
 
 
 
@@ -1836,155 +1786,7 @@ async def auth_logout(
 # ============================================================
 
 
-@app.get("/api/doctor")
-async def get_doctor_info(lang: str = "en"):
-    from doctor_content import get_locale as _doc_locale, localize_stats, localize_past_experience
-    if lang not in ("en", "hi", "gu"):
-        lang = "en"
-    loc = _doc_locale(lang)
-    stats = localize_stats([
-        {"label": "Years of experience", "value": "11+"},
-        {"label": "Surgeries performed", "value": "3000+"},
-        {"label": "Kidney transplants", "value": "150+"},
-        {"label": "Consultations", "value": "15000+"},
-    ], lang)
-    past_exp = localize_past_experience([
-        {"role": "Resident Doctor — General Surgery", "place": "Sir T Hospital, Bhavnagar"},
-        {"role": "Senior Resident — General Surgery", "place": "Sir T Hospital, Bhavnagar"},
-        {"role": "Assistant Professor — General Surgery", "place": "Shantabaa Medical College & Civil Hospital"},
-        {"role": "Urology Resident (DrNB)", "place": "Gleneagles Super-speciality Hospital & Transplant Centre, Parel, Mumbai"},
-    ], lang)
-    return {
-        "name": "Dr. Sagar Joshi",
-        "title": loc["title"],
-        "tagline": loc["tagline"],
-        "short_bio": loc["short_bio"],
-        "personal_statement": loc["personal_statement"],
-        "stats": stats,
-        "highlights": loc["highlights"],
-        "languages": ["English", "Gujarati", "Hindi"],
-        "qualifications": [
-            {"degree": "MBBS", "institute": "Government Medical College, Bhavnagar", "year": "2014", "note": "Bachelor of Medicine and Bachelor of Surgery."},
-            {"degree": "MS (General Surgery)", "institute": "Government Medical College, Bhavnagar", "year": "2018", "note": "Master of Surgery — comprehensive training in open and laparoscopic general surgery."},
-            {
-                "degree": "DrNB Urology",
-                "institute": "Gleneagles Global Hospital, Parel, Mumbai",
-                "year": "2022",
-                "note": "Super-specialty board certification in Urology. Trained in endourology, advanced laparoscopy, robotic surgery, laser lithotripsy, prostate laser surgery, kidney transplantation, vascular access for haemodialysis and urologic ultrasonography.",
-            },
-        ],
-        "past_experience": past_exp,
-        "memberships": [
-            {"name": "Urological Society of India (USI)", "icon": "ribbon"},
-            {"name": "Association of Surgeons of India (ASI)", "icon": "ribbon"},
-            {"name": "Indian Medical Association (IMA)", "icon": "ribbon"},
-        ],
-        "clinics": [
-            {"name": "Sterling Hospitals, Race Course", "address": "Opp. Inox Cinema, Race Course Road, Vadodara, Gujarat", "hours": "Mon–Sat, 10:00 AM – 1:00 PM"},
-            {"name": "Sterling Hospitals, Bhayli", "address": "Behind Waves Club, Bhayli, Vadodara – 391410, Gujarat", "hours": "Mon–Sat, 5:00 PM – 8:00 PM"},
-        ],
-        "availability": {
-            "mon_sat": loc["availability_phrases"]["mon_sat"],
-            "sunday": loc["availability_phrases"]["sunday"],
-            "whatsapp": "+91 81550 75669",
-        },
-        "service_categories": [
-            {
-                "title": "Kidney & Stone",
-                "icon": "water",
-                "items": [
-                    "Laser Stone Surgery (RIRS)",
-                    "PCNL (Percutaneous)",
-                    "ESWL (Shock-Wave)",
-                    "Kidney Cancer Surgery",
-                    "Hydronephrosis & PUJ Repair",
-                ],
-            },
-            {
-                "title": "Kidney Transplantation",
-                "icon": "heart",
-                "items": [
-                    "Living-donor Kidney Transplant",
-                    "Deceased-donor (Cadaveric) Transplant",
-                    "ABO-incompatible Transplant",
-                    "Pre-transplant Evaluation",
-                    "Post-transplant Follow-up & Care",
-                    "Vascular Access for Haemodialysis",
-                ],
-            },
-            {
-                "title": "Prostate",
-                "icon": "medkit",
-                "items": [
-                    "HoLEP Laser Prostate Surgery",
-                    "TURP (Bipolar / Saline)",
-                    "MRI-targeted Prostate Biopsy",
-                    "Prostate Cancer Surgery",
-                    "PSA & IPSS Screening",
-                ],
-            },
-            {
-                "title": "Laparoscopy & Robotics",
-                "icon": "hardware-chip",
-                "items": [
-                    "Laparoscopic Nephrectomy",
-                    "Laparoscopic Pyeloplasty",
-                    "Laparoscopic Adrenalectomy",
-                    "Robotic-assisted Urology",
-                ],
-            },
-            {
-                "title": "Male Health & Andrology",
-                "icon": "male",
-                "items": [
-                    "Erectile Dysfunction",
-                    "Male Infertility",
-                    "Peyronie's Disease",
-                    "Varicocelectomy",
-                    "Vasectomy",
-                    "Circumcision",
-                ],
-            },
-            {
-                "title": "Bladder, Female & General Urology",
-                "icon": "people",
-                "items": [
-                    "Bladder Cancer (TURBT)",
-                    "Urinary Incontinence",
-                    "Recurrent UTI",
-                    "Urethral Stricture",
-                    "Paediatric Urology",
-                ],
-            },
-        ],
-        # Flat list retained for legacy clients (chips rendering)
-        "services": [
-            "Kidney Stone Treatment (Laser / RIRS / PCNL)",
-            "Prostate (BPH) Laser Surgery (HoLEP / TURP)",
-            "Urologic Cancer Surgery (Kidney, Prostate, Bladder)",
-            "Advanced Laparoscopy & Robotic Urology",
-            "Kidney Transplantation",
-            "Male Infertility & Andrology",
-            "Erectile Dysfunction Management",
-            "Female Urology & Incontinence",
-            "Paediatric Urology",
-            "Endourology & URSL",
-        ],
-        "contact": {
-            "whatsapp": "+918155075669",
-            "phone": "+918155075669",
-            "email": "contact@drsagarjoshi.com",
-            "website": "https://www.drsagarjoshi.com",
-        },
-        "socials": {
-            "website": "https://www.drsagarjoshi.com",
-            "youtube": "https://www.youtube.com/@dr_sagar_j",
-            "facebook": "https://www.facebook.com/drsagarjoshi1",
-            "instagram": "https://www.instagram.com/sagar_joshi133",
-            "twitter": "http://twitter.com/Sagar_j_joshi",
-        },
-        "photo_url": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/6ng2cxnu_IMG_20260421_191126.jpg",
-    }
+# (moved) GET /api/doctor → /app/backend/routers/doctor.py
 
 
 # ============================================================
@@ -2550,31 +2352,10 @@ from disease_content import (
 )
 
 
-@app.get("/api/diseases")
-async def list_diseases(lang: str = "en"):
-    if lang not in ("en", "hi", "gu"):
-        lang = "en"
-    items = _dis_list_localized(lang)
-    return [
-        {
-            "id": d["id"],
-            "name": d["name"],
-            "icon": d["icon"],
-            "tagline": d["tagline"],
-            "image_url": disease_image(d["id"]),
-        }
-        for d in items
-    ]
+# (moved) /api/diseases → /app/backend/routers/diseases.py
 
 
-@app.get("/api/diseases/{disease_id}")
-async def get_disease(disease_id: str, lang: str = "en"):
-    if lang not in ("en", "hi", "gu"):
-        lang = "en"
-    item = _dis_get_localized(disease_id, lang)
-    if not item:
-        raise HTTPException(status_code=404, detail="Disease not found")
-    return {**item, "image_url": disease_image(disease_id)}
+# (moved) /api/diseases/{disease_id} → /app/backend/routers/diseases.py
 
 
 # ============================================================
@@ -8152,117 +7933,13 @@ async def prostate_volume_delete(reading_id: str, user=Depends(require_user)):
 # (moved) class ClinicSettingsPatch → /app/backend/models.py
 
 
-_DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
-    "_id": "default",
-    "doctor_name": "Dr. Sagar Joshi",
-    "doctor_title": "Consultant Urologist & Laparoscopic Surgeon",
-    "doctor_tagline": "Restoring health, dignity, and confidence — one patient at a time.",
-    "doctor_short_bio": "DrNB Urology · MS General Surgery · MBBS · 10+ years of clinical practice.",
-    "clinic_name": "ConsultUro · Dr. Sagar Joshi's Urology Practice",
-    "clinic_website": "https://www.drsagarjoshi.com",
-    "main_photo_url": "",
-    "cover_photo_url": "",
-    "letterhead_image_b64": "",
-    "use_letterhead": False,
-    "patient_education_html": "",
-    "need_help_html": "",
-    "social_facebook": "",
-    "social_instagram": "",
-    "social_twitter": "",
-    "social_linkedin": "",
-    "social_youtube": "",
-    "social_whatsapp": "",
-    "external_blog_links": [],
-    "partner_can_edit_branding": True,
-    "partner_can_edit_about_doctor": True,
-    "partner_can_edit_blog": True,
-    "partner_can_edit_videos": True,
-    "partner_can_edit_education": True,
-    "partner_can_manage_broadcasts": True,
-    # Granular sub-toggles default to True (matches legacy "branding"
-    # umbrella) — primary_owner switches them off on a per-section basis.
-    "partner_can_edit_main_photo": True,
-    "partner_can_edit_cover_photo": True,
-    "partner_can_edit_clinic_info": True,
-    "partner_can_edit_socials": True,
-}
+# (moved) _DEFAULT_CLINIC_SETTINGS → /app/backend/routers/clinic_settings.py
 
 
-@app.get("/api/clinic-settings")
-async def get_clinic_settings():
-    """Public read — patients also use this to render About Doctor and
-    branding without auth. Falls back to hard-coded defaults if no
-    document exists yet."""
-    doc = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
-    out = {**_DEFAULT_CLINIC_SETTINGS, **doc}
-    out.pop("_id", None)
-    return out
+# (moved) GET /api/clinic-settings → /app/backend/routers/clinic_settings.py
 
 
-@app.patch("/api/clinic-settings")
-async def patch_clinic_settings(
-    body: ClinicSettingsPatch,
-    user=Depends(require_owner),
-):
-    """Owner-tier write. Partners are gated per-field via the
-    partner_can_edit_* toggles below — partners receive 403 if they
-    try to modify a field whose toggle is off."""
-    # Cap free-text payloads to ~2 MB each (data: URIs of photos
-    # included). Anything bigger is almost certainly a UI bug.
-    payload = body.model_dump(exclude_unset=True)
-    for k in ("main_photo_url", "cover_photo_url", "letterhead_image_b64"):
-        v = payload.get(k)
-        if isinstance(v, str) and len(v) > 6_000_000:  # ~6 MB safety cap
-            raise HTTPException(status_code=413, detail=f"{k} too large")
-    # Soft cap on the editable Rx text blocks — keeps the PDF clean and
-    # prevents abuse via runaway HTML payloads.
-    for k in ("patient_education_html", "need_help_html"):
-        v = payload.get(k)
-        if isinstance(v, str) and len(v) > 8000:
-            raise HTTPException(status_code=413, detail=f"{k} too long (max 8000 chars)")
-    # Partner-permission gating: a partner can only modify fields the
-    # primary_owner has unlocked for them. Primary/super always pass.
-    if user.get("role") == "partner":
-        cur = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
-        merged = {**_DEFAULT_CLINIC_SETTINGS, **cur}
-        # Helper: granular flag if explicitly set, else fall back to the
-        # legacy umbrella `partner_can_edit_branding` so existing data
-        # behaves identically until a primary_owner saves new toggles.
-        def gate(fine_key: str) -> bool:
-            v = merged.get(fine_key)
-            if v is None:
-                return bool(merged.get("partner_can_edit_branding"))
-            return bool(v)
-        gates: Dict[str, List[str]] = {
-            "partner_can_edit_main_photo":   ["main_photo_url"],
-            "partner_can_edit_cover_photo":  ["cover_photo_url"],
-            "partner_can_edit_clinic_info":  ["clinic_name", "clinic_website"],
-            "partner_can_edit_socials":      ["social_facebook", "social_instagram",
-                                               "social_twitter", "social_linkedin",
-                                               "social_youtube", "social_whatsapp"],
-            "partner_can_edit_about_doctor": ["doctor_name", "doctor_title",
-                                               "doctor_tagline", "doctor_short_bio"],
-            "partner_can_edit_blog":         ["external_blog_links"],
-        }
-        for gate_key, fields in gates.items():
-            if any(k in payload for k in fields):
-                if not gate(gate_key):
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"Partners are not permitted to edit this section ({gate_key}). Ask the Primary Owner to enable it.",
-                    )
-        # Partners can NEVER toggle their own permissions.
-        for k in list(payload.keys()):
-            if k.startswith("partner_can_"):
-                payload.pop(k, None)
-    if not payload:
-        return {"ok": True, "updated": 0}
-    await db.clinic_settings.update_one(
-        {"_id": "default"},
-        {"$set": {**payload, "_id": "default", "updated_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return {"ok": True, "updated": len(payload)}
+# (moved) PATCH /api/clinic-settings → /app/backend/routers/clinic_settings.py
 
 
 # ── Demo accounts (Primary Owner + Patient) ───────────────────────
@@ -8546,3 +8223,17 @@ async def get_audit_log(limit: int = 50, user=Depends(require_owner)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+
+
+# ─── Phase-2 router registrations (mechanical extraction) ───
+# Imported at file-end so every `require_*` dependency that the
+# router modules lazily resolve is already bound on the server
+# module by this point — avoids the circular-import trap.
+from routers.diseases import router as _diseases_router
+from routers.doctor import router as _doctor_router
+from routers.profile import router as _profile_router
+from routers.clinic_settings import router as _clinic_settings_router
+app.include_router(_diseases_router)
+app.include_router(_doctor_router)
+app.include_router(_profile_router)
+app.include_router(_clinic_settings_router)

@@ -988,6 +988,120 @@ backend_phase1_refactor_smoke_2026_04_29:
           End state: zero test fixtures left in DB. Backend healthy
           (GET /api/health → 200 {ok:true,db:'connected'}).
 
+backend_phase2_modularization_smoke_2026_04_29:
+  - task: "Phase 2 server.py modularization smoke — extracted routers/diseases.py, routers/doctor.py, routers/profile.py, routers/clinic_settings.py via app.include_router(); ZERO behaviour change intended"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/routers/diseases.py, /app/backend/routers/doctor.py, /app/backend/routers/profile.py, /app/backend/routers/clinic_settings.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 46/46 assertions PASS via
+          /app/backend_test_phase2_modularization_smoke.py against
+          http://localhost:8001. server.py 8548→8239 lines (−309 this
+          phase, −620 cumulative). 4 routers extracted via
+          app.include_router() at the END of server.py (lines 8236-8239)
+          after all auth deps are defined — circular-import trap with
+          auth_deps.__getattr__ avoided cleanly. Zero regressions on the
+          extracted endpoints.
+
+          1. GET /api/diseases (PUBLIC) ✅
+             - 200 with non-empty list. Each item has the full
+               {id, name, icon, tagline, image_url} surface preserved.
+               image_url maps from DISEASE_IMAGE_MAP (now lives in
+               routers/diseases.py).
+
+          2. GET /api/diseases/kidney-stones (PUBLIC) ✅
+             - 200. Has image_url + symptoms + treatments fields
+               (full disease detail dict from disease_content.py merged
+               with image_url).
+
+          3. GET /api/diseases/does-not-exist (PUBLIC) ✅
+             - 404 "Disease not found".
+
+          4. GET /api/doctor (PUBLIC) ✅
+             - 200. Has all expected keys: name, qualifications, services,
+               clinics, socials. (Plus title/tagline/short_bio/highlights/
+               languages/past_experience/memberships/availability/
+               service_categories/contact/photo_url all preserved.)
+
+          5. GET /api/clinic-settings (PUBLIC) ✅
+             - 200. All 4 Letterhead-era keys present:
+               letterhead_image_b64 (str), use_letterhead (bool),
+               patient_education_html (str), need_help_html (str).
+               _DEFAULT_CLINIC_SETTINGS now lives in
+               routers/clinic_settings.py.
+
+          6. GET /api/profile/quick-stats ✅
+             - No Authorization header → 401 (require_user dep wired).
+             - With OWNER token (sagar.joshi133@gmail.com) → 200, body
+               has tiles list with role-specific KPIs (staff branch:
+               Today + Pending tiles).
+
+          7. PATCH /api/clinic-settings as primary_owner ✅
+             - PATCH {"clinic_name": "Test"} → 200.
+             - Subsequent GET reflects "Test".
+             - PATCH revert to original value → 200; GET confirms revert.
+             - No prod data pollution.
+
+          8. PATCH /api/clinic-settings partner gating ✅
+             - Seeded fresh partner row + 7d session via mongosh
+               (test-partner-phase2-<ts>, role:'partner').
+             - Sanity GET /api/auth/me as partner → 200, role=partner.
+             - Set partner_can_edit_branding=false AND
+               partner_can_edit_clinic_info=false (granular gate that
+               applies to clinic_name). Note: _DEFAULT_CLINIC_SETTINGS
+               provides True defaults for granular gates, so the legacy
+               umbrella fallback only fires when the granular gate is
+               explicitly False — set both to be safe.
+             - Partner PATCH {"clinic_name": "PartnerForbiddenTry"}
+               → 403 with detail mentioning
+               "Partners are not permitted to edit this section
+                (partner_can_edit_clinic_info). Ask the Primary Owner
+                to enable it." ✅
+             - GET confirmed clinic_name was NOT modified by the 403
+               attempt.
+             - Primary owner re-enabled
+               partner_can_edit_branding=true +
+               partner_can_edit_clinic_info=true → 200.
+             - Partner PATCH retry {"clinic_name": "PartnerAllowedTry"}
+               → 200; GET reflects partner's edit.
+             - Owner reverted clinic_name and granular gate state;
+               partner row + session purged via mongosh
+               (users_deleted=1, sessions_deleted=1). End-state clean.
+
+          9. Sanity smoke (primary_owner) ✅
+             - GET /api/auth/me → 200, role=primary_owner.
+             - GET /api/admin/partners → 200.
+             - GET /api/team → 200 (used in lieu of POST
+               /api/team/invites — that endpoint is POST-only;
+               POST'ing a real invite would have polluted the DB.
+               GET /api/team exercises the same auth-gated team
+               module which round-trips against the same primary_owner
+               authority).
+             - GET /api/health → 200 {ok:true, db:"connected"}.
+
+          Public-URL sanity (curl https://urology-pro.preview.emergentagent.com)
+          - /api/diseases → 200
+          - /api/doctor → 200
+          - /api/clinic-settings → 200
+          Routers are reachable through the Kubernetes ingress.
+
+          Imports verified: server.py registers
+          _diseases_router / _doctor_router / _profile_router /
+          _clinic_settings_router via app.include_router(...) at
+          lines 8236-8239 (END of file, after every require_*
+          dependency object is defined). No circular-import error
+          observed in /var/log/supervisor/backend.err.log; backend
+          uptime stable.
+
+          End state: zero test fixtures left in DB. Backend healthy.
+
+
 test_plan:
   current_focus:
     - "FRONTEND REGRESSION + NEW FEATURE PASS — Verify the UI on both DESKTOP (≥1280px) and MOBILE (390x844) using primary_owner credentials (token: test_session_1776770314741, email sagar.joshi133@gmail.com). Required tests: (1) DESKTOP SIDEBAR — confirm sections render in order Account → Dashboard → Practice → Administration → Explore → App → About. Account/Dashboard/Practice expanded by default; Administration/Explore/App/About collapsed by default. Tapping a section header toggles its items and persists across reload. View mode pill in App section cycles Auto/Desktop/Mobile and triggers a layout refresh. (2) DESKTOP HOME (/) — for staff (primary_owner), the hero shows 3 quick-action pills: Bookings · Consult · Prescription which navigate to dashboard tabs. Patients still see the single 'Book Consultation' pill. (3) MOBILE HOME (/) — for clinical roles (primary_owner / partner / doctor), the second quick-action card shows 'Consult' (medkit) instead of 'WhatsApp'. Tapping it goes to /dashboard?tab=consultations. (4) MOBILE MORE TAB — sections render in order Account → Dashboard → Practice → Administration → Explore → App → About with same default-collapsed behavior. Tapping a section title toggles its rows. (5) APPOINTMENT PAGE (/bookings/[id]) — Communication card buttons (Call/WhatsApp/Message) NEVER overflow or wrap to 2 lines on a 360px viewport. Single-line truncation works. (6) DASHBOARD BOOKINGS TAB — booking card action row (Call·WhatsApp·Copy·Confirm·Reschedule·Reject·Message) wraps gracefully — NO buttons spilling outside the card edge. (7) PROFILE → SHORTCUTS row labelled 'Inbox' (was 'Notifications') routes to /inbox. (8) PERMISSION MANAGER → DEMO ACCOUNTS — as super_owner, after creating a demo via OwnersPanel, the demo (signed_in:false) appears immediately in the list with a 'Revoke' button. (9) PERMISSION MANAGER → PARTNERS — as primary_owner, after promoting an email to partner, that pending entry appears with '(pending sign-in)' suffix and a 'Revoke' button. Revoke removes it. (10) i18n — toggle language EN→HI→GU; sidebar section headers and item labels translate (Administration → प्रशासन / વ્યવસ્થાપન; Consults → कंसल्ट्स / કન્સલ્ટ્સ; etc). (11) PRESCRIPTION PDF — verify the patient summary band shows 5 distinct cells: Patient · Age/Sex · Phone · Visit · Reg. No. with no overlaps. Login with token test_session_1776770314741 (already extended 7 days)."
