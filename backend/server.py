@@ -3159,27 +3159,10 @@ def _urlencode(s: str) -> str:
 # ============================================================
 
 
-@app.post("/api/ipss")
-async def save_ipss(payload: IpssSubmission, user=Depends(require_user)):
-    record_id = f"ipss_{uuid.uuid4().hex[:10]}"
-    doc = {
-        "record_id": record_id,
-        "user_id": user["user_id"],
-        "entries": [e.model_dump() for e in payload.entries],
-        "total_score": payload.total_score,
-        "severity": payload.severity,
-        "qol_score": payload.qol_score,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.ipss_records.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+# (moved) ipss block (L3162-3176) → /app/backend/routers/ipss.py
 
 
-@app.get("/api/ipss/history")
-async def ipss_history(user=Depends(require_user)):
-    cursor = db.ipss_records.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=100)
+# (moved) ipss block (L3179-3182) → /app/backend/routers/ipss.py
 
 
 # ============================================================
@@ -4220,53 +4203,13 @@ def _default_availability() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/availability/me")
-async def get_my_availability(user=Depends(require_can_manage_availability)):
-    doc = await db.availability.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    if not doc:
-        return {"user_id": user["user_id"], **_default_availability()}
-    return doc
+# (moved) availability block (L4223-4228) → /app/backend/routers/availability.py
 
 
-@app.put("/api/availability/me")
-async def set_my_availability(body: DayAvailabilityBody, user=Depends(require_can_manage_availability)):
-    payload = body.model_dump()
-    payload["user_id"] = user["user_id"]
-    payload["updated_at"] = datetime.now(timezone.utc)
-    await db.availability.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": payload},
-        upsert=True,
-    )
-    return payload
+# (moved) availability block (L4231-4241) → /app/backend/routers/availability.py
 
 
-@app.get("/api/availability/doctors")
-async def list_doctor_availability():
-    """Public list of clinicians' weekly schedules (for patient
-    booking UI). Includes:
-      • owner-tier (primary_owner / partner / super_owner / legacy
-        owner) — always treated as prescribers.
-      • Any team member whose `can_prescribe` flag has been enabled
-        by a Primary Owner / Partner.
-    """
-    prescribers = await db.users.find(
-        {"$or": [
-            {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}},
-            {"can_prescribe": True},
-        ]}, {"_id": 0}
-    ).to_list(length=50)
-    out = []
-    for p in prescribers:
-        avail = await db.availability.find_one({"user_id": p["user_id"]}, {"_id": 0}) or _default_availability()
-        out.append({
-            "user_id": p["user_id"],
-            "name": p.get("name"),
-            "role": p.get("role"),
-            "picture": p.get("picture"),
-            "availability": avail,
-        })
-    return out
+# (moved) availability block (L4244-4269) → /app/backend/routers/availability.py
 
 
 def _slot_to_minutes(slot: str) -> int:
@@ -4321,184 +4264,7 @@ async def _unavailability_block_reason(
     return None
 
 
-@app.get("/api/availability/slots")
-async def get_available_slots(date: str, mode: str = "in-person", user_id: Optional[str] = None):
-    """
-    Returns 30-minute slots for a given ISO date (YYYY-MM-DD) and mode ('in-person' or 'online').
-    If user_id is provided, filters to that doctor's availability.
-    Slots already booked (status: requested / confirmed) for the same date+mode are excluded.
-    Slots blocked by an entry in the `unavailabilities` collection (specific
-    date or recurring weekly) are also excluded; if the whole day is marked
-    all-day-unavailable, an empty slot list and a `reason` are returned so
-    the booking UI can show a friendly message.
-    """
-    try:
-        d = datetime.strptime(date, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format (YYYY-MM-DD)")
-
-    day_key = DAY_KEYS[d.weekday()]
-    field = f"{day_key}_{'on' if mode == 'online' else 'in'}"
-
-    # When a specific doctor is requested, honour only their availability.
-    # When none is specified (typical patient booking UI), we must NOT UNION
-    # every prescriber's hours — that leaks default or duplicated test-
-    # account hours and shows slots the real doctor didn't actually select.
-    # Strategy: prefer users who have a saved availability document. If none
-    # exist, fall back to the default set (one doctor, first-time boot).
-    # Eligible: owner-tier OR any team member with `can_prescribe:true`.
-    doctors_q: Dict[str, Any] = {"$or": [
-        {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}},
-        {"can_prescribe": True},
-    ]}
-    if user_id:
-        doctors_q = {"user_id": user_id}
-
-    doctors = await db.users.find(doctors_q, {"_id": 0}).to_list(length=50)
-
-    # Split doctors by whether they have a saved availability doc.
-    doctors_with_avail: List[Dict[str, Any]] = []
-    for doc in doctors:
-        avail_doc = await db.availability.find_one({"user_id": doc["user_id"]}, {"_id": 0})
-        if avail_doc:
-            doctors_with_avail.append({"user": doc, "avail": avail_doc})
-
-    # If at least one doctor has configured availability, use ONLY those —
-    # orphan / test accounts with no saved schedule no longer contribute.
-    if doctors_with_avail:
-        sources = doctors_with_avail
-    else:
-        # Every doctor account is still on defaults → show default slots once.
-        fallback_doctor = doctors[0] if doctors else None
-        sources = (
-            [{"user": fallback_doctor, "avail": _default_availability()}]
-            if fallback_doctor
-            else []
-        )
-
-    slots_set: set = set()
-    for src in sources:
-        avail = src["avail"]
-        if day_key in (avail.get("off_days") or []):
-            continue
-        windows = avail.get(field) or []
-        for w in windows:
-            s = _slot_to_minutes(w.get("start", ""))
-            e = _slot_to_minutes(w.get("end", ""))
-            if e <= s:
-                continue
-            t = s
-            while t + 30 <= e:
-                hh = t // 60
-                mm = t % 60
-                slots_set.add(f"{hh:02d}:{mm:02d}")
-                t += 30
-
-    # Aggregate booking counts per slot (allow up to MAX_BOOKINGS_PER_SLOT
-    # patients per 30-min slot — overbooking is explicitly supported up to
-    # the cap because the clinic runs OPDs that way). Status whitelist is
-    # the same as before: requested + confirmed both reserve a seat.
-    booked_counts: Dict[str, int] = {}
-    booked_cursor = db.bookings.find(
-        {
-            "booking_date": date,
-            "mode": "online" if mode == "online" else "in-person",
-            "status": {"$in": ["requested", "confirmed"]},
-        },
-        {"_id": 0, "booking_time": 1},
-    )
-    async for b in booked_cursor:
-        t = b.get("booking_time")
-        if t:
-            booked_counts[t] = booked_counts.get(t, 0) + 1
-    # A slot is "full" only when it has reached the hard cap.
-    full_times = {t for t, c in booked_counts.items() if c >= MAX_BOOKINGS_PER_SLOT}
-
-    # Same-day filtering — never offer a slot that has already passed in IST.
-    # Adds a 15-minute lead so the patient can still reach the clinic if
-    # they tap "Confirm" right away (per user request, the +15 buffer is
-    # restored — earlier removed in error).
-    try:
-        from zoneinfo import ZoneInfo  # py3.9+
-        ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
-    except Exception:
-        # Fallback: treat server time as IST (server is configured to IST in production).
-        ist_now = datetime.now()
-    past_times: set = set()
-    if d.date() == ist_now.date():
-        cutoff_minutes = ist_now.hour * 60 + ist_now.minute + 15
-        for s in list(slots_set):
-            try:
-                hh, mm = s.split(":")
-                if int(hh) * 60 + int(mm) <= cutoff_minutes:
-                    past_times.add(s)
-            except Exception:
-                continue
-
-    slots = sorted(slots_set - full_times - past_times)
-
-    # ── Unavailability filter ────────────────────────────────────────────
-    # Block dates/time-ranges marked unavailable by the doctor. Supports
-    # both single-date and recurring-weekly entries. If any rule covers
-    # the whole day, return zero slots + a reason for the UI.
-    unavail_reason: Optional[str] = None
-    weekday = d.weekday()  # Mon=0 … Sun=6
-    unavail_rules = await db.unavailabilities.find(
-        {
-            "$or": [
-                {"date": date},
-                {"recurring_weekly": True, "day_of_week": weekday},
-            ]
-        },
-        {"_id": 0},
-    ).to_list(length=100)
-    if unavail_rules:
-        for rule in unavail_rules:
-            if bool(rule.get("all_day", True)):
-                unavail_reason = rule.get("reason") or "Doctor unavailable on this day."
-                slots = []
-                break
-        if slots:
-            # Strip slots that fall inside any time-range rule
-            blocked: set = set()
-            for rule in unavail_rules:
-                if rule.get("all_day"):
-                    continue
-                s = _slot_to_minutes(rule.get("start_time", ""))
-                e = _slot_to_minutes(rule.get("end_time", ""))
-                if e <= s:
-                    continue
-                for s_str in slots:
-                    try:
-                        hh, mm = s_str.split(":")
-                        m = int(hh) * 60 + int(mm)
-                        if s <= m < e:
-                            blocked.add(s_str)
-                    except Exception:
-                        continue
-            if blocked:
-                slots = [x for x in slots if x not in blocked]
-                if not slots:
-                    unavail_reason = (unavail_rules[0].get("reason") or
-                                       "Doctor unavailable during the requested hours.")
-
-    return {
-        "date": date,
-        "mode": mode,
-        "day": day_key,
-        "slots": slots,
-        # Per-slot occupancy ("HH:MM" → count). Useful for the UI to
-        # render badges like "3/5". Includes both partially-booked and
-        # full slots for context.
-        "booked_counts": booked_counts,
-        "max_per_slot": MAX_BOOKINGS_PER_SLOT,
-        # `full_slots` carries slots dropped from `slots` because the
-        # cap is reached. `booked_slots` is kept for legacy callers.
-        "full_slots": sorted(full_times),
-        "booked_slots": sorted(booked_counts.keys()),
-        "past_slots": sorted(past_times),
-        "unavailable_reason": unavail_reason,
-    }
+# (moved) availability block (L4324-4501) → /app/backend/routers/availability.py
 
 
 # ============================================================
@@ -4507,83 +4273,13 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
 # (moved) class UnavailabilityBody → /app/backend/models.py
 
 
-@app.get("/api/unavailabilities")
-async def list_unavailabilities(user=Depends(require_can_manage_availability)):
-    """List all currently-effective unavailability rules.
-
-    Excludes single-date rules in the past so the dashboard stays uncluttered.
-    Recurring weekly rules are always returned.
-    """
-    today = datetime.now(timezone.utc).date().isoformat()
-    rules = await db.unavailabilities.find(
-        {
-            "$or": [
-                {"recurring_weekly": True},
-                {"date": {"$gte": today}},
-            ]
-        },
-        {"_id": 0},
-    ).to_list(length=500)
-    rules.sort(key=lambda r: (
-        not bool(r.get("recurring_weekly")),  # recurring first
-        r.get("day_of_week") if r.get("recurring_weekly") else 99,
-        r.get("date") or "",
-        r.get("start_time") or "",
-    ))
-    return rules
+# (moved) availability block (L4510-4533) → /app/backend/routers/availability.py
 
 
-@app.post("/api/unavailabilities")
-async def create_unavailability(body: UnavailabilityBody, user=Depends(require_can_manage_availability)):
-    if not body.recurring_weekly and not body.date:
-        raise HTTPException(status_code=400, detail="Provide a date or mark as recurring weekly")
-    if not body.all_day and (not body.start_time or not body.end_time):
-        raise HTTPException(status_code=400, detail="Time range requires both start_time and end_time")
-    if not body.all_day:
-        s = _slot_to_minutes(body.start_time or "")
-        e = _slot_to_minutes(body.end_time or "")
-        if e <= s:
-            raise HTTPException(status_code=400, detail="end_time must be after start_time")
-
-    day_of_week = body.day_of_week
-    if body.recurring_weekly and day_of_week is None and body.date:
-        try:
-            day_of_week = datetime.strptime(body.date, "%Y-%m-%d").weekday()
-        except Exception:
-            day_of_week = None
-    if body.recurring_weekly and (day_of_week is None or not 0 <= day_of_week <= 6):
-        raise HTTPException(status_code=400, detail="Recurring rules need a valid day_of_week (0..6)")
-
-    doc = {
-        "id": str(uuid.uuid4()),
-        "date": None if body.recurring_weekly else body.date,
-        "all_day": bool(body.all_day),
-        "start_time": body.start_time if not body.all_day else None,
-        "end_time": body.end_time if not body.all_day else None,
-        "recurring_weekly": bool(body.recurring_weekly),
-        "day_of_week": day_of_week if body.recurring_weekly else None,
-        "reason": (body.reason or "").strip() or None,
-        "created_by": user["user_id"],
-        "created_by_name": user.get("name"),
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.unavailabilities.insert_one(doc)
-    doc.pop("_id", None)
-    # Notify any patients whose existing bookings now fall in the unavailable
-    # window so they can rebook. Best-effort; ignore failures.
-    try:
-        await _notify_affected_bookings(doc)
-    except Exception:
-        pass
-    return doc
+# (moved) availability block (L4536-4578) → /app/backend/routers/availability.py
 
 
-@app.delete("/api/unavailabilities/{rule_id}")
-async def delete_unavailability(rule_id: str, user=Depends(require_can_manage_availability)):
-    res = await db.unavailabilities.delete_one({"id": rule_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Rule not found")
-    return {"ok": True}
+# (moved) availability block (L4581-4586) → /app/backend/routers/availability.py
 
 
 async def _notify_affected_bookings(rule: Dict[str, Any]):
@@ -4908,45 +4604,7 @@ VIDEOS_SEED = [
 ]
 
 
-@app.get("/api/videos")
-async def list_videos():
-    api_key = os.environ.get("YOUTUBE_API_KEY")
-    channel_id = os.environ.get("YOUTUBE_CHANNEL_ID")
-    cache = getattr(list_videos, "_cache", None)
-    now = datetime.now(timezone.utc)
-    if cache and (now - cache["at"]).total_seconds() < 600:
-        return cache["data"]
-    if api_key and channel_id:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as hc:
-                ch = await hc.get(
-                    "https://www.googleapis.com/youtube/v3/channels",
-                    params={"part": "contentDetails", "id": channel_id, "key": api_key},
-                )
-                ch.raise_for_status()
-                uploads = ch.json()["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-                pl = await hc.get(
-                    "https://www.googleapis.com/youtube/v3/playlistItems",
-                    params={"part": "snippet,contentDetails", "playlistId": uploads, "maxResults": 25, "key": api_key},
-                )
-                pl.raise_for_status()
-                items = []
-                for it in pl.json().get("items", []):
-                    sn = it["snippet"]
-                    vid = it["contentDetails"]["videoId"]
-                    thumbs = sn.get("thumbnails", {})
-                    thumb = (thumbs.get("maxres") or thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
-                    items.append({
-                        "id": vid, "title": sn["title"], "youtube_id": vid, "thumbnail": thumb,
-                        "duration": "", "category": sn.get("channelTitle", "YouTube"),
-                        "published_at": sn.get("publishedAt", ""),
-                    })
-                if items:
-                    list_videos._cache = {"at": now, "data": items}
-                    return items
-        except Exception:
-            pass
-    return VIDEOS_SEED
+# (moved) education block (L4911-4949) → /app/backend/routers/education.py
 
 
 EDUCATION = [
@@ -5047,35 +4705,13 @@ def _apply_custom_cover(item: Dict[str, Any]) -> Dict[str, Any]:
     return item
 
 
-@app.get("/api/education")
-async def list_education(lang: str = "en"):
-    if lang not in ("en", "hi", "gu"):
-        lang = "en"
-    return [_apply_custom_cover(i) for i in _edu_list_localized(lang)]
+# (moved) education block (L5050-5054) → /app/backend/routers/education.py
 
 
-@app.get("/api/education/{eid}")
-async def get_education(eid: str, lang: str = "en"):
-    if lang not in ("en", "hi", "gu"):
-        lang = "en"
-    item = _edu_get_localized(eid, lang)
-    if not item:
-        raise HTTPException(status_code=404, detail="Not found")
-    return _apply_custom_cover(item)
+# (moved) education block (L5057-5064) → /app/backend/routers/education.py
 
 
-@app.get("/api/calculators")
-async def list_calculators():
-    return [
-        {"id": "ipss", "name": "IPSS", "category": "Prostate", "description": "7-item score with history tracking."},
-        {"id": "psa-density", "name": "PSA Density", "category": "Prostate", "description": "PSA ÷ prostate volume."},
-        {"id": "egfr", "name": "eGFR (CKD-EPI 2021)", "category": "Kidney", "description": "Estimate GFR from creatinine."},
-        {"id": "bmi", "name": "BMI", "category": "General", "description": "Body-mass index."},
-        {"id": "iief5", "name": "IIEF-5", "category": "Sexual Health", "description": "5-item erectile function score."},
-        {"id": "prostate-volume", "name": "Prostate Volume", "category": "Prostate", "description": "Ellipsoid formula (0.524 × L × W × H)."},
-        {"id": "crcl", "name": "Creatinine Clearance", "category": "Kidney", "description": "Cockcroft-Gault formula."},
-        {"id": "stone-risk", "name": "Stone Passage Predictor", "category": "Stones", "description": "Estimate spontaneous passage %."},
-    ]
+# (moved) calculators block (L5067-5078) → /app/backend/routers/calculators.py
 
 
 # ============================================================
@@ -5099,38 +4735,13 @@ TOOL_IDS = {
 # (moved) class ToolScoreBody → /app/backend/models.py
 
 
-@app.post("/api/tools/scores")
-async def save_tool_score(body: ToolScoreBody, user=Depends(require_user)):
-    tid = (body.tool_id or "").lower()
-    if tid not in TOOL_IDS:
-        raise HTTPException(status_code=400, detail="Unknown tool_id")
-    doc = {
-        "score_id": f"ts_{uuid.uuid4().hex[:10]}",
-        "user_id": user["user_id"],
-        "tool_id": tid,
-        "score": body.score,
-        "label": body.label,
-        "details": body.details or {},
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.tool_scores.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+# (moved) tools block (L5102-5118) → /app/backend/routers/tools.py
 
 
-@app.get("/api/tools/scores/{tool_id}")
-async def list_tool_scores(tool_id: str, user=Depends(require_user)):
-    tid = tool_id.lower()
-    cursor = db.tool_scores.find({"user_id": user["user_id"], "tool_id": tid}, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=200)
+# (moved) tools block (L5121-5125) → /app/backend/routers/tools.py
 
 
-@app.delete("/api/tools/scores/{score_id}")
-async def delete_tool_score(score_id: str, user=Depends(require_user)):
-    result = await db.tool_scores.delete_one({"score_id": score_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True}
+# (moved) tools block (L5128-5133) → /app/backend/routers/tools.py
 
 
 # ---------- Bladder Diary (dedicated entries) ---------- #
@@ -5139,62 +4750,13 @@ async def delete_tool_score(score_id: str, user=Depends(require_user)):
 # (moved) class BladderEntryBody → /app/backend/models.py
 
 
-@app.post("/api/tools/bladder-diary")
-async def add_bladder_entry(body: BladderEntryBody, user=Depends(require_user)):
-    entry = {
-        "entry_id": f"bd_{uuid.uuid4().hex[:10]}",
-        "user_id": user["user_id"],
-        "date": body.date,
-        "time": body.time,
-        "volume_ml": body.volume_ml,
-        "fluid_intake_ml": body.fluid_intake_ml,
-        "urgency": body.urgency,
-        "leak": bool(body.leak),
-        "note": (body.note or "").strip() or None,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.bladder_diary.insert_one(entry)
-    entry.pop("_id", None)
-    return entry
+# (moved) tools block (L5142-5158) → /app/backend/routers/tools.py
 
 
-@app.get("/api/tools/bladder-diary")
-async def list_bladder_entries(from_date: Optional[str] = None, to_date: Optional[str] = None, user=Depends(require_user)):
-    q: Dict[str, Any] = {"user_id": user["user_id"]}
-    if from_date and to_date:
-        q["date"] = {"$gte": from_date, "$lte": to_date}
-    elif from_date:
-        q["date"] = {"$gte": from_date}
-    elif to_date:
-        q["date"] = {"$lte": to_date}
-    cursor = db.bladder_diary.find(q, {"_id": 0}).sort([("date", -1), ("time", -1)])
-    rows = await cursor.to_list(length=3000)
-    # Summarise daily totals — useful for the calendar heatmap.
-    by_day: Dict[str, Dict[str, Any]] = {}
-    for r in rows:
-        d = r.get("date", "")
-        bucket = by_day.setdefault(d, {"date": d, "voids": 0, "total_volume": 0, "intake": 0, "leaks": 0, "max_urgency": 0})
-        bucket["voids"] += 1 if r.get("volume_ml") is not None else 0
-        if r.get("volume_ml"):
-            bucket["total_volume"] += r["volume_ml"]
-        if r.get("fluid_intake_ml"):
-            bucket["intake"] += r["fluid_intake_ml"]
-        if r.get("leak"):
-            bucket["leaks"] += 1
-        if r.get("urgency") is not None and r["urgency"] > bucket["max_urgency"]:
-            bucket["max_urgency"] = r["urgency"]
-    return {
-        "entries": rows,
-        "daily": sorted(by_day.values(), key=lambda x: x["date"], reverse=True),
-    }
+# (moved) tools block (L5161-5189) → /app/backend/routers/tools.py
 
 
-@app.delete("/api/tools/bladder-diary/{entry_id}")
-async def delete_bladder_entry(entry_id: str, user=Depends(require_user)):
-    result = await db.bladder_diary.delete_one({"entry_id": entry_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True}
+# (moved) tools block (L5192-5197) → /app/backend/routers/tools.py
 
 
 # ============================================================
@@ -7146,104 +6708,26 @@ async def settings_homepage_update(body: HomepageSettingsBody, user=Depends(requ
 # (moved) class ConsentBody → /app/backend/models.py
 
 
-@app.get("/api/consent")
-async def consent_get(user=Depends(require_user)):
-    doc = await db.user_consents.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    return doc or {
-        "user_id": user["user_id"],
-        "data_consent": False,
-        "policy_consent": False,
-        "marketing_consent": False,
-        "consented_at": None,
-    }
+# (moved) consent block (L7149-7158) → /app/backend/routers/consent.py
 
 
-@app.post("/api/consent")
-async def consent_set(body: ConsentBody, user=Depends(require_user)):
-    # Both mandatory consents must be true for acceptance to be valid
-    if not (body.data_consent and body.policy_consent):
-        raise HTTPException(400, "You must accept data storage and privacy/terms to continue")
-    now = datetime.now(timezone.utc)
-    doc = {
-        "user_id": user["user_id"],
-        "email": user.get("email"),
-        "data_consent": True,
-        "policy_consent": True,
-        "marketing_consent": bool(body.marketing_consent),
-        "consented_at": now,
-        "updated_at": now,
-        "version": "1.0",
-    }
-    await db.user_consents.update_one(
-        {"user_id": user["user_id"]}, {"$set": doc}, upsert=True
-    )
-    return {"ok": True, **doc}
+# (moved) consent block (L7161-7180) → /app/backend/routers/consent.py
 
 
 # ============================================================
 # PATIENTS (unified registration across booking/Rx/surgery)
 # ============================================================
 
-@app.get("/api/patients/lookup")
-async def lookup_patient(phone: str = "", user=Depends(require_staff)):
-    """Find a patient by phone (last-10-digit normalised) — used by staff forms
-    to pre-fill name and reg_no when entering a repeat visitor."""
-    p = _normalize_phone(phone)
-    if not p:
-        raise HTTPException(status_code=400, detail="Phone required")
-    doc = await db.patients.find_one({"phone": p}, {"_id": 0})
-    if not doc:
-        return {"found": False, "phone": p}
-    return {"found": True, **doc}
+# (moved) patients block (L7187-7197) → /app/backend/routers/patients.py
 
 
-@app.get("/api/patients/history")
-async def patient_history_by_phone(phone: str = "", user=Depends(require_staff)):
-    """Full booking history for a given phone number. Used by the staff
-    booking-detail screen to show 'Same patient history' inline."""
-    p = _normalize_phone(phone)
-    if not p:
-        raise HTTPException(status_code=400, detail="Phone required")
-    suffix = p[-10:] if len(p) >= 10 else p
-    cursor = db.bookings.find(
-        {"patient_phone": {"$regex": f"{suffix}$"}},
-        {"_id": 0},
-    ).sort("created_at", -1)
-    bookings = await cursor.to_list(length=100)
-    return {"phone": p, "count": len(bookings), "bookings": bookings}
+# (moved) patients block (L7200-7213) → /app/backend/routers/patients.py
 
 
 # (moved) class PatientRegManual → /app/backend/models.py
 
 
-@app.patch("/api/patients/reg_no")
-async def set_patient_reg_no(body: PatientRegManual, user=Depends(require_prescriber)):
-    """Allow clinicians to manually assign / override a patient's reg_no (e.g. when
-    merging legacy records or correcting a misallocation)."""
-    p = _normalize_phone(body.phone)
-    if not p:
-        raise HTTPException(status_code=400, detail="Phone required")
-    reg = (body.registration_no or "").strip()
-    if not reg:
-        raise HTTPException(status_code=400, detail="Registration number required")
-    await db.patients.update_one(
-        {"phone": p},
-        {
-            "$set": {
-                "phone": p,
-                "reg_no": reg,
-                "name": body.name,
-                "updated_at": datetime.now(timezone.utc),
-            },
-            "$setOnInsert": {"first_seen_at": datetime.now(timezone.utc)},
-        },
-        upsert=True,
-    )
-    # Back-fill existing records for this phone so everything matches.
-    await db.bookings.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
-    await db.prescriptions.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
-    await db.surgeries.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
-    return {"ok": True, "phone": p, "registration_no": reg}
+# (moved) patients block (L7219-7246) → /app/backend/routers/patients.py
 
 
 # ============================================================
@@ -7251,94 +6735,16 @@ async def set_patient_reg_no(body: PatientRegManual, user=Depends(require_prescr
 # ============================================================
 
 
-@app.post("/api/referrers")
-async def create_referrer(body: ReferrerBody, user=Depends(require_staff)):
-    name = (body.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Name is required")
-    referrer_id = f"ref_{uuid.uuid4().hex[:10]}"
-    doc = {
-        "referrer_id": referrer_id,
-        "name": name,
-        "phone": (body.phone or "").strip(),
-        "whatsapp": (body.whatsapp or "").strip(),
-        "email": (body.email or "").strip(),
-        "clinic": (body.clinic or "").strip(),
-        "speciality": (body.speciality or "").strip(),
-        "city": (body.city or "").strip(),
-        "notes": (body.notes or "").strip(),
-        "created_by": user["user_id"],
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
-    }
-    await db.referrers.insert_one(doc)
-    doc.pop("_id", None)
-    # Notify the owner when a non-owner adds a new referring doctor so they
-    # can track their team's CRM growth from the notifications bell.
-    if user.get("role") != "owner":
-        owners_cursor = db.users.find({"role": "owner"}, {"user_id": 1})
-        owner_uids = [u["user_id"] async for u in owners_cursor if u.get("user_id")]
-        for uid in owner_uids:
-            await create_notification(
-                user_id=uid,
-                title="New referring doctor added",
-                body=f"{user.get('name') or 'Staff'} added Dr. {name}"
-                + (f" ({(body.speciality or '').strip()})" if body.speciality else ""),
-                kind="referral",
-                data={"referrer_id": referrer_id},
-            )
-    return doc
+# (moved) referrers block (L7254-7290) → /app/backend/routers/referrers.py
 
 
-@app.get("/api/referrers")
-async def list_referrers(user=Depends(require_staff)):
-    cursor = db.referrers.find({}, {"_id": 0}).sort("name", 1)
-    items = await cursor.to_list(length=2000)
-    # Attach surgery-count (how many surgeries reference this name via referred_by)
-    # Cheap: one aggregation for the whole set.
-    try:
-        pipeline = [
-            {"$match": {"referred_by": {"$exists": True, "$ne": ""}}},
-            {"$group": {"_id": "$referred_by", "c": {"$sum": 1}}},
-        ]
-        agg = await db.surgeries.aggregate(pipeline).to_list(length=5000)
-        counts = {(a.get("_id") or "").strip().lower(): a.get("c", 0) for a in agg}
-        for it in items:
-            it["surgery_count"] = counts.get((it.get("name") or "").strip().lower(), 0)
-    except Exception:
-        for it in items:
-            it["surgery_count"] = 0
-    return items
+# (moved) referrers block (L7293-7311) → /app/backend/routers/referrers.py
 
 
-@app.patch("/api/referrers/{referrer_id}")
-async def update_referrer(referrer_id: str, body: ReferrerBody, user=Depends(require_staff)):
-    existing = await db.referrers.find_one({"referrer_id": referrer_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Referrer not found")
-    updates = {
-        "name": (body.name or existing.get("name", "")).strip(),
-        "phone": (body.phone or "").strip(),
-        "whatsapp": (body.whatsapp or "").strip(),
-        "email": (body.email or "").strip(),
-        "clinic": (body.clinic or "").strip(),
-        "speciality": (body.speciality or "").strip(),
-        "city": (body.city or "").strip(),
-        "notes": (body.notes or "").strip(),
-        "updated_at": datetime.now(timezone.utc),
-    }
-    await db.referrers.update_one({"referrer_id": referrer_id}, {"$set": updates})
-    merged = {**existing, **updates}
-    merged.pop("_id", None)
-    return merged
+# (moved) referrers block (L7314-7333) → /app/backend/routers/referrers.py
 
 
-@app.delete("/api/referrers/{referrer_id}")
-async def delete_referrer(referrer_id: str, user=Depends(require_prescriber)):
-    res = await db.referrers.delete_one({"referrer_id": referrer_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Referrer not found")
-    return {"ok": True}
+# (moved) referrers block (L7336-7341) → /app/backend/routers/referrers.py
 
 
 # ============================================================
@@ -7488,13 +6894,7 @@ async def root():
     return {"service": "ConsultUro API", "status": "ok"}
 
 
-@app.get("/api/health")
-async def health():
-    try:
-        await db.command("ping")
-        return {"ok": True, "db": "connected"}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+# (moved) health block (L7491-7497) → /app/backend/routers/health.py
 
 
 # === MY NOTES (per-user private notes) ====================================
@@ -7523,30 +6923,10 @@ def _clean_labels(raw: Optional[List[str]]) -> List[str]:
     return seen
 
 
-@app.get("/api/notes")
-async def notes_list(user=Depends(require_user)):
-    cursor = db.notes.find(
-        {"user_id": user["user_id"]}, {"_id": 0}
-    ).sort("updated_at", -1)
-    return await cursor.to_list(length=500)
+# (moved) notes block (L7526-7531) → /app/backend/routers/notes.py
 
 
-@app.get("/api/notes/labels")
-async def notes_labels(user=Depends(require_user)):
-    """Return distinct labels the current user has used across notes, with
-    usage counts, sorted by frequency desc. Used by the editor to power
-    autocomplete / recent-chip suggestions."""
-    pipeline = [
-        {"$match": {"user_id": user["user_id"]}},
-        {"$unwind": "$labels"},
-        {"$match": {"labels": {"$nin": [None, ""]}}},
-        {"$group": {"_id": {"$toLower": "$labels"}, "label": {"$first": "$labels"}, "count": {"$sum": 1}}},
-        {"$sort": {"count": -1, "label": 1}},
-        {"$limit": 50},
-        {"$project": {"_id": 0, "label": 1, "count": 1}},
-    ]
-    rows = await db.notes.aggregate(pipeline).to_list(length=50)
-    return rows
+# (moved) notes block (L7534-7549) → /app/backend/routers/notes.py
 
 
 def _parse_reminder(s: Optional[str]) -> Optional[datetime]:
@@ -7563,59 +6943,13 @@ def _parse_reminder(s: Optional[str]) -> Optional[datetime]:
         raise HTTPException(status_code=400, detail="Invalid reminder_at datetime")
 
 
-@app.post("/api/notes")
-async def notes_create(body: NoteBody, user=Depends(require_user)):
-    text = (body.body or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Note body is required")
-    now = datetime.now(timezone.utc)
-    doc = {
-        "note_id": f"note_{uuid.uuid4().hex[:10]}",
-        "user_id": user["user_id"],
-        "title": (body.title or "").strip()[:120],
-        "body": text[:20000],
-        "reminder_at": _parse_reminder(body.reminder_at),
-        "reminder_fired": False,
-        "labels": _clean_labels(body.labels),
-        "created_at": now,
-        "updated_at": now,
-    }
-    await db.notes.insert_one(dict(doc))
-    doc.pop("_id", None)
-    return doc
+# (moved) notes block (L7566-7585) → /app/backend/routers/notes.py
 
 
-@app.patch("/api/notes/{note_id}")
-async def notes_update(note_id: str, body: NoteBody, user=Depends(require_user)):
-    text = (body.body or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Note body is required")
-    existing = await db.notes.find_one({"note_id": note_id, "user_id": user["user_id"]})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Note not found")
-    new_reminder = _parse_reminder(body.reminder_at)
-    updates = {
-        "title": (body.title or "").strip()[:120],
-        "body": text[:20000],
-        "reminder_at": new_reminder,
-        "labels": _clean_labels(body.labels),
-        "updated_at": datetime.now(timezone.utc),
-    }
-    # If user re-set the reminder to a future date, reset the "fired" flag
-    # so it can alert again.
-    if new_reminder and new_reminder > datetime.now(timezone.utc):
-        updates["reminder_fired"] = False
-    await db.notes.update_one({"note_id": note_id}, {"$set": updates})
-    doc = await db.notes.find_one({"note_id": note_id}, {"_id": 0})
-    return doc
+# (moved) notes block (L7588-7610) → /app/backend/routers/notes.py
 
 
-@app.delete("/api/notes/{note_id}")
-async def notes_delete(note_id: str, user=Depends(require_user)):
-    res = await db.notes.delete_one({"note_id": note_id, "user_id": user["user_id"]})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Note not found")
-    return {"ok": True, "deleted": note_id}
+# (moved) notes block (L7613-7618) → /app/backend/routers/notes.py
 
 
 # === SURGERY LOGBOOK — FIELD-LEVEL SUGGESTIONS ============================
@@ -7654,145 +6988,19 @@ def _normalize_q(q: Optional[str]) -> str:
     return (q or "").strip().lower()
 
 
-@app.get("/api/medicines/catalog")
-async def medicines_catalog(
-    q: Optional[str] = None,
-    category: Optional[str] = None,
-    limit: int = 40,
-    user=Depends(require_prescriber),
-):
-    """Search the combined (seed + clinic custom) medicine catalogue.
-
-    Query:
-      - q: substring match against name / generic / category (case-insensitive)
-      - category: exact-match category filter (optional)
-      - limit: 1..50 (default 40)
-
-    Response: list[{name, generic, category, dosage, frequency, duration,
-    timing, instructions, source("seed"|"custom")}]. Every key is always
-    present (empty string when unspecified) so the client can rely on
-    the shape.
-    """
-    try:
-        limit = max(1, min(int(limit), 50))
-    except Exception:
-        limit = 40
-    qn = _normalize_q(q)
-
-    # Pull clinic-custom medicines from Mongo so staff-added drugs show up too.
-    custom_cursor = db.medicines_custom.find({}, {"_id": 0})
-    custom_rows = await custom_cursor.to_list(length=500)
-
-    DEFAULTS = {
-        "name": "",
-        "generic": "",
-        "category": "",
-        "dosage": "",
-        "frequency": "",
-        "duration": "",
-        "timing": "",
-        "instructions": "",
-        "brands": [],
-    }
-
-    combined: List[Dict[str, Any]] = []
-    for row in _MEDICINE_SEED:
-        combined.append({**DEFAULTS, **row, "source": "seed"})
-    for row in custom_rows:
-        combined.append({**DEFAULTS, **row, "source": "custom"})
-
-    def matches(m: Dict[str, Any]) -> bool:
-        if category and (m.get("category") or "").lower() != category.lower():
-            return False
-        if not qn:
-            return True
-        # Search across name, generic, category AND brand names (Indian
-        # practices often type the brand they remember rather than the INN).
-        hay_parts = [
-            str(m.get(k) or "") for k in ("name", "generic", "category")
-        ]
-        brands = m.get("brands") or []
-        if isinstance(brands, list):
-            hay_parts.extend(str(b) for b in brands)
-        hay = " ".join(hay_parts).lower()
-        return qn in hay
-
-    # Rank: exact name prefix > name contains > generic contains > brand match > other.
-    def rank_key(m: Dict[str, Any]) -> tuple:
-        name = (m.get("name") or "").lower()
-        generic = (m.get("generic") or "").lower()
-        brands = [str(b).lower() for b in (m.get("brands") or []) if isinstance(b, (str,))]
-        if qn and name.startswith(qn):
-            return (0, name)
-        if qn and qn in name:
-            return (1, name)
-        if qn and qn in generic:
-            return (2, name)
-        if qn and any(qn in b for b in brands):
-            return (3, name)
-        return (4, name)
-
-    filtered = [m for m in combined if matches(m)]
-    filtered.sort(key=rank_key)
-    return filtered[:limit]
+# (moved) medicines block (L7657-7737) → /app/backend/routers/medicines.py
 
 
-@app.get("/api/medicines/categories")
-async def medicines_categories(user=Depends(require_prescriber)):
-    """Return distinct medicine categories across seed + custom, with counts."""
-    counts: Dict[str, int] = {}
-    for row in _MEDICINE_SEED:
-        c = row.get("category") or "Other"
-        counts[c] = counts.get(c, 0) + 1
-    custom_rows = await db.medicines_custom.find({}, {"_id": 0}).to_list(length=500)
-    for row in custom_rows:
-        c = row.get("category") or "Other"
-        counts[c] = counts.get(c, 0) + 1
-    return sorted(
-        [{"category": k, "count": v} for k, v in counts.items()],
-        key=lambda x: (-x["count"], x["category"]),
-    )
+# (moved) medicines block (L7740-7754) → /app/backend/routers/medicines.py
 
 
 # (moved) class MedicineCustomBody → /app/backend/models.py
 
 
-@app.post("/api/medicines/custom")
-async def medicines_custom_create(
-    body: MedicineCustomBody, user=Depends(require_prescriber)
-):
-    """Owner/doctor can add a clinic-specific medicine that isn't in the seed
-    (e.g. local brand, a new trial drug). Returns the stored doc."""
-    name = (body.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Medicine name is required")
-    doc = {
-        "medicine_id": f"med_{uuid.uuid4().hex[:10]}",
-        "name": name[:120],
-        "generic": (body.generic or "").strip()[:120],
-        "category": (body.category or "Other").strip()[:60] or "Other",
-        "dosage": (body.dosage or "").strip()[:60],
-        "frequency": (body.frequency or "").strip()[:40],
-        "duration": (body.duration or "").strip()[:40],
-        "timing": (body.timing or "").strip()[:60],
-        "instructions": (body.instructions or "").strip()[:300],
-        "created_by": user["user_id"],
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.medicines_custom.insert_one(dict(doc))
-    doc.pop("_id", None)
-    return doc
+# (moved) medicines block (L7760-7784) → /app/backend/routers/medicines.py
 
 
-@app.delete("/api/medicines/custom/{medicine_id}")
-async def medicines_custom_delete(
-    medicine_id: str, user=Depends(require_owner)
-):
-    """Owner can remove a clinic-specific medicine. Seed items cannot be removed."""
-    res = await db.medicines_custom.delete_one({"medicine_id": medicine_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Custom medicine not found")
-    return {"ok": True, "deleted": medicine_id}
+# (moved) medicines block (L7787-7795) → /app/backend/routers/medicines.py
 
 
 @app.get("/api/surgeries/suggestions")
@@ -8237,3 +7445,27 @@ app.include_router(_diseases_router)
 app.include_router(_doctor_router)
 app.include_router(_profile_router)
 app.include_router(_clinic_settings_router)
+
+# ─── Phase-3 router registrations ───
+from routers.health import router as _health_router
+from routers.calculators import router as _calculators_router
+from routers.education import router as _education_router
+from routers.consent import router as _consent_router
+from routers.medicines import router as _medicines_router
+from routers.notes import router as _notes_router
+from routers.availability import router as _availability_router
+from routers.ipss import router as _ipss_router
+from routers.referrers import router as _referrers_router
+from routers.patients import router as _patients_router
+from routers.tools import router as _tools_router
+app.include_router(_health_router)
+app.include_router(_calculators_router)
+app.include_router(_education_router)
+app.include_router(_consent_router)
+app.include_router(_medicines_router)
+app.include_router(_notes_router)
+app.include_router(_availability_router)
+app.include_router(_ipss_router)
+app.include_router(_referrers_router)
+app.include_router(_patients_router)
+app.include_router(_tools_router)

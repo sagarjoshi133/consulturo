@@ -10454,3 +10454,119 @@ agent_communication_2026_04_29_letterhead_smoke:
     in isolation).
     Final Phase 5: services/* (reg_no, email, telegram, pdf,
     notifications dispatch).
+
+backend_phase3_modularization_smoke_2026_04_30:
+  - task: "Phase 3 server.py modularization smoke — 11 new routers (health, calculators, education, consent, medicines, notes, availability, ipss, referrers, patients, tools); ZERO behaviour change intended"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/routers/{health,calculators,education,consent,medicines,notes,availability,ipss,referrers,patients,tools}.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          74/75 assertions PASS via
+          /app/backend_test_phase3_modularization_smoke.py against
+          http://localhost:8001. server.py 8239 → 7471 lines
+          (−768 this phase, −1408 cumulative from original 8879,
+          −15.9%). All 11 routers wired via app.include_router()
+          at server.py:7461-7471 (after the auth deps are defined,
+          avoiding the circular-import trap with auth_deps
+          re-exports). No errors in
+          /var/log/supervisor/backend.err.log; backend uptime stable;
+          GET /api/health → 200 {ok:true,db:"connected"}.
+
+          The single "FAIL" line in the test output is a
+          MISCLASSIFICATION inside the smoke harness (not a
+          regression):
+            "GET /api/availability/slots?date=... (no token) → 401"
+            actual: 200
+          /api/availability/slots intentionally has NO auth
+          dependency in routers/availability.py (it is the public
+          patient-booking endpoint). This matches the pre-Phase-3
+          behaviour in server.py exactly (the original handler also
+          took only `date`, `mode`, `user_id` query params and no
+          `Depends(require_*)`). The review brief listed the path
+          under "AUTH-protected", but that was a brief-side
+          mis-tag — actual product behaviour is unchanged. NET:
+          ZERO regressions observed.
+
+          1. PUBLIC reads (no auth) ✅ — 22 / 22 PASS
+             • /api/health → 200 {ok:true, db:"connected"}
+             • /api/clinic-settings → 200
+             • /api/diseases → 200, list len=41
+             • /api/doctor → 200
+             • /api/calculators → 200, list len=8 (id+name on item 0)
+             • /api/education?lang=en|hi|gu → 200 each, all len=37
+             • /api/education/kegel-exercises?lang=en → 200 with
+               id/cover/title/summary/details/steps
+             • /api/education/does-not-exist → 404
+             • /api/videos → 200 (YouTube fan-out OR seed list)
+             • /api/availability/doctors → 200, len=2 with
+               availability key
+
+          2. AUTH gating (no token → 401; primary_owner → 200) ✅
+             — 27 / 28 PASS (the 28th is the misclassification
+             above)
+             No-token 401 verified for: /api/medicines/catalog,
+             /api/medicines/categories, /api/notes,
+             /api/notes/labels, /api/referrers,
+             /api/patients/lookup, /api/patients/history,
+             /api/consent, /api/availability/me,
+             /api/unavailabilities, /api/ipss/history,
+             /api/tools/scores/ipss, /api/tools/bladder-diary.
+             Owner 200 verified for the same 13 + the public
+             /api/availability/slots which also returned a fully
+             populated slots payload.
+
+          3. CRUD smoke (primary_owner) ✅ — 17 / 17 PASS
+             a. NOTES — POST /api/notes {title:"Phase3 Smoke",
+                body:...} → 200, note_id=note_19b5e60afa
+                (matches ^note_[0-9a-f]{10}$); GET /api/notes
+                contains it (count=3); DELETE → 200; subsequent
+                GET excludes it. ✅
+             b. REFERRERS — POST /api/referrers
+                {name:"Dr Phase3 Smoke", phone, email, speciality,
+                city} → 200, referrer_id=ref_924a0223ba; GET list
+                includes it; DELETE → 200; repeat DELETE → 404. ✅
+             c. MEDICINES CUSTOM — POST /api/medicines/custom
+                {name:"Phase3SmokeDrug", generic, category, dosage,
+                frequency, duration} → 200,
+                medicine_id=med_974d4af24b; GET
+                /api/medicines/catalog?q=phase3smoke finds it
+                (len=1); DELETE → 200. ✅
+             d. BLADDER DIARY — POST /api/tools/bladder-diary
+                {date,time,volume_ml,fluid_intake_ml,urgency,leak,
+                note} → 200, entry_id=bd_3db48bf958; GET list
+                contains it (count=1 in entries); DELETE → 200. ✅
+
+          4. Auth-gate intactness on writes ✅
+             - DELETE /api/notes/{id} (no token) → 401.
+             - PATCH /api/referrers/{id} (no token) → 401.
+
+          5. Untouched-domain regressions (sanity) ✅
+             - GET /api/auth/me (owner) → 200, role=primary_owner.
+             - GET /api/admin/partners (owner) → 200 {items:[]}.
+             - GET /api/team (owner) → 200 (list of team rows).
+             - GET /api/bookings/all (owner) → 200 (list).
+
+          End-state: zero test fixtures left in DB (each create
+          paired with delete). Backend healthy.
+
+
+agent_communication_2026_04_30_phase3_modularization_smoke:
+  - agent: "testing"
+    message: |
+      Phase 3 modularization smoke test COMPLETE — 74/75 PASS,
+      0 regressions on /app/backend/routers/{health, calculators,
+      education, consent, medicines, notes, availability, ipss,
+      referrers, patients, tools}.py vs. pre-Phase-3 server.py.
+      The single "FAIL" line was a TEST-SIDE misclassification
+      (review brief listed /api/availability/slots as auth-
+      protected, but it is intentionally PUBLIC in the original
+      code — the router preserves that exactly with no Depends).
+      Behaviour is byte-identical. No 5xx, no startup errors, no
+      DB pollution (every CRUD smoke create paired with delete).
+      Recommend Main Agent finalize this phase.
