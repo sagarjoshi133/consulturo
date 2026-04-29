@@ -3,28 +3,36 @@
   · /api/referrers
   · /api/referrers/{referrer_id}
 
-Extracted from server.py during Phase 3 modularization.
-Behaviour preserved EXACTLY.
+Multi-tenant scoped: each referring-doctor record belongs to a single
+clinic. Lists/updates/deletes are filtered by the resolved `clinic_id`
+so different clinics never see each other's CRM contacts.
 """
 from datetime import datetime, timezone
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
 from auth_deps import require_prescriber, require_staff
 from models import ReferrerBody
 from server import create_notification
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
 
 @router.post("/api/referrers")
-async def create_referrer(body: ReferrerBody, user=Depends(require_staff)):
+async def create_referrer(
+    body: ReferrerBody,
+    request: Request,
+    user=Depends(require_staff),
+):
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
+    clinic_id = await resolve_clinic_id(request, user)
     referrer_id = f"ref_{uuid.uuid4().hex[:10]}"
     doc = {
         "referrer_id": referrer_id,
+        "clinic_id": clinic_id,
         "name": name,
         "phone": (body.phone or "").strip(),
         "whatsapp": (body.whatsapp or "").strip(),
@@ -55,15 +63,19 @@ async def create_referrer(body: ReferrerBody, user=Depends(require_staff)):
             )
     return doc
 
+
 @router.get("/api/referrers")
-async def list_referrers(user=Depends(require_staff)):
-    cursor = db.referrers.find({}, {"_id": 0}).sort("name", 1)
+async def list_referrers(request: Request, user=Depends(require_staff)):
+    clinic_id = await resolve_clinic_id(request, user)
+    base = tenant_filter(user, clinic_id, allow_global=True)
+    cursor = db.referrers.find(base, {"_id": 0}).sort("name", 1)
     items = await cursor.to_list(length=2000)
     # Attach surgery-count (how many surgeries reference this name via referred_by)
-    # Cheap: one aggregation for the whole set.
+    # Cheap: one aggregation for the whole set — also scoped to the clinic.
     try:
+        match: dict = {"referred_by": {"$exists": True, "$ne": ""}, **base}
         pipeline = [
-            {"$match": {"referred_by": {"$exists": True, "$ne": ""}}},
+            {"$match": match},
             {"$group": {"_id": "$referred_by", "c": {"$sum": 1}}},
         ]
         agg = await db.surgeries.aggregate(pipeline).to_list(length=5000)
@@ -75,9 +87,19 @@ async def list_referrers(user=Depends(require_staff)):
             it["surgery_count"] = 0
     return items
 
+
 @router.patch("/api/referrers/{referrer_id}")
-async def update_referrer(referrer_id: str, body: ReferrerBody, user=Depends(require_staff)):
-    existing = await db.referrers.find_one({"referrer_id": referrer_id}, {"_id": 0})
+async def update_referrer(
+    referrer_id: str,
+    body: ReferrerBody,
+    request: Request,
+    user=Depends(require_staff),
+):
+    clinic_id = await resolve_clinic_id(request, user)
+    base = tenant_filter(user, clinic_id, allow_global=True)
+    existing = await db.referrers.find_one(
+        {"referrer_id": referrer_id, **base}, {"_id": 0}
+    )
     if not existing:
         raise HTTPException(status_code=404, detail="Referrer not found")
     updates = {
@@ -91,14 +113,23 @@ async def update_referrer(referrer_id: str, body: ReferrerBody, user=Depends(req
         "notes": (body.notes or "").strip(),
         "updated_at": datetime.now(timezone.utc),
     }
-    await db.referrers.update_one({"referrer_id": referrer_id}, {"$set": updates})
+    await db.referrers.update_one(
+        {"referrer_id": referrer_id, **base}, {"$set": updates}
+    )
     merged = {**existing, **updates}
     merged.pop("_id", None)
     return merged
 
+
 @router.delete("/api/referrers/{referrer_id}")
-async def delete_referrer(referrer_id: str, user=Depends(require_prescriber)):
-    res = await db.referrers.delete_one({"referrer_id": referrer_id})
+async def delete_referrer(
+    referrer_id: str,
+    request: Request,
+    user=Depends(require_prescriber),
+):
+    clinic_id = await resolve_clinic_id(request, user)
+    base = tenant_filter(user, clinic_id, allow_global=True)
+    res = await db.referrers.delete_one({"referrer_id": referrer_id, **base})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Referrer not found")
     return {"ok": True}

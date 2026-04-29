@@ -12366,3 +12366,194 @@ agent_communication:
         Test 10 (non-owner 403) was skipped because no second-user token
         was provided in /app/memory/test_credentials.md — this is a
         spec-allowed skip per the review request.
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase E — Multi-tenant scoping for analytics + referrers (2026-06)
+# ──────────────────────────────────────────────────────────────────────
+
+phase_e_completion:
+  - task: "Analytics dashboard scoped by clinic_id"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/analytics.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Refactored /api/analytics/dashboard to inject clinic_id into
+          every count_documents() and find() query (totals, monthly_*,
+          daily_bookings, mode_breakdown, top_diagnoses, top_referrers).
+          Uses services.tenancy.resolve_clinic_id + tenant_filter helpers
+          with allow_global=True so super_owner with no X-Clinic-Id header
+          still sees cross-clinic totals. Response now also echoes the
+          resolved clinic_id at the top level for client display.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (Phase E analytics scoping subset of 42/42 in
+          /app/backend_test_phase_e_completion.py against the public
+          EXPO_PUBLIC_BACKEND_URL https://urology-pro.preview.emergentagent.com/api).
+
+          Tokens used:
+            • OWNER  test_session_1776770314741  (sagar.joshi133@gmail.com,
+              role=primary_owner, member of clinic_a97b903f2fb2)
+            • SUPER  test_so_session_phaseE_1777478140409 (24h seed,
+              app.consulturo@gmail.com, role=super_owner) — purged in
+              cleanup.
+
+          1. primary_owner — NO X-Clinic-Id header ✅
+             - 200. clinic_id == "clinic_a97b903f2fb2" (default).
+             - All 12 response keys present: totals, monthly_bookings,
+               monthly_surgeries, monthly_prescriptions, daily_bookings,
+               mode_breakdown, status_breakdown, top_diagnoses,
+               top_surgeries, top_referrers, generated_at, clinic_id
+               (NEW). Shape unchanged from pre-tenancy.
+             - totals has all 7 int keys. bookings>0, surgeries>0
+               (default clinic populated; backfilled per
+               /app/memory/test_credentials.md — 78 bookings / 401
+               surgeries / 17 prescriptions).
+             - monthly_* arrays len=12, daily_bookings len=14.
+             - status_breakdown.confirmed/cancelled match
+               totals.confirmed_bookings/cancelled_bookings exactly.
+
+          2. primary_owner — X-Clinic-Id: clinic_a97b903f2fb2 ✅
+             - 200. clinic_id echoed.
+             - totals object DEEP-EQUAL to no-header response →
+               proves the header path resolves to the same clinic
+               (no double-counting, no leakage either way).
+
+          3. super_owner — NO X-Clinic-Id header ✅
+             - 200. clinic_id is None (cross-clinic / unscoped, per
+               tenant_filter spec).
+             - super totals.bookings >= owner totals.bookings, super
+               totals.surgeries >= owner totals.surgeries
+               (currently equal because only one clinic exists today;
+               will diverge once a 2nd clinic is provisioned but the
+               relation is correct).
+
+          4. primary_owner — X-Clinic-Id: clinic_does_not_exist ✅
+             - 403 {"detail":"You are not a member of this clinic."}
+             - resolve_clinic_id correctly rejects an id the user has
+               no active membership in.
+
+          No 5xx, no cross-tenant leakage. Read-only — no DB mutation
+          performed by the analytics tests.
+
+  - task: "Referrers CRUD scoped by clinic_id"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/referrers.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Referrer CRM is now per-clinic. POST /api/referrers stamps
+          clinic_id on insert. GET / PATCH / DELETE all filter by the
+          resolved clinic_id (allow_global=True for super_owner). The
+          surgery-count enrichment aggregation also matches clinic_id so
+          counts never leak across clinics.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS (Phase E referrers scoping subset of 42/42 in
+          /app/backend_test_phase_e_completion.py against the public
+          EXPO_PUBLIC_BACKEND_URL).
+
+          1. POST /api/referrers as primary_owner (no header) ✅
+             - 200. referrer_id matches ref_<10hex>
+               (e.g. ref_a1b2c3d4e5).
+             - Response carries clinic_id == "clinic_a97b903f2fb2"
+               (default clinic). All 8 input fields persisted (name,
+               phone, whatsapp, email, clinic, speciality, city, notes).
+             - created_by/created_at/updated_at all present.
+
+          2. GET /api/referrers as primary_owner ✅
+             - 200. List non-empty. EVERY item carries
+               clinic_id == "clinic_a97b903f2fb2" (zero items with
+               another clinic_id — confirms tenant_filter is applied).
+             - Every item has int surgery_count.
+             - Newly-created referrer is present in the list.
+
+          3. PATCH /api/referrers/{id} (within own clinic) ✅
+             - 200. clinic and speciality fields updated; response
+               reflects merged doc.
+
+          4. PATCH /api/referrers/ref_does_not_exist_xyz ✅
+             - 404 "Referrer not found". (Same code path will return
+               404 for cross-tenant id because the find_one filter
+               also includes clinic_id — verified by code review;
+               no 2nd clinic exists today to seed a positive
+               cross-tenant 404 case, but the filter is correct.)
+
+          5. DELETE /api/referrers/{id} ✅
+             - 200 {"ok": true}. Re-DELETE → 404. Correct
+               idempotent behaviour.
+
+          6. GET /api/referrers as super_owner (no header) ✅
+             - 200. Unscoped — sees all referrers across clinics
+               (today: same set as the owner, since only one clinic
+               exists).
+
+          CLEANUP ✅
+          - Pre/post-test referrer_id sets are equal — no test
+             referrers leaked. SO seed session purged via mongosh
+             (sessions_deleted=1).
+
+          REGRESSION SMOKE (primary_owner) ✅
+            GET /api/auth/me            → 200
+            GET /api/clinics            → 200
+            GET /api/bookings/all       → 200
+            GET /api/prescriptions      → 200
+            GET /api/clinic-settings    → 200
+
+          OVERALL: 42/42 PASS. No 5xx, no cross-tenant leakage.
+
+phase_e_metadata:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+phase_e_agent_communication:
+  - agent: "testing"
+    message: |
+      Phase E Completion — Multi-tenant scoping verification COMPLETE.
+      42/42 assertions PASS via /app/backend_test_phase_e_completion.py
+      against EXPO_PUBLIC_BACKEND_URL. Both tasks now working:true and
+      needs_retesting:false.
+
+      Coverage:
+        • /api/analytics/dashboard — primary_owner scoped to default
+          clinic (no header AND with own X-Clinic-Id give identical
+          totals); super_owner unscoped (clinic_id=None) sees
+          cross-clinic; non-member clinic_id → 403; full response
+          shape preserved + new clinic_id field.
+        • /api/referrers POST/GET/PATCH/DELETE — clinic_id stamped on
+          insert; list filters by clinic_id (every returned item carries
+          default clinic_id); PATCH/DELETE respect tenant filter; bogus
+          id → 404; super_owner without header sees all.
+        • Regression smoke for primary_owner: /api/auth/me, /api/clinics,
+          /api/bookings/all, /api/prescriptions, /api/clinic-settings →
+          all 200.
+
+      Cross-tenant negative cases that were NOT exercised today (only
+      one clinic exists in this DB → clinic_a97b903f2fb2):
+        • PATCH/DELETE referrer from another clinic → expected 404.
+          The filter is structurally correct (find_one / delete_one
+          both include clinic_id from tenant_filter), but no 2nd
+          clinic was provisioned so no positive cross-tenant 404
+          could be observed.
+        Once a 2nd clinic exists this should be re-checked — but the
+        analytics 403 path on a non-member clinic_id IS exercised (test
+        1d), so the resolve_clinic_id membership gate is verified.
+
+      Cleanup: SO seed session test_so_session_phaseE_1777478140409
+      purged. Test referrer (ref_*) created+deleted within the test;
+      pre/post snapshot of referrer_ids is equal.
+
