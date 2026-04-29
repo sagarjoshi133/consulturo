@@ -94,11 +94,13 @@ OWNER_TIER_ROLES = {"super_owner", "primary_owner", "owner", "partner"}
 PRIMARY_TIER_ROLES = {"super_owner", "primary_owner", "owner"}
 
 # Roles whose Practice → Availability schedule is consulted when
-# generating bookable slots for the patient Book screen. Includes
-# `primary_owner` and `partner` (which were missed earlier and caused
-# the "saved availability not in sync with Book page" bug — slots fell
-# back to a stale default for an orphan doctor account).
-PRESCRIBER_AVAILABILITY_ROLES = ["owner", "doctor", "primary_owner", "partner"]
+# generating bookable slots for the patient Book screen. Owner-tier
+# only by default (primary_owner / partner / super_owner / legacy
+# owner) — these are the actual clinicians who run the practice.
+# Other team members (doctor, nursing, reception, …) may also become
+# prescribers if a Primary Owner / Partner explicitly enables their
+# `can_prescribe` flag — see `_user_is_prescriber()`.
+PRESCRIBER_AVAILABILITY_ROLES = ["super_owner", "primary_owner", "owner", "partner"]
 
 # Hard cap on concurrent bookings per (date, time, mode) slot. Walk-ins
 # and overbooks are explicitly allowed up to this limit (a 30-minute
@@ -629,6 +631,7 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
             "can_approve_bookings": True,
             "can_approve_broadcasts": True,
             "can_send_personal_messages": True,
+            "can_prescribe": True,
         }
     # Primary Owner — the original clinic owner email. Anyone the
     # super_owner promotes later is also a primary_owner (stored in
@@ -639,6 +642,7 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
             "can_approve_bookings": True,
             "can_approve_broadcasts": True,
             "can_send_personal_messages": True,
+            "can_prescribe": True,
         }
     invite = await db.team_invites.find_one({"email": email_l}, {"_id": 0})
     if invite:
@@ -656,26 +660,38 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
         if is_core or is_custom:
             return {
                 "role": role,
+                # Owner-tier always; everyone else (including `doctor`)
+                # must be explicitly granted via the Team panel.
                 "can_approve_bookings": invite.get(
-                    "can_approve_bookings", role in OWNER_TIER_ROLES or role == "doctor"
+                    "can_approve_bookings", role in OWNER_TIER_ROLES
                 ),
                 "can_approve_broadcasts": invite.get(
-                    "can_approve_broadcasts", role in OWNER_TIER_ROLES or role == "doctor"
+                    "can_approve_broadcasts", role in OWNER_TIER_ROLES
                 ),
                 "can_send_personal_messages": invite.get("can_send_personal_messages", False),
+                # `can_prescribe` follows the same rule — owner-tier
+                # always; team-members opt-in only.
+                "can_prescribe": invite.get(
+                    "can_prescribe", role in OWNER_TIER_ROLES
+                ),
             }
     return {
         "role": "patient",
         "can_approve_bookings": False,
         "can_approve_broadcasts": False,
         "can_send_personal_messages": False,
+        "can_prescribe": False,
     }
 
 
 async def get_effective_role(role: str) -> Dict[str, Any]:
-    """Return {category, is_staff} for core OR custom role."""
+    """Return {category, is_staff} for core OR custom role.
+    `doctor` is now bucketed as a regular staff member (no longer a
+    special prescriber tier) — `can_prescribe` is the gate, not the
+    role label.
+    """
     if role in STAFF_ROLES:
-        return {"category": "doctor" if role in ["owner", "doctor"] else "staff", "is_staff": True}
+        return {"category": "doctor" if role in OWNER_TIER_ROLES else "staff", "is_staff": True}
     if role == "patient":
         return {"category": "patient", "is_staff": False}
     custom = await db.role_labels.find_one({"slug": role}, {"_id": 0})
@@ -786,6 +802,11 @@ class TeamInviteBody(BaseModel):
     can_approve_bookings: bool = False
     can_approve_broadcasts: bool = False
     can_send_personal_messages: bool = False
+    # Per-user prescriber gate. False by default — only owner-tier
+    # users (primary_owner / partner / super_owner) get prescriber
+    # rights automatically; everyone else (doctor / nursing /
+    # reception / custom) must be explicitly enabled.
+    can_prescribe: bool = False
 
 
 class TeamUpdateBody(BaseModel):
@@ -793,6 +814,7 @@ class TeamUpdateBody(BaseModel):
     can_approve_bookings: Optional[bool] = None
     can_approve_broadcasts: Optional[bool] = None
     can_send_personal_messages: Optional[bool] = None
+    can_prescribe: Optional[bool] = None
     dashboard_full_access: Optional[bool] = None
     # When `dashboard_full_access` is False, owner can pick a SUBSET of
     # dashboard tab ids (e.g. ["bookings", "rx"]) the team member is
@@ -1040,40 +1062,51 @@ async def require_full_dashboard_access(user=Depends(require_user)) -> Dict[str,
 
 
 async def require_doctor_or_full_access(user=Depends(require_user)) -> Dict[str, Any]:
-    """Pass for owner / doctor / full-access team. Used by Availability and
-    Unavailability writes — anyone trusted enough to manage the schedule.
+    """Pass for owner-tier OR a team member explicitly granted
+    `can_prescribe` / `dashboard_full_access`. Used by Availability
+    and Unavailability writes — anyone trusted enough to manage the
+    schedule.
+
+    Note: the `doctor` role is no longer a special prescriber tier —
+    it's a regular team-member label. A `doctor` may still pass this
+    gate if the Primary Owner / Partner has enabled `can_prescribe`
+    on their user record (same as any other team-member role).
     """
     role = user.get("role")
-    if role in ("owner", "doctor"):
+    if role in OWNER_TIER_ROLES:
+        return user
+    if bool(user.get("can_prescribe")):
         return user
     if bool(user.get("dashboard_full_access")):
         return user
-    custom = await db.role_labels.find_one({"slug": role, "category": "doctor"}, {"_id": 0})
-    if custom:
-        return user
-    raise HTTPException(status_code=403, detail="Doctor or Full-Access access required")
+    raise HTTPException(status_code=403, detail="Prescriber or Full-Access access required")
 
 
 async def require_prescriber(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for owner-tier (super_owner / primary_owner / partner /
+    legacy owner) OR any team member whose `can_prescribe` flag has
+    been explicitly enabled by a Primary Owner / Partner.
+
+    The `doctor` role is no longer auto-granted prescriber rights —
+    it must be enabled per-user via the Team panel, same as for
+    nursing / reception / assistant / custom roles.
+    """
     role = user.get("role")
-    # Full owner-tier (super_owner, primary_owner, partner, legacy owner) +
-    # doctor are all prescribers. Partners are clinical-equal to primary_owner.
-    if role in ["super_owner", "primary_owner", "owner", "partner", "doctor"]:
+    if role in OWNER_TIER_ROLES:
         return user
-    # Custom roles tagged as "doctor" category also get prescriber powers
-    custom = await db.role_labels.find_one({"slug": role, "category": "doctor"}, {"_id": 0})
-    if custom:
+    if bool(user.get("can_prescribe")):
         return user
-    raise HTTPException(status_code=403, detail="Doctor/Owner access required")
+    raise HTTPException(status_code=403, detail="Prescriber access required")
 
 
 async def is_prescriber(user: Dict[str, Any]) -> bool:
-    """Helper — does this user have prescribe permission?"""
+    """Helper — does this user have prescribe permission?
+    Owner-tier always; team members only if `can_prescribe` is True.
+    """
     role = user.get("role")
-    if role in ["super_owner", "primary_owner", "owner", "partner", "doctor"]:
+    if role in OWNER_TIER_ROLES:
         return True
-    custom = await db.role_labels.find_one({"slug": role, "category": "doctor"}, {"_id": 0})
-    return bool(custom)
+    return bool(user.get("can_prescribe"))
 
 
 # ── Blog write-access gate ─────────────────────────────────────────
@@ -2707,8 +2740,13 @@ async def get_disease(disease_id: str, lang: str = "en"):
 
 
 async def require_approver(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for owner-tier OR any staff member whose
+    `can_approve_bookings` flag has been enabled by a Primary Owner
+    / Partner. The `doctor` role no longer auto-passes — it must be
+    explicitly granted, same as for any other team-member role.
+    """
     role = user.get("role")
-    if role in ["owner", "doctor"]:
+    if role in OWNER_TIER_ROLES:
         return user
     if role in STAFF_ROLES and user.get("can_approve_bookings"):
         return user
@@ -2831,10 +2869,13 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         {"type": "new_booking", "booking_id": booking_id},
     )
     # Persist an in-app notification for every user who can approve bookings
-    # (owner + team members with can_approve_bookings) so the bell lights
-    # up and they can action it from the notifications screen.
+    # (owner-tier + team members with can_approve_bookings) so the bell
+    # lights up and they can action it from the notifications screen.
     approvers_cursor = db.users.find(
-        {"$or": [{"role": "owner"}, {"can_approve_bookings": True}]},
+        {"$or": [
+            {"role": {"$in": list(OWNER_TIER_ROLES)}},
+            {"can_approve_bookings": True},
+        ]},
         {"user_id": 1},
     )
     approver_uids = [u["user_id"] async for u in approvers_cursor if u.get("user_id")]
@@ -3461,7 +3502,10 @@ async def patient_cancel_booking(
         f"📝 {htmllib.escape(reason)[:400]}"
     )
     approvers_cursor = db.users.find(
-        {"$or": [{"role": "owner"}, {"can_approve_bookings": True}]},
+        {"$or": [
+            {"role": {"$in": list(OWNER_TIER_ROLES)}},
+            {"can_approve_bookings": True},
+        ]},
         {"user_id": 1},
     )
     async for u in approvers_cursor:
@@ -4028,6 +4072,8 @@ async def update_team_member(email: str, body: TeamUpdateBody, user=Depends(requ
         updates["can_approve_broadcasts"] = bool(body.can_approve_broadcasts)
     if body.can_send_personal_messages is not None:
         updates["can_send_personal_messages"] = bool(body.can_send_personal_messages)
+    if body.can_prescribe is not None:
+        updates["can_prescribe"] = bool(body.can_prescribe)
     if body.dashboard_full_access is not None:
         # Only the owner can grant Full Dashboard Access. Cascading is
         # disabled by design (require_owner above already enforces this).
@@ -4070,9 +4116,13 @@ async def list_team(user=Depends(require_owner)):
             "can_approve_bookings": iv.get("can_approve_bookings", False),
             "can_approve_broadcasts": iv.get("can_approve_broadcasts", False),
             "can_send_personal_messages": iv.get("can_send_personal_messages", False),
+            "can_prescribe": iv.get("can_prescribe", False),
             "status": "invited",
         }
-    # Determine custom role slugs so we include their holders as staff
+    # Determine custom role slugs so we include their holders as staff.
+    # `category=="doctor"` is retained for backward-compat — those slugs
+    # still surface as team members but no longer auto-grant prescriber
+    # rights (the per-user `can_prescribe` flag is now the gate).
     custom_slugs = {rl["slug"] for rl in role_labels if rl.get("category") in ("staff", "doctor")}
     for u in users:
         role = u.get("role")
@@ -4081,9 +4131,11 @@ async def list_team(user=Depends(require_owner)):
                 "email": u["email"],
                 "name": u.get("name"),
                 "role": role,
-                "can_approve_bookings": u.get("can_approve_bookings", role in ["owner", "doctor"]),
-                "can_approve_broadcasts": u.get("can_approve_broadcasts", role in ["owner", "doctor"]),
-                "can_send_personal_messages": bool(u.get("can_send_personal_messages", role == "owner")),
+                # Default is owner-tier-only; everyone else must opt in.
+                "can_approve_bookings": u.get("can_approve_bookings", role in OWNER_TIER_ROLES),
+                "can_approve_broadcasts": u.get("can_approve_broadcasts", role in OWNER_TIER_ROLES),
+                "can_send_personal_messages": bool(u.get("can_send_personal_messages", role in PRIMARY_TIER_ROLES)),
+                "can_prescribe": bool(u.get("can_prescribe", role in OWNER_TIER_ROLES)),
                 "dashboard_full_access": bool(u.get("dashboard_full_access", False)),
                 "dashboard_tabs": list(u.get("dashboard_tabs") or []),
                 "status": "active",
@@ -4099,7 +4151,9 @@ async def list_team(user=Depends(require_owner)):
 async def list_roles(user=Depends(require_user)):
     """Return the union of core roles + owner's custom labels so UI can render pickers."""
     core = [
-        {"slug": "doctor", "label": "Doctor", "category": "doctor", "builtin": True},
+        # `doctor` is now a regular staff label — its prescriber rights
+        # are gated by the per-user `can_prescribe` flag, not the role.
+        {"slug": "doctor", "label": "Doctor", "category": "staff", "builtin": True},
         {"slug": "assistant", "label": "Assistant", "category": "staff", "builtin": True},
         {"slug": "reception", "label": "Reception", "category": "staff", "builtin": True},
         {"slug": "nursing", "label": "Nursing Staff", "category": "staff", "builtin": True},
@@ -4554,12 +4608,18 @@ async def set_my_availability(body: DayAvailabilityBody, user=Depends(require_pr
 
 @app.get("/api/availability/doctors")
 async def list_doctor_availability():
-    """Public list of doctors' weekly schedules (for patient booking UI)."""
-    # Includes primary_owner / partner so a clinic where the chief is a
-    # primary_owner (e.g. sagar.joshi133@gmail.com) doesn't silently
-    # disappear from the patient-facing roster.
+    """Public list of clinicians' weekly schedules (for patient
+    booking UI). Includes:
+      • owner-tier (primary_owner / partner / super_owner / legacy
+        owner) — always treated as prescribers.
+      • Any team member whose `can_prescribe` flag has been enabled
+        by a Primary Owner / Partner.
+    """
     prescribers = await db.users.find(
-        {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}}, {"_id": 0}
+        {"$or": [
+            {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}},
+            {"can_prescribe": True},
+        ]}, {"_id": 0}
     ).to_list(length=50)
     out = []
     for p in prescribers:
@@ -4651,10 +4711,13 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
     # account hours and shows slots the real doctor didn't actually select.
     # Strategy: prefer users who have a saved availability document. If none
     # exist, fall back to the default set (one doctor, first-time boot).
-    # Includes primary_owner / partner — see PRESCRIBER_AVAILABILITY_ROLES.
-    doctors_q: Dict[str, Any] = {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}}
+    # Eligible: owner-tier OR any team member with `can_prescribe:true`.
+    doctors_q: Dict[str, Any] = {"$or": [
+        {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}},
+        {"can_prescribe": True},
+    ]}
     if user_id:
-        doctors_q["user_id"] = user_id
+        doctors_q = {"user_id": user_id}
 
     doctors = await db.users.find(doctors_q, {"_id": 0}).to_list(length=50)
 
@@ -4716,11 +4779,10 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
     # A slot is "full" only when it has reached the hard cap.
     full_times = {t for t, c in booked_counts.items() if c >= MAX_BOOKINGS_PER_SLOT}
 
-    # Same-day filtering — never offer a slot whose start time has
-    # already passed in IST. The previous +15 minute lead is REMOVED
-    # at user request: patients may grab a slot up to its actual start
-    # minute. (POST /api/bookings still has a small 5-minute leniency
-    # for clock skew / network round-trip.)
+    # Same-day filtering — never offer a slot that has already passed in IST.
+    # Adds a 15-minute lead so the patient can still reach the clinic if
+    # they tap "Confirm" right away (per user request, the +15 buffer is
+    # restored — earlier removed in error).
     try:
         from zoneinfo import ZoneInfo  # py3.9+
         ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
@@ -4729,11 +4791,11 @@ async def get_available_slots(date: str, mode: str = "in-person", user_id: Optio
         ist_now = datetime.now()
     past_times: set = set()
     if d.date() == ist_now.date():
-        cutoff_minutes = ist_now.hour * 60 + ist_now.minute
+        cutoff_minutes = ist_now.hour * 60 + ist_now.minute + 15
         for s in list(slots_set):
             try:
                 hh, mm = s.split(":")
-                if int(hh) * 60 + int(mm) < cutoff_minutes:
+                if int(hh) * 60 + int(mm) <= cutoff_minutes:
                     past_times.add(s)
             except Exception:
                 continue
@@ -5955,7 +6017,10 @@ async def push_diagnostics(user=Depends(require_owner)):
     # --- users + token counts ---
     tokens_per_user: List[Dict[str, Any]] = []
     user_rows = await db.users.find(
-        {"$or": [{"role": "owner"}, {"role": "doctor"}, {"can_approve_bookings": True}]},
+        {"$or": [
+            {"role": {"$in": list(OWNER_TIER_ROLES)}},
+            {"can_approve_bookings": True},
+        ]},
         {"_id": 0, "user_id": 1, "email": 1, "name": 1, "role": 1},
     ).to_list(length=200)
     for u in user_rows:
@@ -6554,16 +6619,19 @@ async def _promote_user_to_role(
         "can_approve_bookings": True,
         "can_approve_broadcasts": True,
         "can_send_personal_messages": True,
+        "can_prescribe": True,
     }
-    # Demoting back to 'doctor' should NOT keep the elevated approval
-    # / messaging flags — reset them so an ex-partner doesn't silently
-    # retain owner-level powers via the team_invites row.
-    if role == "doctor":
+    # Demoting to a regular team-member role (doctor / nursing /
+    # reception / assistant) clears every elevated flag — they must
+    # be RE-ENABLED explicitly via the Team panel by a Primary Owner
+    # / Partner. Aligns with the "doctor is just a team member" model.
+    if role in ("doctor", "nursing", "reception", "assistant"):
         perms = {
             "role": role,
-            "can_approve_bookings": True,  # doctors usually can approve
+            "can_approve_bookings": False,
             "can_approve_broadcasts": False,
             "can_send_personal_messages": False,
+            "can_prescribe": False,
         }
     if target:
         # Stamp `created_at` (now) only when this row never had one

@@ -9251,3 +9251,73 @@ agent_communication_2026_04_28_session3:
           out-of-window POST → 200; in-window POST → 409.
 
       No mocks. Real DB writes. Awaiting user verification.
+
+  - agent: main
+    message: |
+      [follow-up: doctor demoted to team-member + capacity badge UI + 15-min cutoff restored]
+
+      Three changes shipped together at the user's request:
+
+      1) Restored the +15-minute same-day cutoff in
+         /api/availability/slots. Previously removed; user wanted it
+         back so patients can't grab a slot less than 15 min from now.
+
+      2) Removed `doctor` from the prescriber/approver hierarchy. It
+         is now a plain team-member label (parity with nursing /
+         reception / assistant). All elevated rights are gated by
+         per-user flags:
+            • can_prescribe         (NEW — Rx, surgeries, availability)
+            • can_approve_bookings  (existing)
+            • can_approve_broadcasts (existing)
+            • can_send_personal_messages (existing)
+         Owner-tier (super_owner / primary_owner / partner / legacy
+         owner) always passes; everyone else (including `doctor`)
+         must be explicitly enabled by a Primary Owner / Partner via
+         the Team panel.
+
+         Backend touchpoints:
+           - PRESCRIBER_AVAILABILITY_ROLES → owner-tier only.
+           - require_prescriber / is_prescriber → flag-based.
+           - require_approver → flag-based.
+           - require_doctor_or_full_access → flag-based.
+           - resolve_role_for_email → defaults stripped of doctor
+             auto-grant.
+           - list_team → returns can_prescribe; defaults follow
+             owner-tier-only rule.
+           - update_team_member + invite endpoints accept can_prescribe.
+           - _promote_user_to_role for doctor/nursing/reception/
+             assistant → all flags False (must be re-enabled).
+           - Booking-notification approver query → owner-tier OR
+             can_approve_bookings (no more role:"doctor" hardcode).
+           - Built-in role-label "doctor" recategorized to "staff".
+           - /api/availability/doctors + /api/availability/slots
+             include any team member with can_prescribe:true so a
+             "doctor"-role user with the flag enabled still appears.
+
+         Frontend (team-panel.tsx):
+           - New "Can prescribe (Rx, surgeries, availability)" toggle
+             in invite + edit flows. Wired to backend can_prescribe.
+           - Removed `isDoctorLike` auto-grant (kept as no-op for
+             back-compat). All flag toggles are now explicit.
+
+      3) Capacity badge "3/5" surfaced on each slot in the patient
+         Book screen.
+           - book.tsx reads `booked_counts` and `max_per_slot` from
+             /availability/slots (additive response fields shipped
+             earlier).
+           - Slot chip shows a small pill: green when filling (1-3)
+             and orange when near-full (4 of 5). Empty slots stay
+             clean. Slots that hit 5/5 are excluded server-side and
+             therefore disappear from the grid.
+           - Verified visually: 09:00 → green 2/5, 10:00 → orange
+             4/5, 11:00 (5/5) hidden as expected.
+
+      Files changed:
+        • /app/backend/server.py (multi-edit)
+        • /app/frontend/app/(tabs)/book.tsx (state + badge UI)
+        • /app/frontend/src/team-panel.tsx (new toggle, flag plumbed)
+
+      No DB migration required. Existing `doctor`-role users keep
+      their role; their elevated permissions reset to False on their
+      next sign-in unless explicitly enabled in the Team panel. No
+      mocks. Backend + Expo restarted.

@@ -68,6 +68,11 @@ export default function Book() {
   const [slot, setSlot] = useState('10:00');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  // Per-slot occupancy returned by /availability/slots:
+  //   bookedCounts["09:00"] = 3   (3 of MAX patients already booked)
+  // Used to render the "3/5" capacity badge on every slot chip.
+  const [bookedCounts, setBookedCounts] = useState<Record<string, number>>({});
+  const [maxPerSlot, setMaxPerSlot] = useState<number>(5);
   // Set when /availability/slots returns an explicit unavailable_reason
   // (doctor marked the date / time-range off). Lets us render a
   // doctor-specific message instead of the generic "no remaining slots".
@@ -85,12 +90,21 @@ export default function Book() {
         if (cancelled) return;
         const next: string[] = (data && Array.isArray(data.slots) ? data.slots : []) as string[];
         setAvailableSlots(next);
+        setBookedCounts(
+          (data && typeof data.booked_counts === 'object' && data.booked_counts) || {}
+        );
+        setMaxPerSlot(typeof data?.max_per_slot === 'number' ? data.max_per_slot : 5);
         setUnavailReason(data?.unavailable_reason || null);
         if (next.length && !next.includes(slot)) {
           setSlot(next[0]);
         }
       } catch {
-        if (!cancelled) { setAvailableSlots([]); setUnavailReason(null); }
+        if (!cancelled) {
+          setAvailableSlots([]);
+          setBookedCounts({});
+          setMaxPerSlot(5);
+          setUnavailReason(null);
+        }
       } finally {
         if (!cancelled) setSlotsLoading(false);
       }
@@ -518,6 +532,9 @@ export default function Book() {
             <View style={styles.slotGrid}>
               {availableSlots.map((s) => {
                 const selected = s === slot;
+                const count = bookedCounts[s] || 0;
+                const isFilling = count > 0;
+                const isNearFull = count >= maxPerSlot - 1; // 4/5 → highlight as nearly full
                 return (
                   <TouchableOpacity
                     key={s}
@@ -526,6 +543,31 @@ export default function Book() {
                     testID={`booking-slot-${s}`}
                   >
                     <Text style={[styles.slotText, selected && { color: '#fff' }]}>{display12h(s)}</Text>
+                    {/* Capacity badge — only render when there's at
+                        least one existing booking, so empty slots stay
+                        visually clean. Shows "3/5" with colour shifting
+                        from green → orange → red as it fills up. */}
+                    {isFilling && (
+                      <View
+                        style={[
+                          styles.slotCapBadge,
+                          isNearFull
+                            ? styles.slotCapBadgeNearFull
+                            : styles.slotCapBadgeOk,
+                          selected && styles.slotCapBadgeOnActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.slotCapText,
+                            isNearFull && styles.slotCapTextNearFull,
+                            selected && { color: '#fff' },
+                          ]}
+                        >
+                          {count}/{maxPerSlot}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -687,9 +729,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   slotActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   slotText: { ...FONTS.bodyMedium, color: COLORS.textPrimary },
+  // Capacity badge — small pill rendered to the right of the time
+  // when at least one booking already exists. Colour shifts from
+  // green (1-3 of 5) to orange (4 of 5) to indicate filling-up state.
+  slotCapBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    minWidth: 28,
+    alignItems: 'center',
+  },
+  slotCapBadgeOk: {
+    backgroundColor: COLORS.success + '22',
+  },
+  slotCapBadgeNearFull: {
+    backgroundColor: COLORS.warning + '33',
+  },
+  slotCapBadgeOnActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  slotCapText: {
+    ...FONTS.label,
+    fontSize: 10,
+    color: COLORS.success,
+    fontWeight: '700' as any,
+  },
+  slotCapTextNearFull: {
+    color: COLORS.warning,
+  },
   fieldLabel: { ...FONTS.label, color: COLORS.textSecondary },
   input: {
     marginTop: 6,

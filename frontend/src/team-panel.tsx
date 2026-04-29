@@ -29,6 +29,7 @@ type Member = {
   role: string;
   can_approve_bookings?: boolean;
   can_approve_broadcasts?: boolean;
+  can_prescribe?: boolean;
   /** Owner-granted: gives the same dashboard tabs as the doctor */
   dashboard_full_access?: boolean;
   status: 'invited' | 'active';
@@ -48,6 +49,7 @@ export function TeamPanelV2() {
   const [newRole, setNewRole] = useState<string>('assistant');
   const [canApproveBookings, setCanApproveBookings] = useState(false);
   const [canApproveBroadcasts, setCanApproveBroadcasts] = useState(false);
+  const [canPrescribe, setCanPrescribe] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -56,6 +58,7 @@ export function TeamPanelV2() {
   const [editRole, setEditRole] = useState<string>('assistant');
   const [editCanBook, setEditCanBook] = useState(false);
   const [editCanBc, setEditCanBc] = useState(false);
+  const [editCanPrescribe, setEditCanPrescribe] = useState(false);
   const [editFullAccess, setEditFullAccess] = useState(false);
   // Selected dashboard tabs when access mode = 'custom'
   const [editTabs, setEditTabs] = useState<string[]>([]);
@@ -100,11 +103,15 @@ export function TeamPanelV2() {
     [roles]
   );
 
-  const isDoctorLike = (slug: string) => {
-    if (slug === 'owner' || slug === 'doctor') return true;
-    const r = roles.find((x) => x.slug === slug);
-    return r?.category === 'doctor';
-  };
+  // NOTE: `isDoctorLike` was previously used to auto-grant approval
+  // flags whenever the role was "doctor" (or a custom doctor-category
+  // slug). That behaviour has been REMOVED — the doctor role is now
+  // a regular team-member label. Prescriber / approver / broadcast
+  // rights must be explicitly toggled by a Primary Owner / Partner,
+  // same as for nursing / reception / assistant. The helper is kept
+  // around (returns false) only to avoid touching call-sites that
+  // still reference it elsewhere in this file.
+  const isDoctorLike = (_slug: string) => false;
 
   // Hierarchy order for displaying team members. Owner first, partner/doctor
   // class next, then clinical staff, then operations/marketing/admin.
@@ -149,13 +156,15 @@ export function TeamPanelV2() {
         email: email.toLowerCase(),
         name: name || undefined,
         role: newRole,
-        can_approve_bookings: isDoctorLike(newRole) ? true : canApproveBookings,
-        can_approve_broadcasts: isDoctorLike(newRole) ? true : canApproveBroadcasts,
+        can_approve_bookings: canApproveBookings,
+        can_approve_broadcasts: canApproveBroadcasts,
+        can_prescribe: canPrescribe,
       });
       setEmail('');
       setName('');
       setCanApproveBookings(false);
       setCanApproveBroadcasts(false);
+      setCanPrescribe(false);
       load();
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Could not invite');
@@ -189,6 +198,7 @@ export function TeamPanelV2() {
     setEditRole(m.role);
     setEditCanBook(!!m.can_approve_bookings);
     setEditCanBc(!!m.can_approve_broadcasts);
+    setEditCanPrescribe(!!m.can_prescribe);
     setEditFullAccess(!!m.dashboard_full_access);
     setEditTabs(Array.isArray((m as any).dashboard_tabs) ? (m as any).dashboard_tabs : []);
   };
@@ -198,8 +208,9 @@ export function TeamPanelV2() {
     try {
       await api.patch(`/team/${editing.email}`, {
         role: editRole,
-        can_approve_bookings: isDoctorLike(editRole) ? true : editCanBook,
-        can_approve_broadcasts: isDoctorLike(editRole) ? true : editCanBc,
+        can_approve_bookings: editCanBook,
+        can_approve_broadcasts: editCanBc,
+        can_prescribe: editCanPrescribe,
         dashboard_full_access: editFullAccess,
         // Sending [] when full-access is on keeps the data clean (full-
         // access supersedes the per-tab list anyway).
@@ -257,8 +268,9 @@ export function TeamPanelV2() {
 
   if (loading) return <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />;
 
-  const inviteIsDoctorLike = isDoctorLike(newRole);
-  const editIsDoctorLike = isDoctorLike(editRole);
+  // Note: prescriber / approver flags are no longer auto-derived from
+  // role — they're explicit per-user toggles. The `isDoctorLike` helper
+  // (now a no-op) is left for back-compat in non-toggle UI bits.
 
   return (
     <>
@@ -333,27 +345,24 @@ export function TeamPanelV2() {
 
         <PermCheck
           label="Can approve / reschedule appointments"
-          description={
-            inviteIsDoctorLike
-              ? `Automatic for ${roleLabelFor(newRole)}`
-              : 'Enable to let this staff member confirm booking requests.'
-          }
-          locked={inviteIsDoctorLike}
-          value={inviteIsDoctorLike || canApproveBookings}
+          description="Enable to let this team member confirm or reschedule booking requests."
+          value={canApproveBookings}
           onToggle={() => setCanApproveBookings((v) => !v)}
           testID="team-approver-bookings"
         />
         <PermCheck
           label="Can approve push broadcasts"
-          description={
-            inviteIsDoctorLike
-              ? `Automatic for ${roleLabelFor(newRole)}`
-              : 'Let this member approve broadcast notifications (otherwise only owner can approve).'
-          }
-          locked={inviteIsDoctorLike}
-          value={inviteIsDoctorLike || canApproveBroadcasts}
+          description="Let this member approve broadcast notifications (otherwise only owner can approve)."
+          value={canApproveBroadcasts}
           onToggle={() => setCanApproveBroadcasts((v) => !v)}
           testID="team-approver-broadcasts"
+        />
+        <PermCheck
+          label="Can prescribe (Rx, surgeries, availability)"
+          description="Enable for clinicians on the team — gives access to write prescriptions, surgery records, and manage their own availability."
+          value={canPrescribe}
+          onToggle={() => setCanPrescribe((v) => !v)}
+          testID="team-prescribe"
         />
 
         {err ? <Text style={{ color: COLORS.accent, ...FONTS.body, marginTop: 6 }}>{err}</Text> : null}
@@ -490,19 +499,24 @@ export function TeamPanelV2() {
 
             <PermCheck
               label="Can approve bookings"
-              description={editIsDoctorLike ? 'Automatic for doctor-level roles' : 'Confirm / reschedule appointments.'}
-              locked={editIsDoctorLike}
-              value={editIsDoctorLike || editCanBook}
+              description="Confirm / reschedule appointments."
+              value={editCanBook}
               onToggle={() => setEditCanBook((v) => !v)}
               testID="team-edit-approver-bookings"
             />
             <PermCheck
               label="Can approve broadcasts"
-              description={editIsDoctorLike ? 'Automatic for doctor-level roles' : 'Approve push notifications (otherwise only owner).'}
-              locked={editIsDoctorLike}
-              value={editIsDoctorLike || editCanBc}
+              description="Approve push notifications (otherwise only owner)."
+              value={editCanBc}
               onToggle={() => setEditCanBc((v) => !v)}
               testID="team-edit-approver-broadcasts"
+            />
+            <PermCheck
+              label="Can prescribe (Rx, surgeries, availability)"
+              description="Enable for clinicians on the team — write prescriptions, surgery records, and manage their own availability."
+              value={editCanPrescribe}
+              onToggle={() => setEditCanPrescribe((v) => !v)}
+              testID="team-edit-prescribe"
             />
             <PermCheck
               label="Full Dashboard Access"
