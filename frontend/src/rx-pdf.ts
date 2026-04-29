@@ -891,12 +891,10 @@ export async function loadClinicSettings(): Promise<ClinicSettings> {
 // long-block-of-code-looking content, we discard it and surface the
 // fallback instead. The full original error is still console.error'd for
 // engineering diagnosis.
-//
-// SAFE_MSG_VERSION: rx-pdf-2026-06-15-v3 (hard fix for code-leak alert bug)
 function safeMsg(e: any, fallback: string): string {
   try {
     // eslint-disable-next-line no-console
-    console.error('[rx-pdf v3] action failed:', e);
+    console.error('[rx-pdf] action failed:', e);
   } catch {}
   let raw: any = e?.response?.data?.detail ?? e?.message ?? e;
   if (raw == null) return fallback;
@@ -1015,7 +1013,7 @@ function webPrintViaIframe(html: string): Promise<void> {
                   if ((img as HTMLImageElement).complete) return r();
                   img.addEventListener('load', () => r(), { once: true });
                   img.addEventListener('error', () => r(), { once: true });
-                  setTimeout(r, 3000);
+                  setTimeout(r, 800);
                 })
               )
             );
@@ -1055,7 +1053,7 @@ function webPrintViaIframe(html: string): Promise<void> {
         if (w) { w.focus(); w.print(); }
       } catch {}
       finish();
-    }, 5000);
+    }, 2500);
   });
 }
 
@@ -1147,19 +1145,20 @@ export async function printPrescription(rx: RxDoc, settings?: ClinicSettings) {
 
 /** Download / save the PDF locally.
  *
- *  Native: uses `Print.printToFileAsync({ html })` to generate the
- *  PDF on-device (instant) then opens the share-sheet so the user
- *  can save to Files / Drive / Photos. No backend.
+ *  Native: uses `Print.printToFileAsync({ html })` to generate the PDF
+ *  on-device (~500 ms), then writes it to the user's chosen folder via
+ *  Storage Access Framework (Android) or to the app's Documents
+ *  directory (iOS). No share-sheet pop-up — this is a SAVE action.
  *
- *  Web: still goes through the backend `/render/pdf` (WeasyPrint) so
- *  the user gets a true PDF download with a real filename. Web has
- *  no on-device "HTML→PDF→file" API short of a print dialog.
+ *  Web: backend `/render/pdf` (WeasyPrint) returns a real PDF blob,
+ *  which is delivered to the user via a programmatic <a download>.
+ *  Same on desktop and mobile web. If the renderer is unreachable
+ *  the user sees a clean error — we DON'T silently switch to a print
+ *  dialog because the doctor explicitly chose "Download".
  */
 export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettings) {
-  // ── Web flow — fully isolated from native, with silent step-by-step
-  //    fallbacks so the user ALWAYS gets a working path to a PDF and
-  //    never sees an unhelpful "Could not generate PDF" alert if the
-  //    real cause is recoverable.
+  // ── Web flow — every step is isolated so the user gets a clear
+  //    success or a clean error message; never the wrong path.
   if (Platform.OS === 'web') {
     let html: string;
     try {
@@ -1167,7 +1166,7 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
       html = await buildRxHtml(rx, s);
     } catch (e: any) {
       // eslint-disable-next-line no-console
-      console.error('[rx-pdf v3] buildRxHtml failed:', e);
+      console.error('[rx-pdf] buildRxHtml failed:', e);
       showWebAlert(safeMsg(e, 'Could not generate PDF. Please retry.'));
       return;
     }
@@ -1176,57 +1175,33 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     const suffix = rx.registration_no || rx.prescription_id;
     const filename = `Prescription-${safeName || 'Patient'}-${suffix}.pdf`;
 
-    // Detect mobile web — mobile browsers handle <a download> for
-    // axios-blob inconsistently and the backend WeasyPrint round-trip
-    // can stall over flaky mobile networks. Their built-in print dialog
-    // ("Save as PDF") is faster and 100% reliable, so on mobile we
-    // skip the backend entirely. Desktop continues to use the
-    // backend → real .pdf file → instant download path.
-    const isMobileWeb = (() => {
-      try {
-        if (typeof navigator === 'undefined') return false;
-        const ua = (navigator.userAgent || '').toLowerCase();
-        return /android|iphone|ipad|ipod|mobile|opera mini/i.test(ua) ||
-          (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches === true);
-      } catch { return false; }
-    })();
-
-    if (!isMobileWeb) {
-      // Desktop — try backend WeasyPrint for a real .pdf download.
-      try {
-        const { blob } = await fetchPdfFromBackend(html);
-        if (blob && blob.size > 0) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.rel = 'noopener';
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
-          }, 4000);
-          return;
-        }
-      } catch (e: any) {
-        // eslint-disable-next-line no-console
-        console.error('[rx-pdf v3] backend PDF unavailable, falling back to print dialog:', e);
-      }
-    }
-
-    // Open the browser print dialog → user picks "Save as PDF".
-    // Works reliably on mobile (Android Chrome / iOS Safari) and is
-    // the universal desktop fallback when the backend is offline.
+    // DOWNLOAD on web means "save a real .pdf file to the user's
+    // Downloads folder" — same on desktop AND on mobile. We always go
+    // through the backend WeasyPrint renderer because that's the only
+    // way to produce an actual PDF in the browser. Print and Share
+    // have their own dedicated paths; we don't fall back to either
+    // here — the doctor explicitly tapped "Download".
     try {
-      await webPrintViaIframe(html);
-      return;
-    } catch (e2: any) {
+      const { blob } = await fetchPdfFromBackend(html);
+      if (!blob || blob.size === 0) {
+        showWebAlert('PDF service returned an empty file. Please retry.');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {}
+      }, 4000);
+    } catch (e: any) {
       // eslint-disable-next-line no-console
-      console.error('[rx-pdf v3] iframe print failed too:', e2);
+      console.error('[rx-pdf] backend PDF failed:', e);
+      showWebAlert(safeMsg(e, 'Could not generate PDF. Please retry.'));
     }
-
-    // Last resort — both paths failed. One clean alert.
-    showWebAlert('Could not generate PDF on this device. Please retry — if it keeps failing, switch to a desktop browser.');
     return;
   }
 
@@ -1302,11 +1277,19 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
   }
 }
 
-/** Share the PDF FILE via the OS share-sheet. No verify-link text — the
- *  recipient gets the actual PDF attachment.
+/** Share the PDF FILE via the OS share-sheet.
  *
- *  Native: on-device PDF (instant). Web: backend PDF (since browsers
- *  can't share files programmatically without a real File object).
+ *  Native (iOS/Android): generate the PDF on-device with
+ *  `Print.printToFileAsync({ html })` (~500 ms) then hand the URI to
+ *  `Sharing.shareAsync()` which pops the OS share-sheet. The recipient
+ *  receives the actual PDF as an attachment.
+ *
+ *  Web: backend WeasyPrint → real PDF File. We then try the Web
+ *  Share API (Chrome on Android, Safari on iOS Web) which opens the
+ *  native share-sheet with the PDF directly attached. If the browser
+ *  doesn't support sharing files (most desktop browsers), we fall
+ *  back to a silent download + a brief instruction so the user can
+ *  attach the file from their Downloads folder.
  */
 export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings) {
   const safeName = (rx.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
@@ -1318,46 +1301,28 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
     const html = await buildRxHtml(rx, s);
 
     if (Platform.OS === 'web') {
-      // Web share strategy (failure-tolerant):
-      //   1. Best path → Web Share API with the real PDF File
-      //      (Chrome on Android, Safari on iOS Web). User gets the
-      //      native share sheet — direct attach to WhatsApp / Mail.
-      //   2. Backend PDF + silent <a download> + brief instruction
-      //      alert (when the share-sheet API is unavailable).
-      //   3. If the backend renderer can't be reached at all → fall
-      //      back to the iframe print dialog so the user can still
-      //      produce a PDF and attach it manually.
-      // No "Could not generate PDF" / raw HTML alerts EVER.
+      // Web SHARE = Download + Share. Spec:
+      //   1. Backend WeasyPrint → real PDF blob.
+      //   2. If the browser supports Web Share API with files
+      //      (Chrome on Android, Safari on iOS Web) → open the
+      //      OS share-sheet with the PDF attached.
+      //   3. Else → save the PDF to Downloads + brief instruction.
+      // No print-dialog fallback here — the user explicitly chose
+      // "Share", not "Print".
       let blob: Blob | undefined;
       try {
         const r = await fetchPdfFromBackend(html);
         blob = r.blob;
       } catch (e: any) {
-        // eslint-disable-next-line no-console
-        console.error('[rx-pdf v3] backend PDF unavailable for share, using print fallback:', e);
-        try {
-          await webPrintViaIframe(html);
-          showWebAlert(
-            'Use "Save as PDF" in the print dialog, then attach the saved file from Downloads when you share with your patient.',
-          );
-        } catch (e2: any) {
-          showWebAlert(safeMsg(e2, 'Could not share prescription. Please retry.'));
-        }
+        showWebAlert(safeMsg(e, 'Could not generate PDF for sharing. Please retry.'));
+        return;
+      }
+      if (!blob || blob.size === 0) {
+        showWebAlert('PDF service returned an empty file. Please retry.');
         return;
       }
 
-      if (!blob) {
-        // Backend returned no body — fall through to print dialog.
-        try {
-          await webPrintViaIframe(html);
-          showWebAlert('Use "Save as PDF" in the print dialog, then attach the saved file when sharing.');
-        } catch (e2: any) {
-          showWebAlert(safeMsg(e2, 'Could not share prescription. Please retry.'));
-        }
-        return;
-      }
-
-      // Try the Web Share API with the actual file attachment.
+      // Try Web Share API with a real File attachment.
       try {
         const FileCtor: any = (typeof File !== 'undefined') ? File : null;
         if (FileCtor && (navigator as any)?.canShare) {
@@ -1372,12 +1337,13 @@ export async function sharePrescriptionPdf(rx: RxDoc, settings?: ClinicSettings)
           }
         }
       } catch (e: any) {
-        // User dismissed share-sheet or the platform refused —
-        // gracefully fall through to the silent-download path.
+        // User dismissed the share-sheet — silent.
         if (e?.name === 'AbortError') return;
+        // Other errors: fall through to download fallback.
       }
 
-      // Fallback: silent download + instructional alert.
+      // Fallback: silent download + brief alert so the doctor knows
+      // where to find the file to attach manually.
       try {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
