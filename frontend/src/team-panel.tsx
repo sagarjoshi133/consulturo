@@ -622,7 +622,7 @@ export function TeamPanelV2() {
 
       {/* Manage roles modal */}
       <Modal visible={showRoles} animationType="slide" onRequestClose={() => setShowRoles(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={['top', 'bottom']}>
           <View style={styles.rolesHeader}>
             <TouchableOpacity onPress={() => setShowRoles(false)}>
               <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -688,7 +688,7 @@ export function TeamPanelV2() {
               </View>
             ))}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );

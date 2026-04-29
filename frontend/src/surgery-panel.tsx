@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -604,17 +605,18 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
       )}
 
       <Modal visible={showForm} animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1, backgroundColor: COLORS.bg }}
-        >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowForm(false)} testID="surgery-form-close">
-              <Ionicons name="close" size={24} color={COLORS.textPrimary} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{editingId ? 'Edit Surgery' : 'Log Surgery'}</Text>
-            <View style={{ width: 24 }} />
-          </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={['top', 'bottom']}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1, backgroundColor: COLORS.bg }}
+          >
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowForm(false)} testID="surgery-form-close">
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>{editingId ? 'Edit Surgery' : 'Log Surgery'}</Text>
+              <View style={{ width: 24 }} />
+            </View>
           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
             <Section title="Patient" />
             <Row>
@@ -836,11 +838,12 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               <SecondaryButton title="Cancel" onPress={() => setShowForm(false)} style={{ flex: 1 }} />
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
 
       <Modal visible={showImport} animationType="slide" onRequestClose={() => setShowImport(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowImport(false)} testID="sx-import-close">
               <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -906,12 +909,12 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               </View>
             )}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Full Logbook modal — virtualized, paginated, with analytics */}
       <Modal visible={showHistory} animationType="slide" onRequestClose={() => setShowHistory(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowHistory(false)} testID="sx-history-close">
               <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -1100,11 +1103,11 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               ) : null
             }
           />
-        </View>
+        </SafeAreaView>
       </Modal>
 
       <Modal visible={showProcedurePicker} animationType="slide" onRequestClose={() => setShowProcedurePicker(false)}>
-        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowProcedurePicker(false)}>
               <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -1160,7 +1163,7 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );

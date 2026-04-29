@@ -9,7 +9,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -31,6 +31,12 @@ export default function PrescriptionDetail() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const isOwner = user?.role === 'owner';
+  // Bottom safe-area inset so the absolute-positioned action bar
+  // (Edit / Print / PDF / Share / Delete) doesn't get clipped by the
+  // Android nav-gesture pill or the iOS home-indicator. Replaces the
+  // earlier hardcoded paddingBottom: ios?28:10 which was wrong on
+  // gesture-nav phones (Pixel 7 / S22) and on Dynamic-Island iPhones.
+  const insets = useSafeAreaInsets();
 
   const [rx, setRx] = useState<RxDoc | null>(null);
   const [settings, setSettings] = useState<ClinicSettings>({});
@@ -198,7 +204,7 @@ export default function PrescriptionDetail() {
       </ScrollView>
 
       {/* Bottom action bar */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) + 6 }]}>
         <ActionBtn
           icon="create-outline"
           label="Edit"
@@ -331,7 +337,7 @@ const styles = StyleSheet.create({
   tag: { backgroundColor: COLORS.primary + '10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 36 },
   tagText: { ...FONTS.label, color: COLORS.primary, fontSize: 11 },
 
-  actionBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 10, paddingHorizontal: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 10 },
+  actionBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 10, paddingHorizontal: 10 },
   actionBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, gap: 3 },
   actionBtnText: { ...FONTS.label, fontSize: 11 },
 });

@@ -16,6 +16,8 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
@@ -791,7 +793,8 @@ function openRxInNewTab(html: string, autoPrint: boolean): Window | null {
 // PDF (rendered by WeasyPrint). On web we return a blob URL; on native we
 // also write the bytes to a local file via expo-file-system so they can be
 // fed straight into Print.printAsync / Sharing.shareAsync.
-import * as FileSystem from 'expo-file-system/legacy';
+//
+// (FileSystem is now imported once at the top of the file.)
 
 async function fetchPdfFromBackend(html: string): Promise<{ blob?: Blob; uri?: string; bytes?: Uint8Array }>
 {
@@ -930,6 +933,51 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
     // network round-trip so it's near-instant and never times out.
     const { uri } = await Print.printToFileAsync({ html });
     if (!uri) throw new Error('No PDF file generated');
+
+    // ─── True "Save to device" — never opens the share sheet ───
+    // Android: use Storage Access Framework. We ask the user once for
+    // a directory (cached in AsyncStorage) and write subsequent PDFs
+    // there silently.
+    if (Platform.OS === 'android') {
+      const saved = await saveToAndroidUserFolder(uri, filename);
+      if (saved.ok) {
+        Alert.alert('Prescription saved', `Saved as ${filename}\n${saved.where}`);
+      } else if (saved.cancelled) {
+        // User dismissed the directory chooser — silent: don't fall back to share.
+      } else {
+        // Fallback to a guaranteed-writable cache copy and surface the path.
+        const fallback = `${FileSystem.documentDirectory}${filename}`;
+        try {
+          await FileSystem.copyAsync({ from: uri, to: fallback });
+        } catch {}
+        Alert.alert(
+          'Saved internally',
+          `Could not write to the chosen folder. Saved inside the app at:\n${fallback}`,
+        );
+      }
+      return;
+    }
+
+    // iOS: write to the app's Documents directory (visible in Files
+    // → On My iPhone → ConsultUro provided UIFileSharingEnabled is on).
+    if (Platform.OS === 'ios') {
+      try {
+        const subDir = `${FileSystem.documentDirectory}Prescriptions/`;
+        await FileSystem.makeDirectoryAsync(subDir, { intermediates: true }).catch(() => {});
+        const target = `${subDir}${filename}`;
+        await FileSystem.copyAsync({ from: uri, to: target });
+        Alert.alert(
+          'Prescription saved',
+          `Saved as ${filename}\nFiles → On My iPhone → ConsultUro → Prescriptions`,
+        );
+      } catch (e: any) {
+        Alert.alert('Save failed', e?.message || 'Could not save the PDF.');
+      }
+      return;
+    }
+
+    // Other native platforms (rare) — keep the share fallback so the
+    // user isn't dead-ended.
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
@@ -1019,3 +1067,76 @@ export async function fetchRxAndRun(
     else Alert.alert('Error', msg);
   }
 }
+
+
+/**
+ * Android: write the in-cache PDF to a user-chosen folder via Storage
+ * Access Framework. The folder URI is cached in AsyncStorage so the
+ * user is asked exactly once; subsequent saves go silently to the
+ * same location ("Downloads/ConsultUro" or whatever they picked).
+ *
+ * Returns:
+ *   • { ok: true,  where: "<folder display name>" }  — saved
+ *   • { ok: false, cancelled: true }                  — user dismissed picker
+ *   • { ok: false, cancelled: false, error?: any }    — write failure
+ */
+async function saveToAndroidUserFolder(
+  srcUri: string,
+  filename: string,
+): Promise<{ ok: true; where: string } | { ok: false; cancelled: boolean; error?: any }> {
+  const KEY = 'rx_save_dir_uri_v1';
+  const SAF: any = (FileSystem as any).StorageAccessFramework;
+  if (!SAF || typeof SAF.requestDirectoryPermissionsAsync !== 'function') {
+    return { ok: false, cancelled: false, error: 'StorageAccessFramework not available' };
+  }
+  try {
+    let dirUri: string | null = null;
+    try {
+      dirUri = await AsyncStorage.getItem(KEY);
+    } catch {}
+    // Validate the cached URI is still writable; SAF permissions can
+    // be revoked by the user at any time.
+    if (dirUri) {
+      try {
+        // Probe by listing — cheap & avoids surprising the user.
+        await SAF.readDirectoryAsync(dirUri);
+      } catch {
+        dirUri = null;
+      }
+    }
+    if (!dirUri) {
+      const perm = await SAF.requestDirectoryPermissionsAsync();
+      if (!perm?.granted || !perm?.directoryUri) {
+        return { ok: false, cancelled: true };
+      }
+      dirUri = perm.directoryUri as string;
+      try { await AsyncStorage.setItem(KEY, dirUri); } catch {}
+    }
+    const newFileUri: string = await SAF.createFileAsync(
+      dirUri!,
+      filename.replace(/\.pdf$/i, ''),
+      'application/pdf',
+    );
+    const data = await FileSystem.readAsStringAsync(srcUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    await FileSystem.writeAsStringAsync(newFileUri, data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    // SAF directory URIs are opaque; render a friendly hint by trimming
+    // to the path tail when possible.
+    const where = (() => {
+      try {
+        const decoded = decodeURIComponent(dirUri!);
+        const tail = decoded.split(/[:/]/).filter(Boolean).pop() || 'chosen folder';
+        return `Saved to: ${tail}`;
+      } catch {
+        return 'Saved to chosen folder';
+      }
+    })();
+    return { ok: true, where };
+  } catch (e) {
+    return { ok: false, cancelled: false, error: e };
+  }
+}
+

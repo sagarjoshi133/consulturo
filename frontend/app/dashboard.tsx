@@ -128,13 +128,43 @@ function ContentPager({
   const pagerRef = React.useRef<ScrollView | null>(null);
   const [width, setWidth] = React.useState(Dimensions.get('window').width);
   const activeIndex = Math.max(0, tabs.findIndex((x) => x.id === activeId));
+  // Lazy panel mounting — keeps initial dashboard mount cheap by only
+  // rendering the panel for the active tab + its immediate neighbours
+  // (so the swipe gesture still feels native). Once a tab has been
+  // visited the panel STAYS mounted so its in-tab state, scroll
+  // position and any cached data are preserved across swipes.
+  //
+  // Without this, all 13 dashboard panels mounted on the very first
+  // render — each one fired its own /api/* request and ran its own
+  // useFocusEffect, which on Android APK starved the JS thread and
+  // could trigger a silent native crash back to the home tab.
+  const [mountedIds, setMountedIds] = React.useState<Set<string>>(() => {
+    const s = new Set<string>();
+    if (tabs[activeIndex]?.id) s.add(tabs[activeIndex].id);
+    if (tabs[activeIndex + 1]?.id) s.add(tabs[activeIndex + 1].id);
+    if (activeIndex > 0 && tabs[activeIndex - 1]?.id) s.add(tabs[activeIndex - 1].id);
+    return s;
+  });
+  React.useEffect(() => {
+    setMountedIds((prev) => {
+      const next = new Set(prev);
+      if (tabs[activeIndex]?.id) next.add(tabs[activeIndex].id);
+      if (tabs[activeIndex + 1]?.id) next.add(tabs[activeIndex + 1].id);
+      if (activeIndex > 0 && tabs[activeIndex - 1]?.id) next.add(tabs[activeIndex - 1].id);
+      // Identity stability — only update when something new was added.
+      return next.size === prev.size ? prev : next;
+    });
+  }, [activeIndex, tabs]);
   // Desktop-aware inner padding & max-width so dashboard panels feel
   // compact + centered on wide web viewports. Mobile keeps the
   // existing tight 20px padding which is best for thumb use.
   const { isWebDesktop } = useResponsive();
-  const panelPad = isWebDesktop
-    ? { paddingHorizontal: 28, paddingTop: 16, paddingBottom: 48 }
-    : { padding: 20, paddingBottom: 110 };
+  const panelPad = React.useMemo(
+    () => (isWebDesktop
+      ? { paddingHorizontal: 28, paddingTop: 16, paddingBottom: 48 }
+      : { padding: 20, paddingBottom: 110 }),
+    [isWebDesktop],
+  );
   const panelMax = isWebDesktop ? 1120 : undefined;
   // Debounce swipe-driven tab updates so we only fire once per settle.
   const settleTimer = React.useRef<any>(null);
@@ -188,19 +218,24 @@ function ContentPager({
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            // Works reliably on web where momentum/endDrag events don't always fire.
+          // Native fires momentum/endDrag reliably so we can throttle
+          // onScroll heavily; web doesn't, so we keep 16 ms there.
+          scrollEventThrottle={Platform.OS === 'web' ? 16 : 64}
+          onScroll={Platform.OS === 'web' ? (e) => {
+            // Web fallback — momentum/endDrag don't always fire so we
+            // settle off the raw scroll position with a small debounce.
             const x = e.nativeEvent.contentOffset.x;
             if (settleTimer.current) clearTimeout(settleTimer.current);
             settleTimer.current = setTimeout(() => settleToPage(x), 140);
-          }}
+          } : undefined}
           onMomentumScrollEnd={(e) => settleToPage(e.nativeEvent.contentOffset.x)}
           onScrollEndDrag={(e) => settleToPage(e.nativeEvent.contentOffset.x)}
           style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 0 }}
         >
-          {tabs.map((tb) => (
+          {tabs.map((tb) => {
+            const shouldMount = mountedIds.has(tb.id);
+            return (
             <RNAnimated.ScrollView
               key={tb.id}
               style={{ width }}
@@ -222,15 +257,25 @@ function ContentPager({
                 />
               }
             >
-              {panelMax ? (
-                <View style={{ width: '100%', maxWidth: panelMax, alignSelf: 'center' }}>
-                  {renderPanel(tb.id)}
-                </View>
+              {shouldMount ? (
+                panelMax ? (
+                  <View style={{ width: '100%', maxWidth: panelMax, alignSelf: 'center' }}>
+                    {renderPanel(tb.id)}
+                  </View>
+                ) : (
+                  renderPanel(tb.id)
+                )
               ) : (
-                renderPanel(tb.id)
+                // Cheap placeholder for not-yet-visited tabs. Keeps the
+                // pager geometry intact (so swipe-to-page still works
+                // and the active index calc stays correct) without
+                // mounting heavy panel components or firing their
+                // initial data fetches.
+                <View style={{ flex: 1, minHeight: 200 }} />
               )}
             </RNAnimated.ScrollView>
-          ))}
+          );
+          })}
         </ScrollView>
       </View>
     </PanelRefreshContext.Provider>

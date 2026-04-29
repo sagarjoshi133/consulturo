@@ -9388,3 +9388,89 @@ agent_communication_2026_04_28_session3:
           rows + payload plumbing)
 
       No mocks. No DB migration.
+
+  - agent: main
+    message: |
+      [bundle: prescription save-to-device + safe-area fixes + dashboard jitter / silent crash]
+
+      Four user-reported bugs fixed in one batch:
+
+      1) Download Prescription button (rx-pdf.ts → downloadPrescriptionPdf)
+         no longer opens the OS share-sheet on native — it now SAVES the
+         PDF directly:
+           • Android — Storage Access Framework directory chooser
+             (asked once, cached in AsyncStorage). Subsequent saves
+             write to the chosen folder silently. PDF is read from the
+             expo-print cache as base64 and written to the SAF URI.
+             Friendly toast: "Saved to <folder>".
+           • iOS — copies the PDF into
+             `<Documents>/Prescriptions/<filename>.pdf`. Visible in
+             Files → On My iPhone → ConsultUro → Prescriptions when
+             UIFileSharingEnabled is on (already declared in app.json).
+           • Web — unchanged (true browser download).
+           • Other platforms — fall through to Sharing as a safety
+             fallback so users aren't dead-ended.
+
+      1b) Detail prescription page (app/prescriptions/[id].tsx)
+          action bar (Edit / Print / PDF / Share / Delete) was clipped
+          by the Android nav-gesture pill on Pixel/S22 and by the iOS
+          home indicator. Removed the hardcoded
+          `paddingBottom: ios?28:10` and now compute it from
+          `useSafeAreaInsets().bottom` (with a 10 px floor). Action
+          buttons no longer overlap device nav.
+
+      2 + 4) Dashboard jitter and silent APK crash-back-to-home —
+          Root cause: the ContentPager mounted ALL 13 panels at once
+          (Bookings + Surgeries + Patients + Analytics + Rx + …),
+          each firing its own useFocusEffect + /api/* request on
+          first paint. JS thread stalled hard enough on Android APK
+          to trigger a silent native crash; on web/iOS it manifested
+          as visible jitter and slow-paint.
+          Fix:
+            • Lazy panel mount — `mountedIds` set tracks which tab
+              ids have been visited. On first render only the active
+              tab + its two neighbours are mounted; siblings render
+              an empty 200-px placeholder (preserves swipe geometry).
+              Visited tabs stay mounted so their state / scroll
+              position / cached data survive subsequent swipes.
+            • Memoized `panelPad` so identity is stable.
+            • Horizontal pager: scrollEventThrottle bumped from 16
+              → 64 ms on native (web stays at 16 to handle absent
+              momentum events). The JS-driven settleTimer callback
+              now only runs on web; native uses momentum/endDrag
+              events directly.
+
+          Expected impact on APK: initial mount goes from 13 parallel
+          /api/* requests to 1–3, JS thread stays free, jitter
+          eliminated, silent crash should stop recurring.
+
+      3) Safe-area / notch handling on full-screen modals:
+          • surgery-panel.tsx — wrapped all four modals (Log/Edit
+            Form, Import, Full Logbook, Procedure Picker) with
+            <SafeAreaView edges={['top','bottom']}> from
+            react-native-safe-area-context.
+          • team-panel.tsx — wrapped the Manage-Roles modal too.
+            (The Edit-Member modal already had it.)
+
+      Files changed:
+        • /app/frontend/app/dashboard.tsx (lazy mount,
+          memoized panelPad, throttled native scroll)
+        • /app/frontend/src/rx-pdf.ts (download → save flow,
+          new saveToAndroidUserFolder helper)
+        • /app/frontend/app/prescriptions/[id].tsx (insets-driven
+          action-bar paddingBottom)
+        • /app/frontend/src/surgery-panel.tsx (4 modals → SafeAreaView)
+        • /app/frontend/src/team-panel.tsx (Manage-Roles modal →
+          SafeAreaView)
+
+      Verified:
+        • Web bundle compiles fresh (2080 modules, 2.9 s) — no
+          remaining syntax / dedupe errors.
+        • Welcome screen renders normally; navigation safe-area
+          icon cutout intact.
+        • No backend changes, no DB migration, no mocks.
+
+      Awaiting user verification on APK (expected: no more silent
+      crash, dashboard scrolls smoothly, prescription PDF lands in
+      a real Files folder, surgery / role-management modals respect
+      device notch & gesture bars).
