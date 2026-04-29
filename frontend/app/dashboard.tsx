@@ -58,6 +58,8 @@ import { TodayGlance, SmartAlerts } from '../src/dashboard-widgets';
 import { useResponsive } from '../src/responsive';
 import { useTier } from '../src/tier';
 import SuperOwnerDashboard from '../src/super-owner-dashboard';
+import TenantSwitcher from '../src/TenantSwitcher';
+import { useTenant } from '../src/tenant-context';
 
 // ---------------------------------------------------------------
 // CSV export helper (owner-only on backend). On web, triggers an
@@ -295,6 +297,9 @@ export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const tier = useTier();
+  // Tenant context — re-renders panels when the user switches clinics.
+  const { currentClinicId } = useTenant();
+  const currentClinicIdForPanels = currentClinicId || 'all';
   // `effectiveOwner` covers:
   //  • any owner-tier role (super_owner, primary_owner, legacy owner,
   //    partner) — they all get FULL dashboard access by default per
@@ -412,7 +417,9 @@ export default function Dashboard() {
     fetchCount();
     const iv = setInterval(fetchCount, 60000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+    // Re-poll whenever the active clinic changes — the `data` returned
+    // is always scoped to the current X-Clinic-Id header.
+  }, [currentClinicId]);
 
   // Android hardware-back: if currently on a sub-tab (broadcasts, prescriptions,
   // etc.), pressing back returns to "today" first instead of leaving the app.
@@ -605,6 +612,18 @@ export default function Dashboard() {
                       </View>
                     )}
                   </View>
+                  {/* Tenant Switcher — only renders if the user is a member of >1
+                      clinic OR is the platform super_owner. Keeps the hero
+                      compact for single-clinic accounts. */}
+                  <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                    <TenantSwitcher
+                      variant="compact"
+                      primaryColor="#FFFFFF"
+                      textColor="#FFFFFF"
+                      bgColor="rgba(255,255,255,0.16)"
+                      borderColor="rgba(255,255,255,0.32)"
+                    />
+                  </View>
                 </View>
               </View>
               {/* Today-at-a-glance — horizontal row below the user card so
@@ -662,6 +681,12 @@ export default function Dashboard() {
       </View>
 
       <ContentPager
+        // Re-mount the entire panel set when the user switches clinics.
+        // This forces every child panel (BookingsPanel, PrescriptionsPanel,
+        // …) to refetch from the API with the new X-Clinic-Id header
+        // injected. Cheaper to bust + re-render than to wire clinic
+        // state into each individual panel's loader.
+        key={`tenant-${currentClinicIdForPanels}`}
         tabs={tabs.filter((x) => x.id !== 'blog')}
         activeId={tab}
         onChange={(id) => setTab(id as any)}

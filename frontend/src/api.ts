@@ -34,11 +34,43 @@ export const api = axios.create({
   timeout: 15000,
 });
 
+// ─── Multi-tenant header injection ─────────────────────────────────────
+// `TenantContext` calls `setActiveClinicId(id)` whenever the user picks
+// a clinic from the switcher. Subsequent axios requests then carry
+// `X-Clinic-Id: <id>` so the backend scopes its query.
+//
+// Why a module-level variable instead of axios.defaults.headers? Because
+// (a) tests sometimes spin up multiple axios instances, (b) we want the
+// Authorization header to be set per-request from AsyncStorage, and
+// (c) keeping all per-request mutation in one interceptor is easier to
+// reason about than mixing headers across two layers.
+let _activeClinicId: string | null = null;
+
+/** Update the X-Clinic-Id header injected on every subsequent request. */
+export function setActiveClinicId(id: string | null): void {
+  _activeClinicId = id && id.length ? id : null;
+}
+
+/** Read-only accessor (used by debug pages / tests). */
+export function getActiveClinicId(): string | null {
+  return _activeClinicId;
+}
+
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('session_token');
   if (token) {
     config.headers = config.headers || {};
     (config.headers as any).Authorization = `Bearer ${token}`;
+  }
+  // Skip clinic header on the clinics-listing endpoint itself —
+  // otherwise super_owner / cross-tenant lookups would be filtered.
+  if (_activeClinicId) {
+    const url = (config.url || '').toString();
+    const isListingClinics = /^\/clinics(\?|$)/.test(url);
+    if (!isListingClinics) {
+      config.headers = config.headers || {};
+      (config.headers as any)['X-Clinic-Id'] = _activeClinicId;
+    }
   }
   return config;
 });

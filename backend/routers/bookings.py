@@ -20,6 +20,7 @@ from db import db
 from auth_deps import OWNER_TIER_ROLES, get_current_user, require_staff, require_user
 from models import BookingCreate, BookingStatusBody, PatientCancelBody
 from server import MAX_BOOKINGS_PER_SLOT, _unavailability_block_reason, _urlencode, create_notification, get_or_set_reg_no, htmllib, limiter, notify_telegram, push_to_owner, push_to_user, require_approver
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
@@ -86,9 +87,16 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
 
     booking_id = f"bk_{uuid.uuid4().hex[:10]}"
     reg_no = await get_or_set_reg_no(payload.patient_phone, payload.registration_no, payload.patient_name)
+    # Phase E — tag the booking with the active clinic so /bookings/all
+    # filters cleanly. Anonymous bookings (no user) inherit the clinic
+    # from the X-Clinic-Id header (set by the public /c/<slug> page);
+    # if missing we leave it null so it stays globally visible until
+    # a clinic claims it.
+    booking_clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "booking_id": booking_id,
         "user_id": user["user_id"] if user else None,
+        "clinic_id": booking_clinic_id,
         "patient_name": payload.patient_name,
         "patient_phone": payload.patient_phone,
         "country_code": (payload.country_code or "+91").strip(),
@@ -175,8 +183,12 @@ async def my_bookings(user=Depends(require_user)):
     return await cursor.to_list(length=200)
 
 @router.get("/api/bookings/all")
-async def all_bookings(user=Depends(require_staff)):
-    cursor = db.bookings.find({}, {"_id": 0}).sort("created_at", -1)
+async def all_bookings(request: Request, user=Depends(require_staff)):
+    # Phase E — scope to the current clinic (X-Clinic-Id header). For
+    # super_owner without a header, returns ALL clinics' bookings.
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    cursor = db.bookings.find(q, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(length=500)
 
 @router.get("/api/bookings/guest")

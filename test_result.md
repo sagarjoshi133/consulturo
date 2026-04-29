@@ -1274,9 +1274,130 @@ backend_phase6_modularization_smoke_2026_04_29:
           No 5xx, no auth bypasses, no data leakage. Phase 6
           modularization is now behaviour-equivalent to pre-refactor.
 
+backend_phase_de_multitenant_2026_06_15:
+  - task: "PHASE D + PHASE E multi-tenant — invitations + per-clinic scoping (bookings/prescriptions/surgeries)"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/invitations.py, /app/backend/routers/bookings.py, /app/backend/routers/prescriptions.py, /app/backend/routers/surgeries.py, /app/backend/services/tenancy.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 45/45 assertions PASS via /app/backend_test_phase_de_multitenant.py
+          against the public EXPO_PUBLIC_BACKEND_URL
+          (https://urology-pro.preview.emergentagent.com/api). No 5xx, no
+          auth bypass, no data corruption. Final DB state EXACTLY matches
+          starting state: 1 clinic, 4 active memberships, 78 bookings,
+          17 prescriptions, 401 surgeries, 0 invitations.
+
+          ── PHASE D — INVITATIONS ──────────────────────────────────────
+          1. POST /api/clinics/clinic_a97b903f2fb2/invitations
+             body {email:newdoc@example.com, role:doctor, note:"Hi!"}
+             → 201 {ok:true, token:<32-char>, accept_url:".../invite/<token>"} ✅
+          2. POST same email AGAIN → 201, token2 == token1 (de-dup
+             reuses pending invite, no DB row spam, no email spam). ✅
+          3. GET /api/invitations/{token} (NO AUTH) → 200 with
+             clinic.name, clinic.slug, clinic.tagline, email,
+             role="doctor", note="Hi!", expires_at>now+13d. Public
+             preview surface is exactly per spec. ✅
+          4. GET /api/clinics/clinic_a97b903f2fb2/invitations (admin
+             owner) → 200 {invitations:[…]}; created invite present;
+             status=pending; email matches. ✅
+          5. POST invite with role:"super_owner" → 400 with detail
+             "Invalid role: super_owner" (super_owner is platform-
+             level, not a clinic role per services/tenancy.py
+             CLINIC_ROLES set). ✅
+          6. DELETE /api/invitations/{token} (admin owner) → 200
+             {ok:true}. Subsequent GET preview → 410 with detail
+             "This invitation has been revoked." ✅
+
+          ── PHASE E — TENANT SCOPING ───────────────────────────────────
+          7. GET /api/bookings/all + X-Clinic-Id: clinic_a97b903f2fb2
+             → 200 with 78 rows; ALL rows have
+             clinic_id == "clinic_a97b903f2fb2". ✅
+          8. GET /api/bookings/all NO header → 200 with 78 rows
+             (default-clinic fallback to user's first active membership
+             via services/tenancy.get_default_clinic_id). ✅
+          9. GET /api/bookings/all + X-Clinic-Id: clinic_no_such → 403
+             with detail "You are not a member of this clinic."
+             (services/tenancy.resolve_clinic_id membership-check). ✅
+         10. GET /api/prescriptions:
+              • with header        → 200, 17 rows, all clinic-tagged ✅
+              • no header (default)→ 200, 17 rows ✅
+              • wrong clinic       → 403 ✅
+         11. GET /api/surgeries:
+              • with header        → 200, 401 rows ✅
+              • no header (default)→ 200, 401 rows ✅
+              • wrong clinic       → 403 ✅
+         12. POST /api/bookings + X-Clinic-Id: clinic_a97b903f2fb2 with
+             a future booking (2099-01-15 10:00, patient TestPhaseE,
+             phone 9000000099) → 200; resulting doc has
+             clinic_id == "clinic_a97b903f2fb2" (auto-tagged by
+             routers/bookings.py:95-99 via resolve_clinic_id). ✅
+
+          ── REGRESSION (Phase A) ───────────────────────────────────────
+         13a. GET /api/clinics (auth) → 200 with ≥1 clinic. ✅
+         13b. GET /api/clinics/by-slug/dr-joshi-uro (NO AUTH) → 200. ✅
+         13c. `cd /app/backend && python -m migrations.001_multi_tenant`
+              → exits 0. Output reports
+              "default clinic already exists" + "0 new memberships";
+              backfilled 1 row of `patients` (from the in-flight
+              POST /bookings test patient created during step 12 —
+              expected since Phase E only auto-tags new bookings via
+              `resolve_clinic_id`, not patient rows; migration cleanly
+              fills those gaps. After cleanup that row was also
+              removed). Idempotent — zero duplicates created. ✅
+
+          ── CLEANUP (mongosh + pymongo) ────────────────────────────────
+          • clinic_invitations.deleteMany({email:{$in:[
+              "newdoc@example.com","x@y.com"]}}) → 1 deleted.
+          • bookings.deleteOne({booking_id:"bk_5cbf15b1c5"})
+            → 1 deleted (the test booking from step 12).
+          • patients.deleteMany({phone:/9000000099$/}) → 1 deleted
+            (the auto-allocated patient row from step 12).
+
+          FINAL DB STATE (matches starting state EXACTLY):
+            clinics=1, memberships(active)=4, bookings=78,
+            prescriptions=17, surgeries=401, invitations=0.
+          ZERO data pollution.
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        PHASE D + PHASE E MULTI-TENANT — ALL 45/45 PASS via
+        /app/backend_test_phase_de_multitenant.py against the public
+        EXPO_PUBLIC_BACKEND_URL.
+
+        ✅ Phase D invitations: create → reuse-on-duplicate → public
+           preview (no auth) → admin list → invalid-role rejection (400)
+           → revoke → revoked-preview returns 410. All exactly per spec.
+        ✅ Phase E scoping: bookings/prescriptions/surgeries all honor
+           X-Clinic-Id header (78/17/401 rows respectively); fall back
+           to user's default clinic when header absent; 403 with
+           detail "You are not a member of this clinic." for clinic
+           the user is not a member of. POST /api/bookings auto-tags
+           new docs with the resolved clinic_id.
+        ✅ Phase A regression: /api/clinics returns ≥1; by-slug PUBLIC
+           still 200; migration re-run exits 0 with no duplicates.
+        ✅ Final DB state: 1 clinic, 4 memberships, 78 bookings, 17
+           prescriptions, 401 surgeries, 0 invitations — EXACTLY
+           matches the pre-test starting state.
+
+        No 5xx, no auth bypasses, no data corruption observed.
+        Phase D + E are GREEN.
+
 test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+old_test_plan_phase_de_completed_2026_06_15:
   current_focus:
-    - "PHASE A MULTI-TENANT FOUNDATION (2026-06-15) — Verify the new Phase A multi-tenant backend. Test setup: DB has been migrated — there's now exactly 1 clinic ('Dr Joshi's Uro Clinic', slug=dr-joshi-uro, clinic_id=clinic_a97b903f2fb2) with 4 active memberships. ALL existing rows (78 bookings, 17 prescriptions, 401 surgeries, 62 patients, 8 ipss_records, 1 availability, 2 notes, 1 clinic_settings, 91 broadcast_inbox) have been backfilled with clinic_id pointing at this clinic. Login token: test_session_1776770314741 (Dr Sagar Joshi, primary_owner role). Tests required: (1) GET /api/clinics → 200, returns array with the default clinic, role='primary_owner', default_clinic_id matches. (2) GET /api/clinics/by-slug/dr-joshi-uro → 200, public/anonymous (no auth header), returns clinic + branding (NO primary_owner_id, NO created_at — verify _public_clinic_view sanitisation). (3) GET /api/clinics/by-slug/nonexistent → 404. (4) GET /api/clinics/clinic_a97b903f2fb2 → 200 (member). (5) GET /api/clinics/{nonexistent_id} → 404. (6) POST /api/clinics with body {name:'Vadodara Test Clinic',tagline:'X'} → 201, returns new clinic_id and slug='vadodara-test-clinic'. (7) POST /api/clinics again with same name → 201 with slug='vadodara-test-clinic-2' (auto-uniqueness). (8) GET /api/clinics/{new_id}/members → 200 with 1 member (creator becomes primary_owner). (9) PATCH /api/clinics/{new_id} body {tagline:'Updated'} → 200, tagline updated. (10) PATCH /api/clinics/{other_clinic} as a non-owner → 403. (11) POST /api/clinics/{new_id}/members body {email:'doctor.test@consulturo.app',role:'doctor'} → 200. (12) DELETE /api/clinics/{new_id}/members/test-doctor-1776494002376 → 200. (13) DELETE primary_owner from members → 400. (14) Idempotent migration: re-running `python -m migrations.001_multi_tenant` from /app/backend should NOT create duplicate memberships or clinics. (15) Regression: ALL existing endpoints (auth, prescriptions, bookings, surgeries, settings, notifications) still work — Phase A only ADDED new routes, didn't change existing ones. (16) Cleanup any test clinics created during Phase 6/7 of these tests."
+    - "PHASE B/C/D/E MULTI-TENANT FULL ROLLOUT (2026-06-15) — Backend pieces to verify. Phase A passed earlier in this session (1 default clinic + 4 memberships). Now we have shipped: PHASE D (invitations) + PHASE E (per-clinic scoping on critical routers — bookings, prescriptions, surgeries). NEW BACKEND ENDPOINTS: (1) POST /api/clinics/{clinic_id}/invitations — body {email, role, note?} → returns {ok, token, accept_url}. Re-creating an invite for the same email in pending state reuses the token (no duplicate emails). Email send is best-effort (Resend); failure does NOT fail the API. (2) GET /api/clinics/{clinic_id}/invitations → list pending+accepted invitations (admin-only). (3) DELETE /api/invitations/{token} → revoke pending invite (admin-only). (4) GET /api/invitations/{token} → PUBLIC preview (clinic name, role, expiry). 410 if revoked/expired/accepted. (5) POST /api/invitations/{token}/accept → auth-required, creates membership, marks invite consumed, returns {ok, clinic_id, role, membership, email_mismatch}. NEW SCOPING ON EXISTING ROUTERS: (a) GET /api/bookings/all — now reads `X-Clinic-Id` header → returns only that clinic's bookings (or 403 if user is not a member). Auto-defaults to user's first clinic if header absent. (b) GET /api/prescriptions — same scoping. (c) GET /api/surgeries — same scoping. (d) POST /api/bookings, POST /api/prescriptions, POST /api/surgeries — auto-tag new docs with `clinic_id` resolved from X-Clinic-Id (or user's default clinic). TESTS REQUIRED: (1) Invitation lifecycle: create → preview (public) → accept (need a SECOND user account; if not available, just verify create+revoke). (2) Bookings/Rx/Sx with X-Clinic-Id=clinic_a97b903f2fb2 → returns full data (78/17/401 rows); with no header → same data (default-clinic fallback); with X-Clinic-Id=clinic_does_not_exist → 403. (3) Create new booking with X-Clinic-Id header → verify resulting doc has clinic_id set. (4) Verify ALL prior Phase A tests still pass (regression). (5) Verify migration is still idempotent. (6) Public PUBLIC: GET /api/clinics/by-slug/dr-joshi-uro → 200 (no auth). (7) Cleanup: any test invitations / bookings / clinics created during testing must be removed. Auth token: test_session_1776770314741 (sagar.joshi133@gmail.com, primary_owner)."
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

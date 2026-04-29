@@ -14,18 +14,19 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
 import re
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from db import db
 from auth_deps import require_can_manage_surgeries, require_staff
 from models import SurgeryBody
 from server import COMMON_PROCEDURES, _SUGGESTABLE_SURGERY_FIELDS, _csv, get_or_set_reg_no
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
 
 @router.post("/api/surgeries")
-async def create_surgery(body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
+async def create_surgery(request: Request, body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
     surgery_id = f"sx_{uuid.uuid4().hex[:10]}"
     digits = re.sub(r"\D", "", body.patient_phone)
     patient_user_id = None
@@ -33,10 +34,12 @@ async def create_surgery(body: SurgeryBody, user=Depends(require_can_manage_surg
         m = await db.users.find_one({"phone_digits": digits}, {"_id": 0, "user_id": 1})
         if m:
             patient_user_id = m["user_id"]
+    sx_clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "surgery_id": surgery_id,
         "doctor_user_id": user["user_id"],
         "patient_user_id": patient_user_id,
+        "clinic_id": sx_clinic_id,
         "patient_phone": body.patient_phone,
         "patient_name": body.patient_name,
         "patient_age": body.patient_age,
@@ -67,8 +70,11 @@ async def create_surgery(body: SurgeryBody, user=Depends(require_can_manage_surg
     return doc
 
 @router.get("/api/surgeries")
-async def list_surgeries(user=Depends(require_staff)):
-    cursor = db.surgeries.find({}, {"_id": 0}).sort("date", -1)
+async def list_surgeries(request: Request, user=Depends(require_staff)):
+    # Phase E — scope by current clinic.
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    cursor = db.surgeries.find(q, {"_id": 0}).sort("date", -1)
     return await cursor.to_list(length=5000)
 
 @router.get("/api/surgeries/export.csv")

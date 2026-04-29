@@ -2825,12 +2825,21 @@ app.include_router(_bookings_router)
 from routers.clinics import router as _clinics_router
 app.include_router(_clinics_router)
 
+# ─── Phase D multi-tenant invitations ────────────────────────────────
+from routers.invitations import router as _invitations_router
+app.include_router(_invitations_router)
+
 
 @app.on_event("startup")
 async def _ensure_tenant_indexes() -> None:
     try:
         from services.tenancy import ensure_indexes as _tenant_ensure_indexes
         await _tenant_ensure_indexes()
+        # Phase D — invitation token lookup index.
+        from db import db as _db
+        await _db["clinic_invitations"].create_index("token", unique=True)
+        await _db["clinic_invitations"].create_index("clinic_id")
+        await _db["clinic_invitations"].create_index("email")
     except Exception as _e:  # noqa: BLE001
         # Don't crash boot — index creation is best-effort and idempotent.
         print(f"[startup] tenant index ensure skipped: {_e}")

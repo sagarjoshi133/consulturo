@@ -10,17 +10,19 @@ Behaviour preserved EXACTLY.
 from datetime import datetime, timezone
 import uuid
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any, Dict
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
 from auth_deps import STAFF_ROLES, is_prescriber, require_staff, require_user
 from models import PrescriptionCreate
 from server import get_or_set_reg_no
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
 
 @router.post("/api/prescriptions")
-async def create_prescription(payload: PrescriptionCreate, user=Depends(require_staff)):
+async def create_prescription(request: Request, payload: PrescriptionCreate, user=Depends(require_staff)):
     # Staff (reception/nursing/assistant) can only create DRAFT consultations
     # — they pre-fill patient details / vitals / complaints / IPSS so the
     # doctor can resume and finalise quickly. Only prescribers (owner /
@@ -44,6 +46,8 @@ async def create_prescription(payload: PrescriptionCreate, user=Depends(require_
     payload_data = payload.model_dump()
     payload_data["registration_no"] = reg_no
     payload_data["status"] = status
+    # Phase E — tag the Rx with the active clinic.
+    rx_clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "prescription_id": prescription_id,
         "doctor_user_id": user["user_id"] if is_rx else None,
@@ -51,6 +55,7 @@ async def create_prescription(payload: PrescriptionCreate, user=Depends(require_
         "created_by_user_id": user["user_id"],
         "created_by_name": user.get("name") or (user.get("email", "") or "").split("@")[0],
         "created_by_role": user.get("role"),
+        "clinic_id": rx_clinic_id,
         **payload_data,
         "created_at": datetime.now(timezone.utc),
     }
@@ -178,8 +183,11 @@ async def my_prescriptions(user=Depends(require_user)):
     return await cursor.to_list(length=200)
 
 @router.get("/api/prescriptions")
-async def list_prescriptions(user=Depends(require_staff)):
-    cursor = db.prescriptions.find({}, {"_id": 0}).sort("created_at", -1)
+async def list_prescriptions(request: Request, user=Depends(require_staff)):
+    # Phase E — scope by current clinic.
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    cursor = db.prescriptions.find(q, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(length=500)
 
 @router.get("/api/prescriptions/{prescription_id}")
