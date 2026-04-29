@@ -11397,3 +11397,233 @@ backend_phase5_clinical_smoke_2026_04_29:
     `/c/<slug>` + query scopes + data migration). The clean
     domain-segregated routers/ + services/ structure makes adding
     a `clinic_id` filter mechanical rather than archaeological.
+
+backend_phase7_polish_smoke_2026_04_29:
+  - task: "Phase 7 polish smoke — services/{notifications,blog_helpers,booking_helpers}.py extraction + prescriptions DELETE OWNER_TIER_ROLES gating fix"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py, /app/backend/services/notifications.py, /app/backend/services/blog_helpers.py, /app/backend/services/booking_helpers.py, /app/backend/routers/prescriptions.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          MIXED RESULT — 31/31 assertions PASS in the requested smoke
+          script (/app/backend_test_phase7_polish.py) BUT a SEPARATE
+          critical regression was uncovered when probing other endpoints
+          that consume the same services/blog_helpers helpers.
+
+          ════════════════════════════════════════════════════════════
+          ✅ WHAT WORKS (31/31 review-request smoke)
+          ════════════════════════════════════════════════════════════
+          1. PUBLIC endpoints (4/4) ✅
+             - GET /api/health → 200
+             - GET /api/blog → 200, returns a list (BUT see CAVEAT below)
+             - GET /api/diseases → 200
+             - GET /api/clinic-settings → 200
+
+          2. AUTH FLOW ✅
+             - POST /api/auth/otp/request {"email":"sagar.joshi133@gmail.com"} → 200
+
+          3. CLINICAL CRUD (uses notifications + booking_helpers) ✅
+             - POST /api/bookings (primary_owner, future date 2026-05-09 08:00,
+               name="Smoke 7", phone="9999900003") → 200; reg_no allocated.
+             - PATCH /api/bookings/{id} status="completed" → 200 (push_to_owner
+               fired via the booking flow — log entry confirmed).
+             - POST /api/prescriptions (primary_owner, phone="9999900004") → 200;
+               reg_no allocated.
+             - DELETE /api/prescriptions/{id} as PRIMARY_OWNER → 200 ✅
+               (was 403 before today's OWNER_TIER_ROLES fix). Re-DELETE → 404.
+             - DELETE /api/prescriptions/{id} as PARTNER → 200 ✅
+               (validated by seeding a real partner user + 7d session via
+               mongosh; partner role echo confirmed via /auth/me).
+
+          4. AUTH GATING regression ✅
+             - GET /api/bookings/all without token → 401.
+
+          5. ROLE-CHANGE flow (notify_role_change → pretty_role →
+             create_notification → push_to_user) ✅
+             - Pre-seeded users row for phase7-test@example.com (role=doctor)
+               so `notify_role_change` actually fires (the helper only fires
+               when an existing_user row is found).
+             - POST /api/team/invites doctor → 200.
+             - PATCH /api/team/phase7-test@example.com role=nursing → 200.
+             - DELETE /api/team/phase7-test@example.com → 200.
+             - db.notifications query confirms ≥1 row with kind='role_change'
+               for the seeded user — end-to-end notification chain works.
+
+          6. UNTOUCHED endpoints (4/4 sanity, primary_owner) ✅
+             - GET /api/team → 200
+             - GET /api/admin/partners → 200
+             - GET /api/notifications → 200
+             - GET /api/broadcasts → 200
+
+          7. SERVICES IMPORT REGRESSION (re-bind validation) ✅
+             - server.push_to_user IS services.notifications.push_to_user → True
+             - server._admin_to_html IS services.blog_helpers._admin_to_html → True
+             - server._time_12h IS services.booking_helpers._time_12h → True
+
+          ════════════════════════════════════════════════════════════
+          ❌ CRITICAL REGRESSION (NEW, not covered by review-request smoke)
+          ════════════════════════════════════════════════════════════
+          services/blog_helpers.py is INCOMPLETE — the mechanical extract
+          left THREE module-level dependencies behind in server.py and
+          DID NOT migrate them to the new module:
+
+          - `_IMG_RE`     used by `_extract_first_img` (line 40)
+          - `_TAG_RE`     used by `_strip_html` (line 53)
+          - `_EDU_CUSTOM_COVERS` used by `_apply_custom_cover` (line 109)
+
+          NEITHER constant is imported nor defined inside
+          /app/backend/services/blog_helpers.py. Every call site goes
+          through server.py's re-export (`from services.blog_helpers
+          import _extract_first_img  # (extracted)` etc.) so it's the
+          *same* broken function object.
+
+          Reproduced via direct asyncio invocation:
+            >>> _extract_first_img('<img src="x">')
+            NameError: name '_IMG_RE' is not defined
+            >>> _strip_html('<p>x</p>')
+            NameError: name '_TAG_RE' is not defined
+            >>> _apply_custom_cover({'id':'x'})
+            NameError: name '_EDU_CUSTOM_COVERS' is not defined
+
+          IMPACT — three live HTTP regressions:
+
+          A. ❌ /api/education?lang=en → HTTP 500 (was 200 / 37 items).
+             Backend log shows the NameError at routers/education.py:62
+                 return [_apply_custom_cover(i) for i in
+                         _edu_list_localized(lang)]
+                 NameError: name '_EDU_CUSTOM_COVERS' is not defined
+             Same for /api/education/{id}?lang=en → 500.
+             Repro:
+               curl http://localhost:8001/api/education?lang=en
+               → 500 Internal Server Error
+             37 trilingual education topics are NO LONGER reachable
+             through the API. This breaks the patient Education tab on
+             the mobile app (37 cards on the front-end, EN/HI/GU).
+
+          B. ⚠️ /api/blog → 200 BUT silently returns `[]`.
+             `_load_blog_from_blogger` calls `_extract_first_img(raw)`
+             and `_strip_html(raw)` inside a per-entry loop wrapped in
+             a top-level `try/except: return _BLOG_CACHE['data'] or []`.
+             Both helpers raise NameError on the FIRST entry, so the
+             whole feed parse aborts and the cached fallback (empty)
+             is returned. Net: the public blog list is now empty for
+             every request even though the underlying Blogger feed
+             responds normally. This silently breaks the /blog tab
+             on web + native.
+
+          C. (Latent) Any internal caller of `server._extract_first_img`
+             or `server._strip_html` (e.g. blog publishing helpers,
+             excerpt computation in /api/admin/blog upserts when no
+             excerpt is provided) will also crash. Not exercised in
+             this run but the same NameError will surface.
+
+          ════════════════════════════════════════════════════════════
+          REQUIRED FIXES (main agent — minor mechanical edits)
+          ════════════════════════════════════════════════════════════
+          /app/backend/services/blog_helpers.py — add at the top of the
+          module (after `import re`):
+
+              _IMG_RE = re.compile(r'<img[^>]+src="([^"]+)"', re.IGNORECASE)
+              _TAG_RE = re.compile(r"<[^>]+>")
+
+          And EITHER:
+            (a) move the `_EDU_CUSTOM_COVERS` dict from server.py:1890
+                into blog_helpers.py (it's a static map of education
+                topic id → cover URL — has no other dependencies), OR
+            (b) accept the dict as a parameter:
+                  def _apply_custom_cover(item, overrides=None):
+                      override = (overrides or {}).get(item.get("id",""))
+                and update routers/education.py to pass the dict in.
+
+          Option (a) is simpler and matches the Phase 6 `services/`
+          pattern (self-contained modules).
+
+          AFTER fix, please re-run /app/backend_test_phase7_polish.py
+          AND additionally `curl /api/education?lang=en` should return
+          a 37-item list and `/api/blog` should resume showing the
+          live Blogger feed entries.
+
+          ════════════════════════════════════════════════════════════
+          NOTE — services/notifications.py + services/booking_helpers.py
+          ════════════════════════════════════════════════════════════
+          BOTH are CLEAN (zero hidden module-level deps), pass all
+          downstream tests. The bug is isolated to blog_helpers.py.
+
+          ════════════════════════════════════════════════════════════
+          DELETE PRESCRIPTIONS GATING FIX — VERIFIED ✅
+          ════════════════════════════════════════════════════════════
+          routers/prescriptions.py DELETE handler now uses
+          `OWNER_TIER_ROLES` (={"super_owner","primary_owner","owner",
+          "partner"}) instead of the literal `role == "owner"`. Confirmed
+          working for BOTH primary_owner and partner with no token-leak
+          or 403 regressions on the hot path. Cleanup verified —
+          deleted_count exactly matches expected; re-DELETE returns 404.
+
+          ════════════════════════════════════════════════════════════
+          CLEANUP
+          ════════════════════════════════════════════════════════════
+          All Phase-7 test fixtures purged via mongosh:
+            users_deleted=2 (partner seed + team-test seed)
+            sessions_deleted=1 (partner session)
+            invites_deleted=0 (already removed by DELETE /team/{email})
+            notifs_deleted=1 (the role_change row)
+            bookings_deleted=1 (Smoke 7 booking)
+          End state: zero pollution.
+
+agent_communication_2026_04_29_phase7_polish_smoke:
+  - agent: "testing"
+    message: |
+      Phase 7 polish smoke run COMPLETE.
+
+      ✅ THE REVIEW-REQUEST CHECKLIST IS 100% GREEN (31/31).
+         All 7 sections of the requested smoke pass:
+         public endpoints, auth/otp, booking + prescription CRUD,
+         primary_owner + partner DELETE Rx (the OWNER_TIER_ROLES
+         fix), team-invite/PATCH/DELETE role-change flow, untouched
+         endpoint sanity, and the services-import re-bind identity
+         checks (server.X is services.Y.X for all 3 services).
+
+      ❌ HOWEVER — a separate critical regression was caught while
+         probing for downstream callers of the extracted helpers:
+         /api/education?lang=en (and /api/education/{id}?lang=en)
+         now return 500 with NameError, and /api/blog silently
+         returns an empty list. Root cause: services/blog_helpers.py
+         is missing 3 module-level definitions that the mechanical
+         extract did NOT carry over from server.py:
+             _IMG_RE             (regex, used by _extract_first_img)
+             _TAG_RE             (regex, used by _strip_html)
+             _EDU_CUSTOM_COVERS  (dict, used by _apply_custom_cover)
+         Every call into these three helpers raises NameError. The
+         blog endpoint swallows the exception (returns cached []),
+         but the education router does not — hence 500.
+
+      MAIN AGENT ACTION ITEMS (mechanical, minor — no functional
+      logic to redesign):
+        1. Add at top of /app/backend/services/blog_helpers.py:
+             _IMG_RE = re.compile(r'<img[^>]+src="([^"]+)"', re.IGNORECASE)
+             _TAG_RE = re.compile(r"<[^>]+>")
+        2. Move _EDU_CUSTOM_COVERS dict out of server.py:1890 into
+           services/blog_helpers.py (or accept it as a parameter on
+           _apply_custom_cover). Option (a) is simpler — it's a
+           static map.
+        3. Re-run /app/backend_test_phase7_polish.py AND
+           `curl http://localhost:8001/api/education?lang=en` (must
+           return a 37-item list) AND `curl /api/blog` (must show
+           live Blogger feed entries again, not [] ).
+
+      services/notifications.py and services/booking_helpers.py are
+      clean — no module-level dep escaped. The DELETE prescription
+      OWNER_TIER_ROLES gating fix in routers/prescriptions.py works
+      perfectly for both primary_owner and partner.
+
+      I have NOT applied the fix myself per the testing-agent
+      protocol — flagging for the main agent. The fix is small and
+      local to /app/backend/services/blog_helpers.py.
+
+      YOU MUST ASK USER BEFORE DOING FRONTEND TESTING.
+

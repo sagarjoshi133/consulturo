@@ -95,9 +95,13 @@ async def create_prescription(payload: PrescriptionCreate, user=Depends(require_
 
 @router.delete("/api/prescriptions/{prescription_id}")
 async def delete_prescription(prescription_id: str, user=Depends(require_user)):
-    """Only the owner can delete a prescription record."""
-    if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Only the owner can delete prescription records")
+    """Only owner-tier roles (super_owner / primary_owner / partner) can
+    permanently delete a prescription record. Note: post-migration the
+    legacy `'owner'` role label no longer exists — uses
+    OWNER_TIER_ROLES so partner + primary_owner both qualify."""
+    from auth_deps import OWNER_TIER_ROLES
+    if user.get("role") not in OWNER_TIER_ROLES:
+        raise HTTPException(status_code=403, detail="Only the Primary Owner / Partner can delete prescription records")
     result = await db.prescriptions.delete_one({"prescription_id": prescription_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")

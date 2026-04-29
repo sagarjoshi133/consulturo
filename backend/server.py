@@ -517,26 +517,10 @@ async def _scan_and_fire_booking_reminders(now: datetime) -> None:
             continue
 
 
-def _time_12h(hhmm: str) -> str:
-    """'14:30' -> '2:30 PM'. Defensive."""
-    try:
-        hh, mm = [int(x) for x in hhmm.split(":")]
-        suffix = "AM" if hh < 12 else "PM"
-        h12 = hh % 12
-        if h12 == 0:
-            h12 = 12
-        return f"{h12}:{mm:02d} {suffix}"
-    except Exception:
-        return hhmm
+from services.booking_helpers import _time_12h  # (extracted)
 
 
-def _format_booking_display(iso_date: str, hhmm: str) -> str:
-    """YYYY-MM-DD + HH:mm -> 'DD-MM-YYYY at H:MM AM/PM'."""
-    try:
-        yr, mo, dy = iso_date.split("-")
-        return f"{dy}-{mo}-{yr} at {_time_12h(hhmm)}"
-    except Exception:
-        return f"{iso_date} at {_time_12h(hhmm)}"
+from services.booking_helpers import _format_booking_display  # (extracted)
 
 
 # ============================================================
@@ -1801,67 +1785,16 @@ _IMG_RE = re.compile(r'<img[^>]+src="([^"]+)"', re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-def _extract_first_img(html: str) -> Optional[str]:
-    m = _IMG_RE.search(html or "")
-    if not m:
-        return None
-    url = m.group(1).replace(r"\/", "/")
-    url = re.sub(r"/s\d+(-[wh]\d+(-[ch])?)?/", "/s800/", url)
-    url = re.sub(r"/w\d+-h\d+(-c)?/", "/s800/", url)
-    return url
+from services.blog_helpers import _extract_first_img  # (extracted)
 
 
-def _strip_html(html: str) -> str:
-    # Remove script/style blocks first (their content is junk for excerpts)
-    cleaned = re.sub(r"<(script|style)[\s\S]*?</\1>", " ", html or "", flags=re.IGNORECASE)
-    # Remove HTML comments
-    cleaned = re.sub(r"<!--([\s\S]*?)-->", " ", cleaned)
-    txt = _TAG_RE.sub(" ", cleaned)
-    txt = htmllib.unescape(txt)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    return txt
+from services.blog_helpers import _strip_html  # (extracted)
 
 
 _BLOG_CACHE: Dict[str, Any] = {"at": None, "data": []}
 
 
-async def _load_blog_from_blogger() -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    if _BLOG_CACHE["at"] and (now - _BLOG_CACHE["at"]).total_seconds() < 900:
-        return _BLOG_CACHE["data"]
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as hc:
-            r = await hc.get(BLOGGER_FEED_URL)
-            r.raise_for_status()
-            feed = r.json().get("feed", {})
-            posts = []
-            for e in feed.get("entry", []):
-                raw = e.get("content", {}).get("$t", "") or ""
-                cats = [c.get("term") for c in e.get("category", []) if c.get("term")]
-                alt_link = next(
-                    (lk.get("href") for lk in e.get("link", []) if lk.get("rel") == "alternate"),
-                    None,
-                )
-                post_id = (e.get("id", {}).get("$t") or "").split(".post-")[-1] or uuid.uuid4().hex
-                cover = _extract_first_img(raw) or (e.get("media$thumbnail", {}) or {}).get("url") or ""
-                posts.append(
-                    {
-                        "id": post_id,
-                        "title": e.get("title", {}).get("$t", "Untitled"),
-                        "category": cats[0] if cats else "Urology",
-                        "categories": cats,
-                        "cover": cover,
-                        "excerpt": _strip_html(raw)[:240] + ("…" if len(raw) > 240 else ""),
-                        "content_html": raw,
-                        "published_at": (e.get("published", {}).get("$t") or "")[:10],
-                        "link": alt_link,
-                    }
-                )
-            _BLOG_CACHE["at"] = now
-            _BLOG_CACHE["data"] = posts
-            return posts
-    except Exception:
-        return _BLOG_CACHE["data"] or []
+from services.blog_helpers import _load_blog_from_blogger  # (extracted)
 
 
 # (moved) blog block (L4428-4450) → /app/backend/routers/blog.py
@@ -1870,15 +1803,7 @@ async def _load_blog_from_blogger() -> List[Dict[str, Any]]:
 # (moved) blog block (L4453-4472) → /app/backend/routers/blog.py
 
 
-def _admin_to_html(text: str) -> str:
-    """Convert the composer's plain-text body into light HTML
-    (paragraphs + preserve existing tags the user may have typed)."""
-    if not text:
-        return ""
-    if "<p>" in text or "<img" in text or "<h" in text:
-        return text
-    paras = [p.strip() for p in re.split(r"\n\s*\n+", text) if p.strip()]
-    return "".join(f"<p>{htmllib.escape(p).replace(chr(10), '<br/>')}</p>" for p in paras)
+from services.blog_helpers import _admin_to_html  # (extracted)
 
 
 # ============================================================
@@ -2003,13 +1928,7 @@ _EDU_CUSTOM_COVERS: Dict[str, str] = {
 }
 
 
-def _apply_custom_cover(item: Dict[str, Any]) -> Dict[str, Any]:
-    if not item:
-        return item
-    override = _EDU_CUSTOM_COVERS.get(item.get("id", ""))
-    if override:
-        item = {**item, "cover": override}
-    return item
+from services.blog_helpers import _apply_custom_cover  # (extracted)
 
 
 # (moved) education block (L5050-5054) → /app/backend/routers/education.py
@@ -2080,155 +1999,19 @@ TOOL_IDS = {
 # (moved) class BroadcastReview → /app/backend/models.py
 
 
-async def send_expo_push_batch(
-    tokens: List[str],
-    title: str,
-    body: str,
-    data: Optional[Dict[str, Any]] = None,
-    image_url: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Fan-out push via Expo's public Push API. No FCM keys needed.
-    Tokens that come back as invalid (DeviceNotRegistered / InvalidCredentials) are purged.
-    Every batch is also recorded in `push_log` for observability.
-    """
-    log_entry: Dict[str, Any] = {
-        "id": str(uuid.uuid4()),
-        "title": (title or "")[:240],
-        "body": (body or "")[:500],
-        "data_type": (data or {}).get("type") if isinstance(data, dict) else None,
-        "total": 0,
-        "sent": 0,
-        "purged": 0,
-        "errors": [],
-        "created_at": datetime.now(timezone.utc),
-    }
-    if not tokens:
-        log_entry["note"] = "no_tokens_supplied"
-        try:
-            await db.push_log.insert_one(log_entry)
-        except Exception:
-            pass
-        return {"sent": 0, "errors": [], "total": 0, "purged": 0, "note": "no_tokens_supplied"}
-    # Filter to valid Expo tokens (ExponentPushToken[...] or ExpoPushToken[...])
-    clean = [
-        t for t in {t for t in tokens if t}
-        if isinstance(t, str) and (t.startswith("ExponentPushToken[") or t.startswith("ExpoPushToken["))
-    ]
-    log_entry["total"] = len(clean)
-    if not clean:
-        log_entry["errors"] = [{"error": "no valid tokens"}]
-        try:
-            await db.push_log.insert_one(log_entry)
-        except Exception:
-            pass
-        return {"sent": 0, "errors": [{"error": "no valid tokens"}], "total": 0, "purged": 0}
-    messages = []
-    for t in clean:
-        msg: Dict[str, Any] = {
-            "to": t,
-            "sound": "default",
-            "title": title[:240],
-            "body": body[:1000],
-            "priority": "high",
-            "channelId": "default",
-        }
-        if data:
-            msg["data"] = data
-        if image_url:
-            # iOS rich & Android bigPicture
-            msg["richContent"] = {"image": image_url}
-            msg["_displayInForeground"] = True
-        messages.append(msg)
-    sent = 0
-    errors: List[Dict[str, Any]] = []
-    invalid: List[str] = []
-    try:
-        # Expo recommends chunks of 100
-        async with httpx.AsyncClient(timeout=15.0) as hc:
-            for i in range(0, len(messages), 100):
-                chunk = messages[i:i + 100]
-                resp = await hc.post(
-                    "https://exp.host/--/api/v2/push/send",
-                    json=chunk,
-                    headers={
-                        "Accept": "application/json",
-                        "Accept-Encoding": "gzip, deflate",
-                        "Content-Type": "application/json",
-                    },
-                )
-                try:
-                    data_resp = resp.json()
-                except Exception:
-                    errors.append({"error": f"non-json response {resp.status_code}"})
-                    continue
-                receipts = data_resp.get("data", [])
-                for j, r in enumerate(receipts):
-                    if isinstance(r, dict) and r.get("status") == "ok":
-                        sent += 1
-                    else:
-                        err_msg = r.get("message") if isinstance(r, dict) else str(r)
-                        err_detail = r.get("details", {}) if isinstance(r, dict) else {}
-                        errors.append({"error": err_msg, "details": err_detail})
-                        if err_detail.get("error") in ("DeviceNotRegistered", "InvalidCredentials"):
-                            invalid.append(chunk[j]["to"])
-    except Exception as e:
-        errors.append({"error": str(e)})
-    if invalid:
-        await db.push_tokens.delete_many({"token": {"$in": invalid}})
-    log_entry["sent"] = sent
-    log_entry["errors"] = errors[:10]  # keep log rows bounded
-    log_entry["purged"] = len(invalid)
-    try:
-        await db.push_log.insert_one(log_entry)
-        # Keep only last 2000 log rows for space
-        total = await db.push_log.count_documents({})
-        if total > 2200:
-            # Drop the oldest 200
-            cutoff_doc = await db.push_log.find({}, {"created_at": 1}).sort("created_at", 1).skip(200).limit(1).to_list(1)
-            if cutoff_doc:
-                await db.push_log.delete_many({"created_at": {"$lt": cutoff_doc[0]["created_at"]}})
-    except Exception:
-        pass
-    return {"sent": sent, "errors": errors, "total": len(clean), "purged": len(invalid)}
+from services.notifications import send_expo_push_batch  # (extracted)
 
 
-async def collect_user_tokens(user_ids: Optional[List[str]] = None) -> List[str]:
-    q: Dict[str, Any] = {}
-    if user_ids is not None:
-        q["user_id"] = {"$in": user_ids}
-    rows = await db.push_tokens.find(q, {"_id": 0, "token": 1}).to_list(length=5000)
-    return [r["token"] for r in rows if r.get("token")]
+from services.notifications import collect_user_tokens  # (extracted)
 
 
-async def collect_role_tokens(roles: List[str]) -> List[str]:
-    uids = [u["user_id"] async for u in db.users.find({"role": {"$in": roles}}, {"user_id": 1})]
-    return await collect_user_tokens(uids)
+from services.notifications import collect_role_tokens  # (extracted)
 
 
-async def push_to_owner(title: str, body: str, data: Optional[Dict[str, Any]] = None):
-    tokens = await collect_role_tokens(["owner"])
-    if tokens:
-        await send_expo_push_batch(tokens, title, body, data)
+from services.notifications import push_to_owner  # (extracted)
 
 
-async def push_to_user(user_id: Optional[str], phone: Optional[str], title: str, body: str, data: Optional[Dict[str, Any]] = None):
-    user_ids: List[str] = []
-    if user_id:
-        user_ids.append(user_id)
-    if phone:
-        digits = re.sub(r"\D", "", phone or "")
-        if digits:
-            rows = await db.users.find({"phone": {"$regex": digits + "$"}}, {"user_id": 1}).to_list(length=5)
-            for r in rows:
-                if r["user_id"] not in user_ids:
-                    user_ids.append(r["user_id"])
-    if not user_ids:
-        return False
-    tokens = await collect_user_tokens(user_ids)
-    if tokens:
-        await send_expo_push_batch(tokens, title, body, data)
-        return True
-    return False
+from services.notifications import push_to_user  # (extracted)
 
 
 # ============================================================
@@ -2239,80 +2022,16 @@ async def push_to_user(user_id: Optional[str], phone: Optional[str], title: str,
 # banner immediately and the app keeps a read/unread history.
 # ============================================================
 
-ROLE_LABELS_BASIC: Dict[str, str] = {
-    "owner": "Owner",
-    "doctor": "Doctor",
-    "assistant": "Assistant",
-    "staff": "Staff",
-    "patient": "Patient",
-}
+from services.notifications import ROLE_LABELS_BASIC  # (extracted)
 
 
-async def pretty_role(role_slug: Optional[str]) -> str:
-    if not role_slug:
-        return "—"
-    if role_slug in ROLE_LABELS_BASIC:
-        return ROLE_LABELS_BASIC[role_slug]
-    custom = await db.role_labels.find_one({"slug": role_slug}, {"_id": 0, "label": 1})
-    if custom and custom.get("label"):
-        return custom["label"]
-    return role_slug.replace("_", " ").title()
+from services.notifications import pretty_role  # (extracted)
 
 
-async def create_notification(
-    user_id: Optional[str],
-    title: str,
-    body: str,
-    kind: str = "info",
-    data: Optional[Dict[str, Any]] = None,
-    push: bool = True,
-):
-    """Persist an in-app notification and (optionally) also fire a push.
-    Set `push=False` when the caller already handles the push via
-    `push_to_user` or another channel (e.g. phone-based broadcast)."""
-    if not user_id:
-        return None
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "title": title,
-        "body": body,
-        "kind": kind,
-        "data": data or {},
-        "read": False,
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.notifications.insert_one(doc)
-    if push:
-        try:
-            await push_to_user(user_id, None, title, body, {**(data or {}), "kind": kind})
-        except Exception:
-            pass
-    return doc
+from services.notifications import create_notification  # (extracted)
 
 
-async def notify_role_change(
-    user_id: Optional[str],
-    email: str,
-    prev_role: Optional[str],
-    new_role: str,
-):
-    """Send the 'your role changed' notification to the team member."""
-    new_label = await pretty_role(new_role)
-    if prev_role:
-        prev_label = await pretty_role(prev_role)
-        title = "Your role has been updated"
-        body = f"You are now a {new_label} (was {prev_label})."
-    else:
-        title = "You've been added to the team"
-        body = f"You've been assigned the {new_label} role."
-    await create_notification(
-        user_id=user_id,
-        title=title,
-        body=body,
-        kind="role_change",
-        data={"email": email, "prev_role": prev_role, "new_role": new_role},
-    )
+from services.notifications import notify_role_change  # (extracted)
 
 
 # (moved) notifications block (L5011-5039) → /app/backend/routers/notifications.py
