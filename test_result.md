@@ -1102,12 +1102,148 @@ backend_phase2_modularization_smoke_2026_04_29:
           End state: zero test fixtures left in DB. Backend healthy.
 
 
+backend_phase6_modularization_smoke_2026_04_29:
+  - task: "Phase 6 server.py modularization smoke — services/{reg_no,email,telegram}.py extraction; ZERO behaviour change intended"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py, /app/backend/services/reg_no.py, /app/backend/services/email.py, /app/backend/services/telegram.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          20/23 PASS via /app/backend_test_phase6_modularization.py against
+          http://localhost:8001 — but TWO CRITICAL REGRESSIONS introduced
+          by this phase. The mechanical extraction of services/email.py
+          and services/telegram.py is INCOMPLETE — referenced symbols
+          were not migrated alongside the helpers.
+
+          ❌ REGRESSION 1 — services/email.py is BROKEN
+          File: /app/backend/services/email.py:31
+            `if not _resend.api_key:` and line 38 `_resend.Emails.send(...)`
+          The variable `_resend` is NEVER imported / defined inside the
+          module. In server.py the canonical `_resend` was created at
+          line 1093: `import resend as _resend` and `_resend.api_key = ...`
+          That block was NOT moved into services/email.py.
+          IMPACT: every call site (auth.py: magic-link send, OTP request,
+          email-confirm) crashes with NameError → 500.
+          REPRO:
+            curl -X POST http://localhost:8001/api/auth/otp/request \
+                 -H "Content-Type: application/json" \
+                 -d '{"email":"sagar.joshi133@gmail.com"}'
+            → HTTP 500 "Internal Server Error"
+          Backend log:
+            File "/app/backend/services/email.py", line 31, in _send_email
+              if not _resend.api_key:
+            NameError: name '_resend' is not defined
+
+          ❌ REGRESSION 2 — services/telegram.py is BROKEN
+          File: /app/backend/services/telegram.py
+            Line 17: loads variable `TELEGRAM_CHAT_ID` from env.
+            Line 21: gates on `TELEGRAM_OWNER_CHAT_ID` — DIFFERENT name.
+            Line 24: `async with httpx.AsyncClient(...)` — httpx is NOT
+            imported (only `requests` at line 10, which is the WRONG
+            library because notify_telegram is async).
+          IMPACT: any flow that fires a telegram alert crashes with
+          NameError → 500. Hits booking creation, broadcast send,
+          booking status changes, role changes etc. (8+ call sites in
+          /app/backend/routers/bookings.py + /app/backend/routers/broadcasts.py).
+          REPRO:
+            curl -X POST http://localhost:8001/api/bookings \
+                 -H "Authorization: Bearer test_session_1776770314741" \
+                 -H "Content-Type: application/json" \
+                 -d '{"patient_name":"Smoke","patient_phone":"9999900001",
+                      "country_code":"+91","reason":"smoke",
+                      "booking_date":"2026-05-01","booking_time":"10:00",
+                      "mode":"in-person"}'
+            → HTTP 500 "Internal Server Error"
+          Backend log:
+            File "/app/backend/routers/bookings.py", line 135,
+              in create_booking
+              await notify_telegram(msg)
+            File "/app/backend/services/telegram.py", line 21,
+              in notify_telegram
+              if not TELEGRAM_BOT_TOKEN or not TELEGRAM_OWNER_CHAT_ID:
+            NameError: name 'TELEGRAM_OWNER_CHAT_ID' is not defined
+
+          REQUIRED FIXES (main agent):
+          (a) /app/backend/services/email.py — at top of file add:
+                import resend as _resend
+                _resend.api_key = os.environ.get("RESEND_API_KEY") or ""
+              (Or rename the references to use `resend` directly.)
+          (b) /app/backend/services/telegram.py — fix two issues:
+                - Add `import httpx` at the top (and remove the unused
+                  `import requests`).
+                - Either rename the env var on line 17 from
+                  `TELEGRAM_CHAT_ID` → `TELEGRAM_OWNER_CHAT_ID`, or
+                  rename the reference inside the function to match.
+                  (.env defines `TELEGRAM_OWNER_CHAT_ID=532551507`, so
+                  the env-var name is the canonical truth — rename the
+                  module variable to `TELEGRAM_OWNER_CHAT_ID`.)
+          (c) Re-run the Phase 6 smoke; the OTP request and booking
+              creation should both return 200.
+
+          ✅ WHAT IS WORKING (16/23 PASS items unaffected):
+          1. PUBLIC: GET /api/health, /api/diseases, /api/blog,
+             /api/clinic-settings, /api/calculators all → 200.
+          2. GET /api/auth/me with primary_owner token → 200,
+             role=primary_owner.
+          3. POST /api/prescriptions (does NOT call notify_telegram
+             nor _send_email) → 200 with reg_no='002260426' in
+             SSSDDMMYY format. services/reg_no.py is healthy and
+             allocates correctly.
+          4. AUTH GATING preserved:
+             GET /api/bookings/all without token → 401.
+             GET /api/bookings/all with primary_owner → 200.
+          5. UNTOUCHED endpoints all 200 for primary_owner:
+             /api/team, /api/admin/partners, /api/notifications,
+             /api/broadcasts, /api/blog.
+          6. SERVICES IMPORT REGRESSION (in-process): all 4 re-binds
+             resolve to the SAME object —
+               server._send_email IS services.email._send_email
+               server.allocate_reg_no IS services.reg_no.allocate_reg_no
+               server.get_or_set_reg_no IS services.reg_no.get_or_set_reg_no
+               server.notify_telegram IS services.telegram.notify_telegram
+             Re-binding mechanism is correct; the regression is purely
+             in the body of the extracted helpers (missing imports +
+             variable name mismatch).
+
+          NOT a regression: The booking row was NEVER persisted (the
+          notify_telegram call happens AFTER the insert succeeds, so
+          the booking was inserted then the request died — a stray
+          booking may exist in the DB. I deliberately did NOT delete
+          it because cleanup wasn't possible without first running a
+          successful POST). Suggest main agent runs the smoke after
+          the fix to validate end-to-end.
+
 test_plan:
   current_focus:
     - "FRONTEND REGRESSION + NEW FEATURE PASS — Verify the UI on both DESKTOP (≥1280px) and MOBILE (390x844) using primary_owner credentials (token: test_session_1776770314741, email sagar.joshi133@gmail.com). Required tests: (1) DESKTOP SIDEBAR — confirm sections render in order Account → Dashboard → Practice → Administration → Explore → App → About. Account/Dashboard/Practice expanded by default; Administration/Explore/App/About collapsed by default. Tapping a section header toggles its items and persists across reload. View mode pill in App section cycles Auto/Desktop/Mobile and triggers a layout refresh. (2) DESKTOP HOME (/) — for staff (primary_owner), the hero shows 3 quick-action pills: Bookings · Consult · Prescription which navigate to dashboard tabs. Patients still see the single 'Book Consultation' pill. (3) MOBILE HOME (/) — for clinical roles (primary_owner / partner / doctor), the second quick-action card shows 'Consult' (medkit) instead of 'WhatsApp'. Tapping it goes to /dashboard?tab=consultations. (4) MOBILE MORE TAB — sections render in order Account → Dashboard → Practice → Administration → Explore → App → About with same default-collapsed behavior. Tapping a section title toggles its rows. (5) APPOINTMENT PAGE (/bookings/[id]) — Communication card buttons (Call/WhatsApp/Message) NEVER overflow or wrap to 2 lines on a 360px viewport. Single-line truncation works. (6) DASHBOARD BOOKINGS TAB — booking card action row (Call·WhatsApp·Copy·Confirm·Reschedule·Reject·Message) wraps gracefully — NO buttons spilling outside the card edge. (7) PROFILE → SHORTCUTS row labelled 'Inbox' (was 'Notifications') routes to /inbox. (8) PERMISSION MANAGER → DEMO ACCOUNTS — as super_owner, after creating a demo via OwnersPanel, the demo (signed_in:false) appears immediately in the list with a 'Revoke' button. (9) PERMISSION MANAGER → PARTNERS — as primary_owner, after promoting an email to partner, that pending entry appears with '(pending sign-in)' suffix and a 'Revoke' button. Revoke removes it. (10) i18n — toggle language EN→HI→GU; sidebar section headers and item labels translate (Administration → प्रशासन / વ્યવસ્થાપન; Consults → कंसल्ट्स / કન્સલ્ટ્સ; etc). (11) PRESCRIPTION PDF — verify the patient summary band shows 5 distinct cells: Patient · Age/Sex · Phone · Visit · Reg. No. with no overlaps. Login with token test_session_1776770314741 (already extended 7 days)."
-  stuck_tasks: []
+  stuck_tasks:
+    - "Phase 6 server.py modularization smoke — services/{reg_no,email,telegram}.py extraction; ZERO behaviour change intended"
   test_all: false
   test_priority: "high_first"
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        Phase 6 modularization smoke — TWO CRITICAL REGRESSIONS:
+        1) services/email.py references `_resend` but the module never
+           imports it. POST /api/auth/otp/request → 500 NameError. Fix:
+           add `import resend as _resend; _resend.api_key = os.environ.get(
+           'RESEND_API_KEY') or ''` at the top of services/email.py.
+        2) services/telegram.py uses `TELEGRAM_OWNER_CHAT_ID` (line 21,28)
+           and `httpx.AsyncClient` (line 24) but loads `TELEGRAM_CHAT_ID`
+           and only imports `requests`. POST /api/bookings → 500 NameError.
+           Fix: rename module-level var to `TELEGRAM_OWNER_CHAT_ID`, swap
+           `import requests` for `import httpx`.
+        Re-bind mechanism (server.py lines 138/141/144/547/1130) is CORRECT
+        — verified that `server.X is services.Y.X` for all 4 helpers.
+        Bug is in the EXTRACTED helper bodies, not the re-import wiring.
+        services/reg_no.py is healthy (Rx creation returned reg_no
+        002260426 in correct SSSDDMMYY format).
 
 backend_june_2025_patch:
   - task: "Demo Accounts list — pending invites visibility + signed_in flag (BUG FIX #1)"
