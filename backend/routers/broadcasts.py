@@ -6,23 +6,25 @@
   · /api/broadcasts/inbox
   · /api/broadcasts/inbox/read
 
-Extracted from server.py during Phase 3 modularization.
-Behaviour preserved EXACTLY.
+Phase E (multi-tenant): broadcasts are clinic-scoped — staff only see
+the broadcasts created by their clinic; recipients only get
+notifications targeted by their clinic membership.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
 from auth_deps import STAFF_ROLES, VALID_ROLES, require_staff, require_user
 from models import BroadcastCreate, BroadcastReview
 from server import collect_role_tokens, collect_user_tokens, create_notification, htmllib, notify_telegram, push_to_user, send_expo_push_batch
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
 
 @router.post("/api/broadcasts")
-async def create_broadcast(payload: BroadcastCreate, user=Depends(require_staff)):
+async def create_broadcast(request: Request, payload: BroadcastCreate, user=Depends(require_staff)):
     title = (payload.title or "").strip()
     body = (payload.body or "").strip()
     if not title or not body:
@@ -33,8 +35,10 @@ async def create_broadcast(payload: BroadcastCreate, user=Depends(require_staff)
     bid = f"bc_{uuid.uuid4().hex[:10]}"
     is_owner = user.get("role") == "owner"
     is_approver = is_owner or bool(user.get("can_approve_broadcasts"))
+    bc_clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "broadcast_id": bid,
+        "clinic_id": bc_clinic_id,
         "title": title,
         "body": body,
         "image_url": (payload.image_url or "").strip() or None,
@@ -91,19 +95,22 @@ async def create_broadcast(payload: BroadcastCreate, user=Depends(require_staff)
     return doc
 
 @router.get("/api/broadcasts")
-async def list_broadcasts(status: Optional[str] = None, user=Depends(require_staff)):
-    q: Dict[str, Any] = {}
+async def list_broadcasts(request: Request, status: Optional[str] = None, user=Depends(require_staff)):
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
     if status:
         q["status"] = status
     cursor = db.broadcasts.find(q, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(length=300)
 
 @router.get("/api/broadcasts/pending_count")
-async def broadcasts_pending_count(user=Depends(require_staff)):
+async def broadcasts_pending_count(request: Request, user=Depends(require_staff)):
     is_approver = user.get("role") == "owner" or bool(user.get("can_approve_broadcasts"))
     if not is_approver:
         return {"count": 0}
-    n = await db.broadcasts.count_documents({"status": "pending_approval"})
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = {"status": "pending_approval", **tenant_filter(user, clinic_id, allow_global=True)}
+    n = await db.broadcasts.count_documents(q)
     return {"count": n}
 
 @router.patch("/api/broadcasts/{bid}")

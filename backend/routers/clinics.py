@@ -27,6 +27,7 @@ from auth_deps import (
     is_super_owner,
 )
 from db import db
+from services.audit import log_action
 from services.tenancy import (
     CLINICS_COLL,
     MEMBERSHIPS_COLL,
@@ -140,6 +141,14 @@ async def create_clinic_endpoint(
         email=body.email,
         branding=body.branding,
     )
+    await log_action(
+        actor=user,
+        clinic_id=clinic["clinic_id"],
+        action="clinic.create",
+        target_id=clinic["clinic_id"],
+        target_type="clinic",
+        meta={"slug": clinic["slug"], "name": clinic["name"]},
+    )
     return clinic
 
 
@@ -186,6 +195,14 @@ async def update_clinic(
         raise HTTPException(status_code=400, detail="Nothing to update")
     update["updated_at"] = __import__("time").time().__int__() * 1000
     await db[CLINICS_COLL].update_one({"clinic_id": clinic_id}, {"$set": update})
+    await log_action(
+        actor=user,
+        clinic_id=clinic_id,
+        action="clinic.update",
+        target_id=clinic_id,
+        target_type="clinic",
+        meta={"fields": list(update.keys())},
+    )
     return await get_clinic_by_id(clinic_id) or {}
 
 
@@ -253,6 +270,13 @@ async def remove_member(
         {"user_id": user_id, "clinic_id": clinic_id},
         {"$set": {"is_active": False, "removed_by": _uid(user)}},
     )
+    await log_action(
+        actor=user,
+        clinic_id=clinic_id,
+        action="clinic.member.remove",
+        target_id=user_id,
+        target_type="user",
+    )
     return {"ok": True}
 
 
@@ -295,5 +319,13 @@ async def add_member(
         role=role,
         invited_by=_uid(user),
         is_active=True,
+    )
+    await log_action(
+        actor=user,
+        clinic_id=clinic_id,
+        action="clinic.member.add",
+        target_id=target_user_id,
+        target_type="user",
+        meta={"role": role},
     )
     return {"ok": True, "membership": membership}

@@ -36,6 +36,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from auth_deps import is_super_owner, require_user
 from db import db
+from services.audit import log_action
 from services.email import _send_email
 from services.tenancy import (
     CLINIC_ROLES,
@@ -165,6 +166,14 @@ async def create_invitation(
         # token is still valid and the link can be shared manually.
         print(f"[invitations] email send failed for {email_lc}: {e}")
 
+    await log_action(
+        actor=user,
+        clinic_id=clinic_id,
+        action="invitation.create",
+        target_id=token,
+        target_type="invitation",
+        meta={"email": email_lc, "role": body.role},
+    )
     return {"ok": True, "token": token, "accept_url": accept_url}
 
 
@@ -272,6 +281,14 @@ async def accept_invitation(token: str, user=Depends(require_user)) -> Dict[str,
     )
 
     email_mismatch = (user.get("email") or "").strip().lower() != inv["email"]
+    await log_action(
+        actor=user,
+        clinic_id=clinic_id,
+        action="invitation.accept",
+        target_id=token,
+        target_type="invitation",
+        meta={"role": role, "email_mismatch": email_mismatch},
+    )
     return {
         "ok": True,
         "clinic_id": clinic_id,

@@ -5,23 +5,27 @@
   · /api/medicines/custom
   · /api/medicines/custom/{medicine_id}
 
-Extracted from server.py during Phase 3 modularization.
-Behaviour preserved EXACTLY.
+Phase E (multi-tenant): the seed catalogue is GLOBAL (shared across
+clinics — Tamsulosin is Tamsulosin everywhere). The `custom`
+collection IS clinic-scoped — each clinic curates its own preferred
+brands / off-formulary drugs.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
 from auth_deps import require_owner, require_prescriber
 from models import MedicineCustomBody
 from server import _MEDICINE_SEED, _normalize_q
+from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
 
 
 @router.get("/api/medicines/catalog")
 async def medicines_catalog(
+    request: Request,
     q: Optional[str] = None,
     category: Optional[str] = None,
     limit: int = 40,
@@ -46,7 +50,9 @@ async def medicines_catalog(
     qn = _normalize_q(q)
 
     # Pull clinic-custom medicines from Mongo so staff-added drugs show up too.
-    custom_cursor = db.medicines_custom.find({}, {"_id": 0})
+    clinic_id = await resolve_clinic_id(request, user)
+    cf = tenant_filter(user, clinic_id, allow_global=True)
+    custom_cursor = db.medicines_custom.find(cf, {"_id": 0})
     custom_rows = await custom_cursor.to_list(length=500)
 
     DEFAULTS = {
@@ -130,13 +136,15 @@ async def medicines_catalog(
     return out
 
 @router.get("/api/medicines/categories")
-async def medicines_categories(user=Depends(require_prescriber)):
+async def medicines_categories(request: Request, user=Depends(require_prescriber)):
     """Return distinct medicine categories across seed + custom, with counts."""
     counts: Dict[str, int] = {}
     for row in _MEDICINE_SEED:
         c = row.get("category") or "Other"
         counts[c] = counts.get(c, 0) + 1
-    custom_rows = await db.medicines_custom.find({}, {"_id": 0}).to_list(length=500)
+    clinic_id = await resolve_clinic_id(request, user)
+    cf = tenant_filter(user, clinic_id, allow_global=True)
+    custom_rows = await db.medicines_custom.find(cf, {"_id": 0}).to_list(length=500)
     for row in custom_rows:
         c = row.get("category") or "Other"
         counts[c] = counts.get(c, 0) + 1
@@ -147,6 +155,7 @@ async def medicines_categories(user=Depends(require_prescriber)):
 
 @router.post("/api/medicines/custom")
 async def medicines_custom_create(
+    request: Request,
     body: MedicineCustomBody, user=Depends(require_prescriber)
 ):
     """Owner/doctor can add a clinic-specific medicine that isn't in the seed
@@ -154,8 +163,10 @@ async def medicines_custom_create(
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Medicine name is required")
+    clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "medicine_id": f"med_{uuid.uuid4().hex[:10]}",
+        "clinic_id": clinic_id,
         "name": name[:120],
         "generic": (body.generic or "").strip()[:120],
         "category": (body.category or "Other").strip()[:60] or "Other",
@@ -173,10 +184,13 @@ async def medicines_custom_create(
 
 @router.delete("/api/medicines/custom/{medicine_id}")
 async def medicines_custom_delete(
+    request: Request,
     medicine_id: str, user=Depends(require_owner)
 ):
     """Owner can remove a clinic-specific medicine. Seed items cannot be removed."""
-    res = await db.medicines_custom.delete_one({"medicine_id": medicine_id})
+    clinic_id = await resolve_clinic_id(request, user)
+    q: Dict[str, Any] = {"medicine_id": medicine_id, **tenant_filter(user, clinic_id, allow_global=True)}
+    res = await db.medicines_custom.delete_one(q)
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Custom medicine not found")
     return {"ok": True, "deleted": medicine_id}

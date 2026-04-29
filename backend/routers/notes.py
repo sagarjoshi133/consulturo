@@ -5,15 +5,19 @@
   · /api/notes/{note_id}
 
 Extracted from server.py during Phase 3 modularization.
-Behaviour preserved EXACTLY.
+Phase E (multi-tenant): notes stay per-user — they're personal
+reminders that travel with the user across clinics — but new notes
+are tagged with the active clinic_id for cross-clinic analytics &
+exports.
 """
 from datetime import datetime, timezone
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
 from auth_deps import require_user
 from models import NoteBody
 from server import _clean_labels, _parse_reminder
+from services.tenancy import resolve_clinic_id
 
 router = APIRouter()
 
@@ -43,14 +47,16 @@ async def notes_labels(user=Depends(require_user)):
     return rows
 
 @router.post("/api/notes")
-async def notes_create(body: NoteBody, user=Depends(require_user)):
+async def notes_create(request: Request, body: NoteBody, user=Depends(require_user)):
     text = (body.body or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Note body is required")
+    clinic_id = await resolve_clinic_id(request, user)
     now = datetime.now(timezone.utc)
     doc = {
         "note_id": f"note_{uuid.uuid4().hex[:10]}",
         "user_id": user["user_id"],
+        "clinic_id": clinic_id,
         "title": (body.title or "").strip()[:120],
         "body": text[:20000],
         "reminder_at": _parse_reminder(body.reminder_at),

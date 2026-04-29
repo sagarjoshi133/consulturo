@@ -2829,6 +2829,12 @@ app.include_router(_clinics_router)
 from routers.invitations import router as _invitations_router
 app.include_router(_invitations_router)
 
+# ─── Phase E polish: audit log + clinic admin (soft-delete + export) ─
+from services.audit import router as _audit_router
+from routers.clinics_admin import router as _clinics_admin_router
+app.include_router(_audit_router)
+app.include_router(_clinics_admin_router)
+
 
 @app.on_event("startup")
 async def _ensure_tenant_indexes() -> None:

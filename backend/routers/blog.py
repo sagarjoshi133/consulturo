@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from db import db
 from auth_deps import is_super_owner, require_blog_writer, require_owner
 from models import BlogPostBody, BlogReviewBody
 from server import _admin_to_html, _load_blog_from_blogger, _strip_html, _extract_first_img
+from services.tenancy import resolve_clinic_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -188,15 +189,17 @@ async def get_blog(post_id: str):
     raise HTTPException(status_code=404, detail="Post not found")
 
 @router.post("/api/admin/blog")
-async def admin_create_post(body: BlogPostBody, user=Depends(require_blog_writer)):
+async def admin_create_post(request: Request, body: BlogPostBody, user=Depends(require_blog_writer)):
     """Super-owner (and any primary_owner explicitly granted
     `can_create_blog`) can create blog posts. Posts auto-publish
     immediately — review workflow no longer required since only
     editors can author. Other roles get a 403 from the gate."""
     post_id = f"ap_{uuid.uuid4().hex[:10]}"
     status = body.status or "published"
+    clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "post_id": post_id,
+        "clinic_id": clinic_id,
         "title": body.title,
         "category": body.category or "Urology",
         "excerpt": body.excerpt or (body.content[:240] + ("…" if len(body.content) > 240 else "")),

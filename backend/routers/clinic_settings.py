@@ -1,21 +1,24 @@
 """ConsultUro — Clinic Settings router.
 
-GET   /api/clinic-settings  — public read.
+GET   /api/clinic-settings  — public read (per-clinic via X-Clinic-Id).
 PATCH /api/clinic-settings  — owner-tier write with per-field partner gates.
 
-Extracted from server.py during Phase 2 modularization.
+Phase E (multi-tenant): each clinic gets its own settings document
+keyed by `clinic_id`. The legacy `_id="default"` document is kept as
+a fallback for un-tenanted callers (e.g. the global landing page).
 """
 import re
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 import httpx
 
 from db import db
 from auth_deps import require_owner
 from models import ClinicSettingsPatch
+from services.tenancy import resolve_clinic_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -129,16 +132,24 @@ _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
 
 
 @router.get("/api/clinic-settings")
-async def get_clinic_settings():
-    """Public read — patients also use this to render About Doctor and
-    branding without auth. Falls back to hard-coded defaults if no
-    document exists yet.
+async def get_clinic_settings(request: Request):
+    """Public read — per-clinic. Resolves clinic_id via X-Clinic-Id (or
+    `?clinic=<id>`) and reads `_id == clinic_id`. Falls back to the
+    legacy `_id="default"` document for unscoped callers (patient app
+    home, landing pages without /c/<slug>).
 
-    SECURITY: never returns the raw `external_youtube_api_key` to the
-    client — only a presence flag (`external_youtube_api_key_set`) so
-    the Branding panel can show "Key configured ✓" without ever
-    leaking it to the patient bundle."""
-    doc = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
+    SECURITY: never returns `external_youtube_api_key`; only the
+    presence flag `external_youtube_api_key_set`."""
+    raw = (request.headers.get("X-Clinic-Id") or request.query_params.get("clinic") or "").strip()
+    settings_id = raw or "default"
+    doc = await db.clinic_settings.find_one({"_id": settings_id}, {"_id": 0})
+    if not doc and settings_id != "default":
+        # New clinic — fall back to platform default until the owner
+        # customises. Means the app never crashes on a freshly-created
+        # clinic that hasn't been configured yet.
+        doc = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
+    elif not doc:
+        doc = {}
     out = {**_DEFAULT_CLINIC_SETTINGS, **doc}
     out.pop("_id", None)
     raw_key = out.pop("external_youtube_api_key", "") or ""
@@ -148,12 +159,19 @@ async def get_clinic_settings():
 
 @router.patch("/api/clinic-settings")
 async def patch_clinic_settings(
+    request: Request,
     body: ClinicSettingsPatch,
     user=Depends(require_owner),
 ):
-    """Owner-tier write. Partners are gated per-field via the
-    partner_can_edit_* toggles below — partners receive 403 if they
-    try to modify a field whose toggle is off."""
+    """Owner-tier write. Per-clinic via X-Clinic-Id (defaults to user's
+    current clinic). Partners are gated per-field via the
+    partner_can_edit_* toggles — partners receive 403 if they try to
+    modify a field whose toggle is off."""
+    # Resolve the clinic to scope this patch to. super_owner without
+    # a header still writes to the legacy _id="default" doc so the
+    # platform-wide branding stays editable from the admin shell.
+    clinic_id = await resolve_clinic_id(request, user)
+    settings_id = clinic_id or "default"
     # Cap free-text payloads to ~2 MB each (data: URIs of photos
     # included). Anything bigger is almost certainly a UI bug.
     payload = body.model_dump(exclude_unset=True)
@@ -170,7 +188,7 @@ async def patch_clinic_settings(
     # Partner-permission gating: a partner can only modify fields the
     # primary_owner has unlocked for them. Primary/super always pass.
     if user.get("role") == "partner":
-        cur = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0}) or {}
+        cur = await db.clinic_settings.find_one({"_id": settings_id}, {"_id": 0}) or {}
         merged = {**_DEFAULT_CLINIC_SETTINGS, **cur}
         # Helper: granular flag if explicitly set, else fall back to the
         # legacy umbrella `partner_can_edit_branding` so existing data
@@ -218,15 +236,15 @@ async def patch_clinic_settings(
         api_key = payload.get("external_youtube_api_key")
         if not api_key:
             cur_full = await db.clinic_settings.find_one(
-                {"_id": "default"}, {"external_youtube_api_key": 1}
+                {"_id": settings_id}, {"external_youtube_api_key": 1}
             ) or {}
             api_key = cur_full.get("external_youtube_api_key", "")
         cid = await _resolve_youtube_channel_id(url, api_key) if url else ""
         payload["external_youtube_channel_id"] = cid
 
     await db.clinic_settings.update_one(
-        {"_id": "default"},
-        {"$set": {**payload, "_id": "default", "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"_id": settings_id},
+        {"$set": {**payload, "_id": settings_id, "clinic_id": clinic_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
     )
     return {"ok": True, "updated": len(payload)}
