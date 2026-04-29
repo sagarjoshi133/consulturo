@@ -304,13 +304,17 @@ export default function Home() {
               {isSuperOwner ? (
                 /* Super-owner: swap the doctor card for ConsultUro
                    app-branding so the home page is purely platform-
-                   admin oriented (no clinical / Dr. Sagar identity). */
+                   admin oriented (no clinical / Dr. Sagar identity).
+                   Uses the bundled official app icon so the logo
+                   renders reliably without depending on a remote URL. */
                 <View style={styles.doctorCard}>
-                  <Image
-                    source={{ uri: 'https://customer-assets.emergentagent.com/job_urology-pro/artifacts/k4t1zfir_ConsultUro%20Logo%20%28Removebg%29.png' }}
-                    style={[styles.doctorPhoto, { backgroundColor: 'transparent', borderRadius: 18 }]}
-                    resizeMode="contain"
-                  />
+                  <View style={styles.appLogoFrame}>
+                    <Image
+                      source={require('../../assets/icon.png')}
+                      style={styles.appLogo}
+                      resizeMode="contain"
+                    />
+                  </View>
                   <View style={{ flex: 1, marginLeft: 14 }}>
                     <Text style={styles.doctorName}>ConsultUro</Text>
                     <Text style={styles.doctorSpec}>Trilingual urology &amp; clinic-management platform</Text>
@@ -812,6 +816,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   doctorPhoto: { width: 100, height: 100, borderRadius: 22, backgroundColor: '#fff' },
+  appLogoFrame: {
+    width: 100,
+    height: 100,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  appLogo: { width: '100%', height: '100%' },
   doctorName: { ...FONTS.h3, color: '#fff', fontSize: 19 },
   doctorSpec: { ...FONTS.bodyMedium, color: '#E0F7FA', marginTop: 2 },
   doctorSubtitle: { ...FONTS.body, color: '#B2EBF2', fontSize: 12 },
