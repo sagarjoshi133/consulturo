@@ -10660,3 +10660,152 @@ agent_communication_2026_04_30_phase3_modularization_smoke:
       • routers/rx.py              (1: /api/rx/verify)
     Phase 6 (final): services/ (reg_no, email, telegram, pdf,
     notifications dispatch, etc.) — remove dead DISEASES inline data.
+
+backend_phase4_modularization_smoke_2026_04_29:
+  - task: "Phase 4 server.py modularization smoke — extracted 10 routers (auth, team, admin_owners, messaging, broadcasts, notifications, push, blog, settings_homepage, me_tier); ZERO behaviour change intended"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/routers/auth.py, /app/backend/routers/team.py, /app/backend/routers/admin_owners.py, /app/backend/routers/messaging.py, /app/backend/routers/broadcasts.py, /app/backend/routers/notifications.py, /app/backend/routers/push.py, /app/backend/routers/blog.py, /app/backend/routers/settings_homepage.py, /app/backend/routers/me_tier.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 32/32 functional checks PASS via
+          /app/backend_test_phase4_smoke.py against http://localhost:8001.
+          server.py is now 5316 lines (8879 original → 5316 after Phase 4
+          = -3563 cumulative -40.1%). 26 routers under
+          /app/backend/routers/ all loading cleanly; no startup errors
+          in /var/log/supervisor/backend.err.log; backend uptime stable;
+          GET /api/health → 200 {ok:true,db:'connected'}.
+
+          Pre-test note: the review brief listed two payload examples
+          that don't match the canonical Pydantic schemas (HomepageSettingsBody
+          has `tagline` not `hero_title`; BlogPostBody has `content`
+          not `body_md`). I retried each with the correct field names —
+          BOTH FLOWS WORK PERFECTLY. The 2 spec-vs-schema mismatches
+          do NOT indicate a regression; the Pydantic Optional fields
+          silently ignored unknown keys (HomepageSettingsBody has
+          extra=ignore default), and BlogPost POST returned 422
+          on missing `content` exactly as the schema requires.
+
+          1. AUTH FLOW (extracted to routers/auth.py) ✅
+             - GET /api/auth/me no token → 401.
+             - POST /api/auth/otp/request {} → 422 (Pydantic email
+               required).
+             - POST /api/auth/otp/request {"email":
+               "sagar.joshi133@gmail.com"} → 200 with ok:true.
+             - GET /api/auth/me w/ OWNER token (test_session_1776770314741)
+               → 200; role=primary_owner; user_id and email present.
+             - GET /api/me/tier (extracted to routers/me_tier.py) w/
+               OWNER token → 200 with role=primary_owner,
+               is_primary_owner:true, is_owner_tier:true.
+
+          2. PUBLIC BLOG (extracted to routers/blog.py) ✅
+             - GET /api/blog (no auth, public) → 200 list.
+
+          3. OWNER-TIER READS ✅
+             - GET /api/team (extracted to routers/team.py) primary_owner
+               → 200.
+             - GET /api/admin/partners (routers/admin_owners.py)
+               primary_owner → 200.
+             - GET /api/admin/primary-owners no auth → 401.
+             - GET /api/admin/primary-owners primary_owner → 200
+               (read access has been allowed for owner-tier across
+               Phases 1-3; super_owner is required only for
+               write operations like promote/demote — confirmed
+               unchanged by Phase 4 extraction).
+             - GET /api/admin/primary-owners super_owner (seeded 7d
+               session test_so_session_<ts> for app.consulturo@gmail.com,
+               purged in cleanup) → 200.
+             - GET /api/admin/primary-owner-analytics super_owner → 200.
+             - GET /api/notifications (routers/notifications.py) auth
+               → 200.
+             - GET /api/broadcasts (routers/broadcasts.py) auth → 200.
+             - GET /api/messages/recipients (routers/messaging.py)
+               auth → 200.
+
+          4. SETTINGS / HOMEPAGE (extracted to
+             routers/settings_homepage.py) ✅
+             - GET /api/settings/homepage public → 200 (all 16 fields:
+               doctor_photo_url, cover_photo_url, doctor_name, tagline,
+               clinic_*, doctor_*, signature_url, etc.).
+             - PATCH {"tagline":"Phase4 Test Tagline"} as primary_owner
+               → 200; subsequent GET reflects the new value;
+               revert PATCH → 200; final GET restored. No prod
+               data pollution.
+             (NOTE: the review brief used "hero_title" which is not
+              a HomepageSettings field. Used the canonical "tagline"
+              field for round-trip verification — write+read+revert
+              all succeed.)
+
+          5. BLOG ADMIN CRUD (routers/blog.py) ✅
+             - POST /api/admin/blog as primary_owner with the canonical
+               BlogPostBody payload {title:"Phase4 Smoke Post",
+               content:"Hello world phase4", category:"Urology"} →
+               200 with post_id="ap_2bdf8808ff".
+             - GET /api/blog → 200 list now includes the new post id.
+             - DELETE /api/admin/blog/{post_id} as primary_owner →
+               200 {ok:true}.
+             - GET /api/blog → 200 list, new post id no longer
+               present. End-state clean.
+             (NOTE: the review brief used "body_md" which is not a
+              BlogPostBody field — Pydantic correctly rejects the
+              missing required `content` with 422; no regression.)
+
+          6. TEAM CRUD (routers/team.py) ✅
+             - POST /api/team/invites {email: phase4-smoke-<ts>@example.com,
+               role:"doctor", name:"Phase4 Test"} as primary_owner
+               → 200.
+             - DELETE /api/team/<url-encoded email> as primary_owner
+               → 200. End-state clean.
+
+          7. UNTOUCHED-DOMAIN REGRESSIONS ✅
+             - GET /api/bookings/all (primary_owner) → 200 list.
+             - GET /api/prescriptions (primary_owner) → 200 list.
+             - GET /api/surgeries (primary_owner) → 200 list.
+             Phase 4 did not extract these clinical-heart endpoints;
+             they still resolve through the legacy server.py routes.
+
+          CLEANUP ✅: super_owner seed session deleted via mongosh
+          (sessions_deleted=1). No DB pollution. No 5xx, no auth
+          bypasses, no data leakage.
+
+          STARTUP-LOG NOTE: a residual error from earlier today
+          (NameError: name '_edu_list_localized' is not defined in
+          routers/education.py from a Phase 3 extraction) was fixed
+          before Phase 4 (last 2 worker-process restarts in
+          backend.err.log are clean). Backend currently has zero
+          startup errors and serves all 26 router modules.
+
+          End state: 26 routers under /app/backend/routers/, server.py
+          5316 lines, no test fixtures left in DB.
+
+agent_communication_2026_04_29_phase4_modularization_smoke:
+  - agent: "testing"
+    message: |
+      Phase 4 modularization smoke — VERIFIED. 32/32 functional checks
+      pass via /app/backend_test_phase4_smoke.py. ZERO regressions
+      across the 10 newly extracted router modules (auth, team,
+      admin_owners, messaging, broadcasts, notifications, push, blog,
+      settings_homepage, me_tier).
+
+      Backend health: GET /api/health → 200, supervisor stable, no
+      startup errors. server.py = 5316 lines (-2155 this phase, -3563
+      cumulative -40.1%).
+
+      Two callouts on the review brief examples (NOT bugs, just spec
+      drift):
+        • PATCH /api/settings/homepage uses "tagline" not "hero_title"
+          — round-trip verified using the canonical field.
+        • POST /api/admin/blog uses "content" not "body_md" — full
+          create→list→delete cycle verified using the canonical field.
+
+      All other smoke checks (auth/me, otp/request, me/tier, /team,
+      /admin/partners, /admin/primary-owners gating, primary-owner-
+      analytics, /notifications, /broadcasts, /messages/recipients,
+      /bookings/all, /prescriptions, /surgeries) pass exactly per
+      spec. Recommend main agent close out Phase 4 and proceed to
+      Phase 5 (clinical-heart extraction).

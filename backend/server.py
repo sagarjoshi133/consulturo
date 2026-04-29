@@ -1000,18 +1000,10 @@ async def require_blog_writer(user=Depends(require_user)) -> Dict[str, Any]:
 #      the session exchange.
 #   3. If the deep-link doesn't fire within ~1.5s (e.g. plain web browser /
 #      Expo Go), it falls back to the SPA route `/auth-callback#session_id=…`.
-@app.get("/auth-callback")
-async def auth_callback_bridge(request: Request):
-    return _build_auth_callback_response(handoff_id_from_path="")
+# (moved) auth block (L1003-1005) → /app/backend/routers/auth.py
 
 
-@app.get("/auth-callback/{handoff_id}")
-async def auth_callback_bridge_with_handoff(handoff_id: str, request: Request):
-    """Path-based variant — handoff_id is encoded in the URL path so it
-    survives Emergent Auth's redirect handling (which sometimes strips
-    fragments / appends query params and clobbers our state).
-    """
-    return _build_auth_callback_response(handoff_id_from_path=handoff_id or "")
+# (moved) auth block (L1008-1014) → /app/backend/routers/auth.py
 
 
 def _build_auth_callback_response(handoff_id_from_path: str = ""):
@@ -1138,165 +1130,20 @@ def _build_auth_callback_response(handoff_id_from_path: str = ""):
 
 
 
-@app.post("/api/auth/session")
-@limiter.limit("20/minute")
-async def auth_session(request: Request, body: SessionExchangeBody, response: Response):
-    async with httpx.AsyncClient(timeout=10.0) as hc:
-        r = await hc.get(EMERGENT_AUTH_URL, headers={"X-Session-ID": body.session_id})
-        if r.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session_id")
-        data = r.json()
-
-    email = data["email"]
-    email_l = email.lower()
-    existing = await db.users.find_one({"email": email_l}, {"_id": 0})
-    if existing:
-        user_id = existing["user_id"]
-        perms = await resolve_role_for_email(email_l)
-        await db.users.update_one(
-            {"user_id": user_id},
-            {
-                "$set": {
-                    "name": data.get("name"),
-                    "picture": data.get("picture"),
-                    "role": perms["role"],
-                    "can_approve_bookings": perms["can_approve_bookings"],
-                    "can_approve_broadcasts": perms["can_approve_broadcasts"],
-                }
-            },
-        )
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        perms = await resolve_role_for_email(email_l)
-        await db.users.insert_one(
-            {
-                "user_id": user_id,
-                "email": email_l,
-                "name": data.get("name"),
-                "picture": data.get("picture"),
-                "role": perms["role"],
-                "can_approve_bookings": perms["can_approve_bookings"],
-                "can_approve_broadcasts": perms["can_approve_broadcasts"],
-                "created_at": datetime.now(timezone.utc),
-            }
-        )
-
-    session_token = data["session_token"]
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one(
-        {
-            "user_id": user_id,
-            "session_token": session_token,
-            "expires_at": expires_at,
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
-
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=7 * 24 * 60 * 60,
-    )
-
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-
-    # If the caller pre-registered a handoff_id (native app waiting for the
-    # browser flow to complete), park the session for ~10 min so the app
-    # can retrieve it via GET /api/auth/handoff/{id}.
-    if body.handoff_id:
-        try:
-            await db.auth_handoffs.update_one(
-                {"handoff_id": body.handoff_id},
-                {
-                    "$set": {
-                        "session_token": session_token,
-                        "user_id": user_id,
-                        "ready_at": datetime.now(timezone.utc),
-                        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-                    }
-                },
-                upsert=True,
-            )
-        except Exception:
-            # Never let a handoff-write failure break the auth flow.
-            pass
-
-    return {"user": user, "session_token": session_token}
+# (moved) auth block (L1141-1228) → /app/backend/routers/auth.py
 
 
 # -- Native auth handoff (deep-link bypass) -------------------------------
 # (moved) class HandoffInitBody → /app/backend/models.py
 
 
-@app.post("/api/auth/handoff/init")
-async def auth_handoff_init(body: Optional[HandoffInitBody] = None):
-    hid = ((body.handoff_id if body else None) or str(uuid.uuid4())).strip()
-    await db.auth_handoffs.delete_one({"handoff_id": hid})
-    await db.auth_handoffs.insert_one({
-        "handoff_id": hid,
-        "created_at": datetime.now(timezone.utc),
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-    })
-    return {"handoff_id": hid}
+# (moved) auth block (L1235-1244) → /app/backend/routers/auth.py
 
 
-@app.get("/api/auth/handoff/{handoff_id}")
-async def auth_handoff_poll(handoff_id: str):
-    doc = await db.auth_handoffs.find_one({"handoff_id": handoff_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Unknown handoff id")
-    expires_at = doc.get("expires_at")
-    if expires_at:
-        # Motor sometimes returns datetimes as tz-naive UTC — coerce so the
-        # comparison below never raises TypeError.
-        if getattr(expires_at, "tzinfo", None) is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at < datetime.now(timezone.utc):
-            await db.auth_handoffs.delete_one({"handoff_id": handoff_id})
-            raise HTTPException(status_code=410, detail="Handoff expired")
-    if not doc.get("session_token"):
-        return JSONResponse(status_code=202, content={"status": "pending"})
-    user = await db.users.find_one({"user_id": doc["user_id"]}, {"_id": 0})
-    await db.auth_handoffs.delete_one({"handoff_id": handoff_id})
-    return {
-        "status": "ready",
-        "session_token": doc["session_token"],
-        "user": user,
-    }
+# (moved) auth block (L1247-1269) → /app/backend/routers/auth.py
 
 
-@app.get("/api/auth/me")
-async def auth_me(user=Depends(require_user)):
-    # Decorate the user payload with the effective owner-tier flag so the
-    # frontend can render the Full Access badge and unlock owner-only tabs
-    # (Backups, Notifs, Availability, Homepage settings) without making a
-    # second round-trip.
-    out = dict(user)
-    out["dashboard_full_access"] = bool(user.get("dashboard_full_access", False))
-    out["dashboard_tabs"] = list(user.get("dashboard_tabs") or [])
-    out["effective_owner"] = (user.get("role") == "owner") or out["dashboard_full_access"]
-    # Personal messaging permissions:
-    #   • Owner → always permitted.
-    #   • Team members (any non-patient role) → permitted BY DEFAULT.
-    #     Owner can explicitly revoke a team member by setting
-    #     `can_send_personal_messages` to False on that user.
-    #   • Patients → not permitted by default. Owner can authorize an
-    #     individual patient by setting the flag to True.
-    role = user.get("role", "")
-    explicit = user.get("can_send_personal_messages")
-    if role in ("owner", "primary_owner", "super_owner", "partner"):
-        # Owner tier — always permitted per hierarchy.
-        out["can_send_personal_messages"] = True
-    elif role and role != "patient":
-        # Default-True for staff. Only False if explicitly set to False.
-        out["can_send_personal_messages"] = (explicit is not False)
-    else:
-        out["can_send_personal_messages"] = bool(explicit)
-    return out
+# (moved) auth block (L1272-1299) → /app/backend/routers/auth.py
 
 
 
@@ -1403,128 +1250,13 @@ def _send_email(to: str, subject: str, html: str) -> bool:
 # (moved) class MagicExchangeBody → /app/backend/models.py
 
 
-@app.post("/api/auth/magic/request")
-@limiter.limit("5/minute")
-async def auth_magic_request(request: Request, body: MagicRequestBody):
-    """Send the user a one-time login link by email. Always returns ok=True
-    (even for unknown emails) so we never leak which addresses exist —
-    user-enumeration mitigation."""
-    email_l = body.email.strip().lower()
-    token = _secrets.token_urlsafe(32)
-    await db.auth_magic_tokens.insert_one({
-        "token": token,
-        "email": email_l,
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15),
-        "used": False,
-        "created_at": datetime.now(timezone.utc),
-    })
-    deep_link = f"consulturo://magic-link?token={token}"
-    backend = (os.environ.get("PUBLIC_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://urology-pro.preview.emergentagent.com").rstrip("/")
-    web_link = f"{backend}/auth/magic/redirect?token={token}"
-    html = f"""
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">
-  <h2 style="color:#0E7C8B;margin:0 0 8px">Sign in to ConsultUro</h2>
-  <p>Tap the button below to finish signing in. The link expires in 15 minutes.</p>
-  <p style="margin:24px 0">
-    <a href="{web_link}" style="background:#0E7C8B;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600">Open ConsultUro</a>
-  </p>
-  <p style="font-size:12px;color:#666">If the button doesn't work, copy this link:<br>
-    <span style="word-break:break-all">{web_link}</span><br><br>
-    Or paste this into the app: <code>{deep_link}</code>
-  </p>
-  <p style="font-size:12px;color:#999;margin-top:24px">If you didn't request this, you can safely ignore this email.</p>
-</div>"""
-    _send_email(email_l, "Sign in to ConsultUro", html)
-    return {"ok": True}
+# (moved) auth block (L1406-1438) → /app/backend/routers/auth.py
 
 
-@app.get("/auth/magic/redirect")
-async def auth_magic_redirect(token: str):
-    """Web bridge for magic-link emails.
-
-    Strategy: try the native deep-link first (`consulturo://magic-link?...`)
-    so an installed APK opens directly. If after ~1.5s the page is still
-    visible (deep-link was a no-op because the app isn't installed, or the
-    user is on desktop/laptop), redirect to the web app's `/magic-link`
-    route — which exchanges the token via /api/auth/magic/exchange and
-    signs the user in inside the browser.
-
-    This makes the magic-link work in BOTH:
-      • mobile with the APK installed (fastest path),
-      • mobile without the APK (web fallback inside Chrome/Safari),
-      • desktop / laptop (always web).
-    """
-    safe = (token or "").replace('"', '').replace('\\', '').replace('<', '').replace('>', '')
-    # Use a SAME-ORIGIN relative URL — the bridge HTML is served from the
-    # same Kubernetes ingress as the Expo web frontend, so /magic-link
-    # resolves to the frontend route on whatever domain the user is on.
-    web_link = f"/magic-link?token={safe}"
-    # Use the TRIPLE-slash form so Expo Router treats `magic-link` as a
-    # path (not a host). With `consulturo://magic-link?...` some Android
-    # builds parse `magic-link` as the host, miss the route and show
-    # the "Unmatched route" page. The `consulturo:///magic-link?...`
-    # form unambiguously routes to /app/magic-link.tsx.
-    deep_link = f"consulturo:///magic-link?token={safe}"
-    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Signing you in…</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:48px 24px;text-align:center;color:#111;background:#F4F9F9}}
-  .logo{{width:72px;height:72px;border-radius:18px;background:#0E7C8B;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:28px;margin-bottom:18px;letter-spacing:-1px}}
-  h1{{color:#0E7C8B;margin:6px 0;font-size:22px}}
-  p{{color:#5E7C81;margin:8px 0;font-size:14px;line-height:1.5}}
-  .btn{{display:block;background:#0E7C8B;color:#fff;padding:14px 22px;border-radius:12px;text-decoration:none;margin:16px auto;font-weight:600;max-width:280px;border:0;cursor:pointer;font-size:15px}}
-  .btn.alt{{background:#fff;color:#0E7C8B;border:1.5px solid #0E7C8B}}
-  .spinner{{width:36px;height:36px;border:3px solid #E2ECEC;border-top-color:#0E7C8B;border-radius:50%;animation:spin 1s linear infinite;margin:24px auto 8px}}
-  @keyframes spin{{to{{transform:rotate(360deg)}}}}
-  .small{{font-size:11px;color:#A0B5B8;margin-top:24px}}
-</style>
-</head><body>
-<div class="logo">CU</div>
-<h1>Signing you in…</h1>
-<p id="msg">Trying to open in the ConsultUro app first.<br/>If you don't have the app, we'll continue in your browser.</p>
-<div class="spinner" id="spin"></div>
-<a class="btn"     id="appBtn" href="{deep_link}">Open in app</a>
-<a class="btn alt" id="webBtn" href="{web_link}">Continue in browser</a>
-<p class="small">If nothing happens within a few seconds, tap "Continue in browser".</p>
-<script>
-  // Try the deep link automatically. If the APK is installed, the browser
-  // tab will become hidden (the OS hands off to the app). After 1.5s of
-  // remaining visible we assume no app and bounce to the web sign-in page.
-  var didDeep = false;
-  function tryDeep() {{ try {{ window.location.href = 'consulturo:///magic-link?token={safe}'; didDeep = true; }} catch(e) {{}} }}
-  setTimeout(tryDeep, 50);
-  setTimeout(function() {{
-    if (document.visibilityState === 'visible') {{
-      window.location.replace('{web_link}');
-    }}
-  }}, 1500);
-</script>
-</body></html>"""
-    return HTMLResponse(content=html, status_code=200)
+# (moved) auth block (L1441-1503) → /app/backend/routers/auth.py
 
 
-@app.post("/api/auth/magic/exchange")
-@limiter.limit("20/minute")
-async def auth_magic_exchange(request: Request, body: MagicExchangeBody):
-    rec = await db.auth_magic_tokens.find_one({"token": body.token})
-    if not rec:
-        raise HTTPException(status_code=400, detail="Invalid or expired link")
-    expires_at = rec.get("expires_at")
-    if expires_at and expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Link has expired")
-    if rec.get("used"):
-        raise HTTPException(status_code=400, detail="Link already used")
-    await db.auth_magic_tokens.update_one({"token": body.token}, {"$set": {"used": True}})
-
-    user_doc = await _ensure_user_for_email(rec["email"])
-    session_token = _secrets.token_urlsafe(40)
-    await db.user_sessions.insert_one({
-        "user_id": user_doc["user_id"],
-        "session_token": session_token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        "created_at": datetime.now(timezone.utc),
-    })
-    return {"user": user_doc, "session_token": session_token}
+# (moved) auth block (L1506-1527) → /app/backend/routers/auth.py
 
 
 # ── Email OTP ────────────────────────────────────────────────────
@@ -1534,74 +1266,10 @@ async def auth_magic_exchange(request: Request, body: MagicExchangeBody):
 # (moved) class OtpVerifyBody → /app/backend/models.py
 
 
-@app.post("/api/auth/otp/request")
-@limiter.limit("5/minute")
-async def auth_otp_request(request: Request, body: OtpRequestBody):
-    email_l = body.email.strip().lower()
-    code = f"{_secrets.randbelow(1000000):06d}"
-    # Wipe any existing pending codes for this email so only the latest works.
-    await db.auth_otp_codes.delete_many({"email": email_l})
-    await db.auth_otp_codes.insert_one({
-        "email": email_l,
-        "code": code,
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-        "attempts": 0,
-        "created_at": datetime.now(timezone.utc),
-    })
-    html = f"""
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">
-  <h2 style="color:#0E7C8B;margin:0 0 8px">Your sign-in code</h2>
-  <p>Enter this 6-digit code in the ConsultUro app to finish signing in:</p>
-  <div style="font-size:36px;letter-spacing:6px;font-weight:700;background:#F3F7F7;color:#0E7C8B;padding:16px 24px;border-radius:10px;text-align:center;margin:18px 0;display:inline-block">
-    {code}
-  </div>
-  <p style="font-size:12px;color:#666">This code expires in 10 minutes. Don't share it with anyone.</p>
-  <p style="font-size:12px;color:#999;margin-top:24px">If you didn't request this, you can safely ignore this email.</p>
-</div>"""
-    sent = _send_email(email_l, f"Your ConsultUro code: {code}", html)
-    if not sent:
-        # Surface the failure to the client so they can see why no
-        # email arrived (instead of waiting for a code that never
-        # comes). Most common cause is Resend's test-mode restriction.
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Could not send the sign-in email. "
-                "If the clinic's email sender domain isn't verified yet, "
-                "Resend only delivers to the account owner. "
-                "Please ask the admin to verify a domain at resend.com/domains."
-            ),
-        )
-    return {"ok": True}
+# (moved) auth block (L1537-1575) → /app/backend/routers/auth.py
 
 
-@app.post("/api/auth/otp/verify")
-@limiter.limit("10/minute")
-async def auth_otp_verify(request: Request, body: OtpVerifyBody):
-    email_l = body.email.strip().lower()
-    code = (body.code or "").strip()
-    rec = await db.auth_otp_codes.find_one({"email": email_l})
-    if not rec:
-        raise HTTPException(status_code=400, detail="No pending code for this email")
-    expires_at = rec.get("expires_at")
-    if expires_at and (expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at) < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Code expired — request a new one")
-    if rec.get("attempts", 0) >= 5:
-        raise HTTPException(status_code=429, detail="Too many attempts — request a new code")
-    if rec["code"] != code:
-        await db.auth_otp_codes.update_one({"_id": rec["_id"]}, {"$inc": {"attempts": 1}})
-        raise HTTPException(status_code=400, detail="Incorrect code")
-    await db.auth_otp_codes.delete_one({"_id": rec["_id"]})
-
-    user_doc = await _ensure_user_for_email(email_l)
-    session_token = _secrets.token_urlsafe(40)
-    await db.user_sessions.insert_one({
-        "user_id": user_doc["user_id"],
-        "session_token": session_token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        "created_at": datetime.now(timezone.utc),
-    })
-    return {"user": user_doc, "session_token": session_token}
+# (moved) auth block (L1578-1604) → /app/backend/routers/auth.py
 
 
 # ── Firebase Phone Auth ──────────────────────────────────────────
@@ -1614,171 +1282,29 @@ async def auth_otp_verify(request: Request, body: OtpVerifyBody):
 FIREBASE_API_KEY = os.environ.get("FIREBASE_WEB_API_KEY") or "AIzaSyA8oPYsTL2OV9DvbGrUu8CM3DdszL3q4g4"
 
 
-@app.post("/api/auth/firebase-phone/verify")
-@limiter.limit("20/minute")
-async def auth_firebase_phone_verify(request: Request, body: FirebasePhoneVerifyBody):
-    import httpx
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={FIREBASE_API_KEY}"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json={"idToken": body.id_token})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Firebase token invalid: {resp.text[:200]}")
-        data = resp.json()
-        users = data.get("users") or []
-        if not users:
-            raise HTTPException(status_code=400, detail="Firebase token returned no user")
-        fbuser = users[0]
-        phone = (fbuser.get("phoneNumber") or "").strip()
-        if not phone:
-            raise HTTPException(status_code=400, detail="No phone number in token")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Token verify failed: {e}")
-
-    # Find user by phone first, then by email (covers linking).
-    user_doc = await db.users.find_one({"phone": phone}, {"_id": 0})
-    needs_email = False
-    if not user_doc:
-        # New phone — must have email to create account (per the unified user model).
-        if body.email:
-            email_l = body.email.strip().lower()
-            existing_by_email = await db.users.find_one({"email": email_l}, {"_id": 0})
-            if existing_by_email:
-                # User exists by email — LINK phone to it.
-                await db.users.update_one(
-                    {"user_id": existing_by_email["user_id"]},
-                    {"$set": {"phone": phone, "phone_verified_at": datetime.now(timezone.utc)}},
-                )
-                user_doc = await db.users.find_one({"user_id": existing_by_email["user_id"]}, {"_id": 0})
-            else:
-                # Create a brand-new account with both phone + email.
-                perms = await resolve_role_for_email(email_l)
-                user_id = f"user_{uuid.uuid4().hex[:12]}"
-                await db.users.insert_one({
-                    "user_id": user_id,
-                    "email": email_l,
-                    "phone": phone,
-                    "name": email_l.split("@")[0].replace(".", " ").title(),
-                    "role": perms["role"],
-                    "can_approve_bookings": perms["can_approve_bookings"],
-                    "can_approve_broadcasts": perms["can_approve_broadcasts"],
-                    "phone_verified_at": datetime.now(timezone.utc),
-                    "created_at": datetime.now(timezone.utc),
-                })
-                user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-        else:
-            # Phone OK, but no account & no email supplied → frontend must
-            # show an "add email" screen and re-call this endpoint with email.
-            return {"status": "needs_email", "phone": phone}
-
-    session_token = _secrets.token_urlsafe(40)
-    await db.user_sessions.insert_one({
-        "user_id": user_doc["user_id"],
-        "session_token": session_token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        "created_at": datetime.now(timezone.utc),
-    })
-    return {"status": "ok", "user": user_doc, "session_token": session_token}
+# (moved) auth block (L1617-1683) → /app/backend/routers/auth.py
 
 
 # ── Profile linking — let signed-in users add the missing identifier ─
 # (moved) class LinkPhoneBody → /app/backend/models.py
 
 
-@app.post("/api/auth/link-phone")
-@limiter.limit("10/minute")
-async def auth_link_phone(request: Request, body: LinkPhoneBody, user=Depends(require_user)):
-    import httpx
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={FIREBASE_API_KEY}"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(url, json={"idToken": body.id_token})
-    if resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Invalid Firebase token")
-    fbuser = (resp.json().get("users") or [{}])[0]
-    phone = (fbuser.get("phoneNumber") or "").strip()
-    if not phone:
-        raise HTTPException(status_code=400, detail="No phone in token")
-    other = await db.users.find_one({"phone": phone, "user_id": {"$ne": user["user_id"]}})
-    if other:
-        raise HTTPException(status_code=409, detail="This phone is already linked to another account")
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {"phone": phone, "phone_verified_at": datetime.now(timezone.utc)}},
-    )
-    return {"ok": True, "phone": phone}
+# (moved) auth block (L1690-1710) → /app/backend/routers/auth.py
 
 
 # (moved) class LinkEmailBody → /app/backend/models.py
 
 
-@app.post("/api/auth/link-email/request")
-@limiter.limit("5/minute")
-async def auth_link_email_request(request: Request, body: LinkEmailBody, user=Depends(require_user)):
-    """Send an OTP to the email address being linked. Reuses the OTP store
-    with a special `link_user_id` flag so verification is bound to the
-    current session."""
-    email_l = body.email.strip().lower()
-    other = await db.users.find_one({"email": email_l, "user_id": {"$ne": user["user_id"]}})
-    if other:
-        raise HTTPException(status_code=409, detail="This email is already linked to another account")
-    code = f"{_secrets.randbelow(1000000):06d}"
-    await db.auth_otp_codes.delete_many({"email": email_l, "link_user_id": user["user_id"]})
-    await db.auth_otp_codes.insert_one({
-        "email": email_l,
-        "code": code,
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-        "attempts": 0,
-        "link_user_id": user["user_id"],
-        "created_at": datetime.now(timezone.utc),
-    })
-    html = f"""
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">
-  <h2 style="color:#0E7C8B">Link this email to ConsultUro</h2>
-  <p>Enter this 6-digit code in the app to confirm:</p>
-  <div style="font-size:36px;letter-spacing:6px;font-weight:700;background:#F3F7F7;color:#0E7C8B;padding:16px 24px;border-radius:10px;text-align:center;margin:18px 0;display:inline-block">{code}</div>
-  <p style="font-size:12px;color:#666">This code expires in 10 minutes.</p>
-</div>"""
-    _send_email(email_l, f"Confirm email for ConsultUro: {code}", html)
-    return {"ok": True}
+# (moved) auth block (L1716-1744) → /app/backend/routers/auth.py
 
 
 # (moved) class LinkEmailVerifyBody → /app/backend/models.py
 
 
-@app.post("/api/auth/link-email/verify")
-@limiter.limit("10/minute")
-async def auth_link_email_verify(request: Request, body: LinkEmailVerifyBody, user=Depends(require_user)):
-    email_l = body.email.strip().lower()
-    rec = await db.auth_otp_codes.find_one({"email": email_l, "link_user_id": user["user_id"]})
-    if not rec or rec.get("code") != (body.code or "").strip():
-        if rec:
-            await db.auth_otp_codes.update_one({"_id": rec["_id"]}, {"$inc": {"attempts": 1}})
-        raise HTTPException(status_code=400, detail="Incorrect or expired code")
-    await db.auth_otp_codes.delete_one({"_id": rec["_id"]})
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {"email": email_l, "email_verified_at": datetime.now(timezone.utc)}},
-    )
-    return {"ok": True, "email": email_l}
+# (moved) auth block (L1750-1764) → /app/backend/routers/auth.py
 
 
-@app.post("/api/auth/logout")
-@limiter.limit("20/minute")
-async def auth_logout(
-    request: Request,
-    response: Response,
-    session_token: Optional[str] = Cookie(None),
-    authorization: Optional[str] = Header(None),
-):
-    token = session_token
-    if not token and authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1]
-    if token:
-        await db.user_sessions.delete_one({"session_token": token})
-    response.delete_cookie("session_token", path="/")
-    return {"ok": True}
+# (moved) auth block (L1767-1781) → /app/backend/routers/auth.py
 
 
 # ============================================================
@@ -3608,227 +3134,27 @@ def _human_bytes(n: int) -> str:
     return f"{n:.1f} TB"
 
 
-@app.post("/api/team/invites")
-async def create_invite(body: TeamInviteBody, user=Depends(require_owner)):
-    # Allow core role OR a registered custom role_label slug.
-    if body.role not in VALID_ROLES:
-        custom = await db.role_labels.find_one({"slug": body.role}, {"_id": 0})
-        if not custom:
-            raise HTTPException(status_code=400, detail="Invalid role")
-    email_l = body.email.lower()
-    # Look up the *previous* role (if any) so we only notify on a real change.
-    existing_invite = await db.team_invites.find_one({"email": email_l}, {"_id": 0})
-    existing_user = await db.users.find_one({"email": email_l}, {"_id": 0})
-    prev_role = (existing_user or {}).get("role") or (existing_invite or {}).get("role")
-    # Derive permission defaults by effective category.
-    eff = await get_effective_role(body.role)
-    doctor_like = eff["category"] == "doctor"
-    can_approve_book = body.can_approve_bookings or doctor_like
-    can_approve_bc = body.can_approve_broadcasts or doctor_like
-    invite_doc = {
-        "email": email_l,
-        "name": body.name,
-        "role": body.role,
-        "can_approve_bookings": can_approve_book,
-        "can_approve_broadcasts": can_approve_bc,
-        "invited_by": user["user_id"],
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.team_invites.update_one({"email": email_l}, {"$set": invite_doc}, upsert=True)
-    await db.users.update_one(
-        {"email": email_l},
-        {
-            "$set": {
-                "role": body.role,
-                "can_approve_bookings": can_approve_book,
-                "can_approve_broadcasts": can_approve_bc,
-            }
-        },
-    )
-    # Notify the team member about the new role assignment (first time or change).
-    if existing_user and prev_role != body.role:
-        await notify_role_change(existing_user.get("user_id"), email_l, prev_role, body.role)
-    return {
-        "ok": True,
-        "email": email_l,
-        "role": body.role,
-        "can_approve_bookings": can_approve_book,
-        "can_approve_broadcasts": can_approve_bc,
-    }
+# (moved) team block (L3611-3657) → /app/backend/routers/team.py
 
 
-@app.patch("/api/team/{email}")
-async def update_team_member(email: str, body: TeamUpdateBody, user=Depends(require_owner)):
-    email_l = email.lower()
-    if email_l == OWNER_EMAIL:
-        raise HTTPException(status_code=400, detail="Owner role cannot be modified")
-    updates: Dict[str, Any] = {}
-    if body.role is not None:
-        if body.role not in VALID_ROLES:
-            custom = await db.role_labels.find_one({"slug": body.role}, {"_id": 0})
-            if not custom:
-                raise HTTPException(status_code=400, detail="Invalid role")
-        if body.role == "owner":
-            raise HTTPException(status_code=400, detail="Owner cannot be assigned via team panel")
-        updates["role"] = body.role
-    if body.can_approve_bookings is not None:
-        updates["can_approve_bookings"] = bool(body.can_approve_bookings)
-    if body.can_approve_broadcasts is not None:
-        updates["can_approve_broadcasts"] = bool(body.can_approve_broadcasts)
-    if body.can_send_personal_messages is not None:
-        updates["can_send_personal_messages"] = bool(body.can_send_personal_messages)
-    if body.can_prescribe is not None:
-        updates["can_prescribe"] = bool(body.can_prescribe)
-    if body.can_manage_surgeries is not None:
-        updates["can_manage_surgeries"] = bool(body.can_manage_surgeries)
-    if body.can_manage_availability is not None:
-        updates["can_manage_availability"] = bool(body.can_manage_availability)
-    if body.dashboard_full_access is not None:
-        # Only the owner can grant Full Dashboard Access. Cascading is
-        # disabled by design (require_owner above already enforces this).
-        updates["dashboard_full_access"] = bool(body.dashboard_full_access)
-    if body.dashboard_tabs is not None:
-        # Whitelist known dashboard tab ids so a malformed PATCH can't
-        # accidentally grant access to an unknown future surface.
-        ALLOWED_TABS = {
-            "bookings", "consultations", "rx", "availability",
-            "team", "push", "homepage", "backups",
-        }
-        clean = [t for t in body.dashboard_tabs if isinstance(t, str) and t in ALLOWED_TABS]
-        updates["dashboard_tabs"] = clean
-    if not updates:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    existing_invite = await db.team_invites.find_one({"email": email_l}, {"_id": 0})
-    existing_user = await db.users.find_one({"email": email_l}, {"_id": 0})
-    if not existing_invite and not existing_user:
-        raise HTTPException(status_code=404, detail="Team member not found")
-    prev_role = (existing_user or {}).get("role") or (existing_invite or {}).get("role")
-    await db.team_invites.update_one({"email": email_l}, {"$set": updates}, upsert=False)
-    await db.users.update_one({"email": email_l}, {"$set": updates})
-    # Notify the team member if their role actually changed.
-    if existing_user and "role" in updates and prev_role != updates["role"]:
-        await notify_role_change(existing_user.get("user_id"), email_l, prev_role, updates["role"])
-    return {"ok": True, "email": email_l, **updates}
+# (moved) team block (L3660-3711) → /app/backend/routers/team.py
 
 
-@app.get("/api/team")
-async def list_team(user=Depends(require_owner)):
-    invites = await db.team_invites.find({}, {"_id": 0}).to_list(length=500)
-    users = await db.users.find({}, {"_id": 0}).to_list(length=1000)
-    role_labels = await db.role_labels.find({}, {"_id": 0}).to_list(length=100)
-    by_email = {}
-    for iv in invites:
-        by_email[iv["email"]] = {
-            "email": iv["email"],
-            "name": iv.get("name"),
-            "role": iv["role"],
-            "can_approve_bookings": iv.get("can_approve_bookings", False),
-            "can_approve_broadcasts": iv.get("can_approve_broadcasts", False),
-            "can_send_personal_messages": iv.get("can_send_personal_messages", False),
-            "can_prescribe": iv.get("can_prescribe", False),
-            "can_manage_surgeries": iv.get("can_manage_surgeries", False),
-            "can_manage_availability": iv.get("can_manage_availability", False),
-            "status": "invited",
-        }
-    # Determine custom role slugs so we include their holders as staff.
-    # `category=="doctor"` is retained for backward-compat — those slugs
-    # still surface as team members but no longer auto-grant prescriber
-    # rights (the per-user `can_prescribe` flag is now the gate).
-    custom_slugs = {rl["slug"] for rl in role_labels if rl.get("category") in ("staff", "doctor")}
-    for u in users:
-        role = u.get("role")
-        # Super-owner is platform admin, NOT a clinic team member —
-        # never list them on a Primary Owner's Team panel. Personal
-        # messaging between primary_owner ↔ super_owner still works
-        # via /api/messages/recipients (separate hierarchy rule there).
-        if role == "super_owner":
-            continue
-        if role in STAFF_ROLES or role in custom_slugs:
-            by_email[u["email"]] = {
-                "email": u["email"],
-                "name": u.get("name"),
-                "role": role,
-                # Default is owner-tier-only; everyone else must opt in.
-                "can_approve_bookings": u.get("can_approve_bookings", role in OWNER_TIER_ROLES),
-                "can_approve_broadcasts": u.get("can_approve_broadcasts", role in OWNER_TIER_ROLES),
-                "can_send_personal_messages": bool(u.get("can_send_personal_messages", role in PRIMARY_TIER_ROLES)),
-                "can_prescribe": bool(u.get("can_prescribe", role in OWNER_TIER_ROLES)),
-                "can_manage_surgeries": bool(u.get("can_manage_surgeries", role in OWNER_TIER_ROLES)),
-                "can_manage_availability": bool(u.get("can_manage_availability", role in OWNER_TIER_ROLES)),
-                "dashboard_full_access": bool(u.get("dashboard_full_access", False)),
-                "dashboard_tabs": list(u.get("dashboard_tabs") or []),
-                "status": "active",
-                "picture": u.get("picture"),
-                "user_id": u.get("user_id"),
-            }
-    return sorted(by_email.values(), key=lambda x: (x["role"], x["email"]))
+# (moved) team block (L3714-3764) → /app/backend/routers/team.py
 
 
 # -------- Custom Role Labels (owner only manages) -------- #
 
-@app.get("/api/team/roles")
-async def list_roles(user=Depends(require_user)):
-    """Return the union of core roles + owner's custom labels so UI can render pickers."""
-    core = [
-        # `doctor` is now a regular staff label — its prescriber rights
-        # are gated by the per-user `can_prescribe` flag, not the role.
-        {"slug": "doctor", "label": "Doctor", "category": "staff", "builtin": True},
-        {"slug": "assistant", "label": "Assistant", "category": "staff", "builtin": True},
-        {"slug": "reception", "label": "Reception", "category": "staff", "builtin": True},
-        {"slug": "nursing", "label": "Nursing Staff", "category": "staff", "builtin": True},
-    ]
-    custom = await db.role_labels.find({}, {"_id": 0}).to_list(length=100)
-    for c in custom:
-        c["builtin"] = False
-    return {"roles": core + custom}
+# (moved) team block (L3769-3783) → /app/backend/routers/team.py
 
 
-@app.post("/api/team/roles")
-async def create_role(body: RoleLabelBody, user=Depends(require_owner)):
-    label = (body.label or "").strip()
-    if not label:
-        raise HTTPException(status_code=400, detail="Label required")
-    slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:40]
-    if not slug or slug in VALID_ROLES:
-        raise HTTPException(status_code=400, detail="Invalid or reserved role label")
-    category = body.category if body.category in ("staff", "doctor", "patient") else "staff"
-    existing = await db.role_labels.find_one({"slug": slug}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=409, detail="Role label already exists")
-    doc = {
-        "slug": slug,
-        "label": label,
-        "category": category,
-        "created_by": user["user_id"],
-        "created_at": datetime.now(timezone.utc),
-    }
-    await db.role_labels.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+# (moved) team block (L3786-3807) → /app/backend/routers/team.py
 
 
-@app.delete("/api/team/roles/{slug}")
-async def delete_role(slug: str, user=Depends(require_owner)):
-    if slug in VALID_ROLES:
-        raise HTTPException(status_code=400, detail="Core roles cannot be removed")
-    in_use = await db.users.count_documents({"role": slug}) + await db.team_invites.count_documents({"role": slug})
-    if in_use:
-        raise HTTPException(status_code=400, detail=f"Cannot remove role: {in_use} member(s) still assigned")
-    await db.role_labels.delete_one({"slug": slug})
-    return {"ok": True}
+# (moved) team block (L3810-3818) → /app/backend/routers/team.py
 
 
-@app.delete("/api/team/{email}")
-async def remove_team_member(email: str, user=Depends(require_owner)):
-    email_l = email.lower()
-    if email_l == OWNER_EMAIL:
-        raise HTTPException(status_code=400, detail="Cannot remove the owner")
-    await db.team_invites.delete_one({"email": email_l})
-    await db.users.update_one(
-        {"email": email_l},
-        {"$set": {"role": "patient", "can_approve_bookings": False, "can_approve_broadcasts": False}},
-    )
-    return {"ok": True}
+# (moved) team block (L3821-3831) → /app/backend/routers/team.py
 
 
 # ============================================================
@@ -4161,16 +3487,7 @@ async def surgery_presets():
 # (moved) class MyProfileBody → /app/backend/models.py
 
 
-@app.patch("/api/auth/me")
-async def update_my_profile(body: MyProfileBody, user=Depends(require_user)):
-    updates: Dict[str, Any] = {}
-    if body.phone is not None:
-        digits = re.sub(r"\D", "", body.phone)
-        updates["phone"] = body.phone
-        updates["phone_digits"] = digits
-    if updates:
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": updates})
-    return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+# (moved) auth block (L3964-3973) → /app/backend/routers/auth.py
 
 
 # ============================================================
@@ -4425,51 +3742,10 @@ async def _load_blog_from_blogger() -> List[Dict[str, Any]]:
         return _BLOG_CACHE["data"] or []
 
 
-@app.get("/api/blog")
-async def list_blog():
-    # Merge owner-composed posts (first) with live Blogger posts.
-    admin_cursor = db.blog_posts.find({"published": True}, {"_id": 0}).sort("created_at", -1)
-    admin_posts_raw = await admin_cursor.to_list(length=100)
-    admin_posts = [
-        {
-            "id": p["post_id"],
-            "title": p["title"],
-            "category": p.get("category") or "Urology",
-            "cover": p.get("cover") or "",
-            "excerpt": p.get("excerpt") or (p.get("content", "")[:240] + ("…" if len(p.get("content", "")) > 240 else "")),
-            "content_html": _admin_to_html(p.get("content", "")),
-            "published_at": (p.get("created_at") or datetime.now(timezone.utc)).strftime("%Y-%m-%d"),
-            "link": None,
-            "source": "in-app",
-        }
-        for p in admin_posts_raw
-    ]
-    blogger_posts = await _load_blog_from_blogger()
-    for bp in blogger_posts:
-        bp["source"] = "website"
-    return admin_posts + blogger_posts
+# (moved) blog block (L4428-4450) → /app/backend/routers/blog.py
 
 
-@app.get("/api/blog/{post_id}")
-async def get_blog(post_id: str):
-    admin = await db.blog_posts.find_one({"post_id": post_id}, {"_id": 0})
-    if admin:
-        return {
-            "id": admin["post_id"],
-            "title": admin["title"],
-            "category": admin.get("category") or "Urology",
-            "cover": admin.get("cover") or "",
-            "excerpt": admin.get("excerpt") or "",
-            "content_html": _admin_to_html(admin.get("content", "")),
-            "published_at": (admin.get("created_at") or datetime.now(timezone.utc)).strftime("%Y-%m-%d"),
-            "link": None,
-            "source": "in-app",
-        }
-    posts = await _load_blog_from_blogger()
-    for p in posts:
-        if p["id"] == post_id:
-            return p
-    raise HTTPException(status_code=404, detail="Post not found")
+# (moved) blog block (L4453-4472) → /app/backend/routers/blog.py
 
 
 def _admin_to_html(text: str) -> str:
@@ -4488,110 +3764,19 @@ def _admin_to_html(text: str) -> str:
 # ============================================================
 
 
-@app.post("/api/admin/blog")
-async def admin_create_post(body: BlogPostBody, user=Depends(require_blog_writer)):
-    """Super-owner (and any primary_owner explicitly granted
-    `can_create_blog`) can create blog posts. Posts auto-publish
-    immediately — review workflow no longer required since only
-    editors can author. Other roles get a 403 from the gate."""
-    post_id = f"ap_{uuid.uuid4().hex[:10]}"
-    status = body.status or "published"
-    doc = {
-        "post_id": post_id,
-        "title": body.title,
-        "category": body.category or "Urology",
-        "excerpt": body.excerpt or (body.content[:240] + ("…" if len(body.content) > 240 else "")),
-        "content": body.content,
-        "cover": body.cover or "",
-        "status": status,
-        "published": status == "published",
-        "author_user_id": user["user_id"],
-        "author_email": user.get("email"),
-        "author_name": user.get("name"),
-        "author_role": user.get("role"),
-        "review_note": "",
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
-    }
-    await db.blog_posts.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+# (moved) blog block (L4491-4518) → /app/backend/routers/blog.py
 
 
-@app.put("/api/admin/blog/{post_id}")
-async def admin_update_post(post_id: str, body: BlogPostBody, user=Depends(require_blog_writer)):
-    existing = await db.blog_posts.find_one({"post_id": post_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    # Super-owner can edit any post; primary_owner editors can edit
-    # their own. Stays simple now that authoring is editor-only.
-    is_super = is_super_owner(user)
-    if not is_super and existing.get("author_user_id") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="You can only edit your own posts")
-    new_status = body.status or existing.get("status") or "published"
-    updates = {
-        "title": body.title,
-        "category": body.category or "Urology",
-        "excerpt": body.excerpt or (body.content[:240] + ("…" if len(body.content) > 240 else "")),
-        "content": body.content,
-        "cover": body.cover or "",
-        "status": new_status,
-        "published": new_status == "published",
-        "updated_at": datetime.now(timezone.utc),
-    }
-    await db.blog_posts.update_one({"post_id": post_id}, {"$set": updates})
-    return {"ok": True}
+# (moved) blog block (L4521-4543) → /app/backend/routers/blog.py
 
 
-@app.post("/api/admin/blog/{post_id}/review")
-async def admin_review_post(post_id: str, body: BlogReviewBody, user=Depends(require_owner)):
-    """Owner-only: change a post's review status (publish/reject/send back to draft)."""
-    new_status = body.status
-    if new_status not in {"draft", "pending_review", "published", "rejected"}:
-        raise HTTPException(status_code=400, detail="Invalid status")
-    res = await db.blog_posts.update_one(
-        {"post_id": post_id},
-        {
-            "$set": {
-                "status": new_status,
-                "published": new_status == "published",
-                "review_note": body.review_note or "",
-                "reviewed_by": user["user_id"],
-                "reviewed_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            }
-        },
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True, "status": new_status}
+# (moved) blog block (L4546-4567) → /app/backend/routers/blog.py
 
 
-@app.delete("/api/admin/blog/{post_id}")
-async def admin_delete_post(post_id: str, user=Depends(require_blog_writer)):
-    existing = await db.blog_posts.find_one({"post_id": post_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    is_super = is_super_owner(user)
-    if not is_super and existing.get("author_user_id") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="You can only delete your own posts")
-    await db.blog_posts.delete_one({"post_id": post_id})
-    return {"ok": True}
+# (moved) blog block (L4570-4579) → /app/backend/routers/blog.py
 
 
-@app.get("/api/admin/blog")
-async def admin_list_posts(
-    status: Optional[str] = None,
-    user=Depends(require_blog_writer),
-):
-    q: Dict[str, Any] = {}
-    is_super = is_super_owner(user)
-    if not is_super:
-        q["author_user_id"] = user["user_id"]
-    if status:
-        q["status"] = status
-    cursor = db.blog_posts.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=500)
+# (moved) blog block (L4582-4594) → /app/backend/routers/blog.py
 
 
 # ============================================================
@@ -5008,528 +4193,53 @@ async def notify_role_change(
     )
 
 
-@app.get("/api/notifications")
-async def list_notifications(user=Depends(require_user), unread_only: bool = False, limit: int = 50):
-    q: Dict[str, Any] = {"user_id": user["user_id"]}
-    if unread_only:
-        q["read"] = False
-    # Super-owner is a platform admin — they should NOT see clinical /
-    # operational pings (booking requests, Rx status changes, surgery
-    # logbook updates, broadcast deliveries, etc.) which are only
-    # meaningful inside a Primary Owner's clinic. Restrict their feed
-    # to admin-relevant kinds (personal messages, system / admin
-    # notices, suspension confirmations, billing — anything explicitly
-    # routed to a super_owner).
-    if user.get("role") == "super_owner":
-        q["kind"] = {"$in": [
-            "personal_message",   # 1:1 chat with primary owners
-            "broadcast_request",  # owner asking super-owner approval
-            "system",             # platform-level system notices
-            "admin",              # super-owner admin pings
-            "billing",            # future billing alerts
-            "suspension",         # account suspension confirmations
-        ]}
-    limit = max(1, min(limit, 200))
-    cursor = db.notifications.find(q, {"_id": 0}).sort("created_at", -1)
-    rows = await cursor.to_list(length=limit)
-    unread_q: Dict[str, Any] = {"user_id": user["user_id"], "read": False}
-    if user.get("role") == "super_owner":
-        unread_q["kind"] = q["kind"]
-    unread = await db.notifications.count_documents(unread_q)
-    return {"items": rows, "unread_count": unread}
+# (moved) notifications block (L5011-5039) → /app/backend/routers/notifications.py
 
 
-@app.post("/api/notifications/{notification_id}/read")
-async def mark_notification_read(notification_id: str, user=Depends(require_user)):
-    result = await db.notifications.update_one(
-        {"id": notification_id, "user_id": user["user_id"]},
-        {"$set": {"read": True, "read_at": datetime.now(timezone.utc)}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    return {"ok": True}
+# (moved) notifications block (L5042-5050) → /app/backend/routers/notifications.py
 
 
-@app.get("/api/notifications/{notification_id}")
-async def get_notification(notification_id: str, user=Depends(require_user)):
-    """Fetch a single notification (or broadcast inbox row) by id for the
-    current user. Used by the personal-message / notification detail
-    screen at /messages/[id]. Marks the row as read on access (when the
-    current user is the recipient).
-
-    Senders can also view their own sent personal messages — useful for
-    surfacing WhatsApp-style receipts (✓ sent · ✓✓ delivered · ✓✓ read).
-    """
-    n = await db.notifications.find_one(
-        {"id": notification_id, "user_id": user["user_id"]},
-        {"_id": 0},
-    )
-    src = "notification"
-    is_sender = False
-    if not n:
-        # Sender accessing their own sent message?
-        sent = await db.notifications.find_one(
-            {
-                "id": notification_id,
-                "kind": "personal",
-                "data.sender_user_id": user["user_id"],
-            },
-            {"_id": 0},
-        )
-        if sent:
-            n = sent
-            is_sender = True
-            src = "sent"
-    if not n:
-        # Try broadcast inbox (broadcasts have inbox_id)
-        b = await db.broadcast_inbox.find_one(
-            {"$or": [{"inbox_id": notification_id}, {"broadcast_id": notification_id}], "user_id": user["user_id"]},
-            {"_id": 0},
-        )
-        if not b:
-            raise HTTPException(status_code=404, detail="Not found")
-        # Normalise broadcast row -> common shape
-        n = {
-            "id": b.get("inbox_id") or b.get("broadcast_id"),
-            "title": b.get("title") or "",
-            "body": b.get("body") or "",
-            "kind": "broadcast",
-            "read": bool(b.get("read_at")),
-            "created_at": b.get("created_at"),
-            "data": {
-                "image_url": b.get("image_url"),
-                "link": b.get("link"),
-            },
-        }
-        src = "broadcast"
-        # Mark broadcast as read
-        if not b.get("read_at"):
-            await db.broadcast_inbox.update_one(
-                {"inbox_id": b.get("inbox_id"), "user_id": user["user_id"]},
-                {"$set": {"read_at": datetime.now(timezone.utc)}},
-            )
-    elif not is_sender:
-        # Mark notification as read on access (only when the viewer is
-        # the recipient — senders viewing their own sent messages must
-        # not toggle the read state).
-        if not n.get("read"):
-            await db.notifications.update_one(
-                {"id": notification_id, "user_id": user["user_id"]},
-                {"$set": {"read": True, "read_at": datetime.now(timezone.utc)}},
-            )
-            n["read"] = True
-            n["read_at"] = datetime.now(timezone.utc)
-
-    # Surface receipt fields explicitly so the frontend doesn't have
-    # to dig into `data` for ticks rendering.
-    n["delivered"] = bool(n.get("delivered_at"))
-    n["recipient_read"] = bool(n.get("read"))
-    n["recipient_read_at"] = n.get("read_at")
-    n["is_sender_view"] = is_sender
-
-    # Augment with sender info (for personal messages)
-    data = n.get("data") or {}
-    if (n.get("kind") == "personal") and data.get("sender_user_id"):
-        sender = await db.users.find_one(
-            {"user_id": data["sender_user_id"]},
-            {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1, "picture": 1},
-        )
-        if sender:
-            data["sender"] = sender
-    # When the viewer is the SENDER, also resolve recipient details so
-    # the detail screen can show "TO" attribution.
-    if is_sender and n.get("user_id"):
-        recipient = await db.users.find_one(
-            {"user_id": n["user_id"]},
-            {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1, "picture": 1, "phone": 1},
-        )
-        if recipient:
-            data["recipient"] = recipient
-    n["data"] = data
-    n["source"] = src
-    return n
+# (moved) notifications block (L5053-5150) → /app/backend/routers/notifications.py
 
 
-@app.post("/api/notifications/read-all")
-async def mark_all_notifications_read(user=Depends(require_user)):
-    result = await db.notifications.update_many(
-        {"user_id": user["user_id"], "read": False},
-        {"$set": {"read": True, "read_at": datetime.now(timezone.utc)}},
-    )
-    return {"ok": True, "marked": result.modified_count}
+# (moved) notifications block (L5153-5159) → /app/backend/routers/notifications.py
 
 
-@app.post("/api/push/register")
-async def register_push_token(body: PushRegisterBody, user=Depends(require_user)):
-    if not body.token or not (body.token.startswith("ExponentPushToken[") or body.token.startswith("ExpoPushToken[")):
-        raise HTTPException(status_code=400, detail="Invalid Expo push token")
-    now = datetime.now(timezone.utc)
-    await db.push_tokens.update_one(
-        {"token": body.token},
-        {
-            "$set": {
-                "user_id": user["user_id"],
-                "email": user.get("email"),
-                "platform": body.platform,
-                "device_name": body.device_name,
-                "updated_at": now,
-            },
-            "$setOnInsert": {"created_at": now},
-        },
-        upsert=True,
-    )
-    return {"ok": True}
+# (moved) push block (L5162-5181) → /app/backend/routers/push.py
 
 
-@app.delete("/api/push/register")
-async def unregister_push_token(token: str = "", user=Depends(require_user)):
-    if not token:
-        raise HTTPException(status_code=400, detail="token query required")
-    await db.push_tokens.delete_one({"token": token, "user_id": user["user_id"]})
-    return {"ok": True}
+# (moved) push block (L5184-5189) → /app/backend/routers/push.py
 
 
 # ============================================================
 # PUSH DIAGNOSTICS (admin-only) + SELF-TEST
 # ============================================================
 
-@app.get("/api/push/diagnostics")
-async def push_diagnostics(user=Depends(require_owner)):
-    """Snapshot of the push-notification health for the clinic.
-    Returns: per-user token counts, last-24h send stats, and the last
-    20 push attempts with errors so the admin can pinpoint silent
-    failures without reading Mongo."""
-    now = datetime.now(timezone.utc)
-    last_24h = now - timedelta(hours=24)
-
-    # --- users + token counts ---
-    tokens_per_user: List[Dict[str, Any]] = []
-    user_rows = await db.users.find(
-        {"$or": [
-            {"role": {"$in": list(OWNER_TIER_ROLES)}},
-            {"can_approve_bookings": True},
-        ]},
-        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "role": 1},
-    ).to_list(length=200)
-    for u in user_rows:
-        toks = await db.push_tokens.find({"user_id": u["user_id"]}, {"_id": 0}).to_list(length=20)
-        tokens_per_user.append({
-            "user_id": u["user_id"],
-            "email": u.get("email"),
-            "name": u.get("name"),
-            "role": u.get("role"),
-            "token_count": len(toks),
-            "tokens": [
-                {
-                    "platform": t.get("platform"),
-                    "device_name": t.get("device_name"),
-                    "created_at": t.get("created_at"),
-                    "updated_at": t.get("updated_at"),
-                    "token_preview": (t.get("token") or "")[:30] + "…",
-                }
-                for t in toks
-            ],
-        })
-
-    # --- aggregates ---
-    total_tokens = await db.push_tokens.count_documents({})
-    sends_24h = await db.push_log.count_documents({"created_at": {"$gte": last_24h}})
-    successes_24h = 0
-    failures_24h = 0
-    async for row in db.push_log.find(
-        {"created_at": {"$gte": last_24h}}, {"_id": 0, "sent": 1, "errors": 1, "total": 1}
-    ):
-        sent = row.get("sent") or 0
-        total = row.get("total") or 0
-        successes_24h += sent
-        failures_24h += max(0, total - sent)
-
-    # --- last 20 send attempts ---
-    recent: List[Dict[str, Any]] = []
-    async for row in db.push_log.find({}).sort("created_at", -1).limit(20):
-        row.pop("_id", None)
-        recent.append(row)
-
-    return {
-        "total_tokens": total_tokens,
-        "sends_last_24h": sends_24h,
-        "successes_last_24h": successes_24h,
-        "failures_last_24h": failures_24h,
-        "users": tokens_per_user,
-        "recent": recent,
-    }
+# (moved) push block (L5196-5260) → /app/backend/routers/push.py
 
 
-@app.post("/api/push/test")
-async def push_self_test(user=Depends(require_user)):
-    """Fire a test push to the calling user's devices so they can
-    verify end-to-end delivery in <30s."""
-    tokens = await collect_user_tokens([user["user_id"]])
-    if not tokens:
-        return {
-            "ok": False,
-            "reason": "no_tokens",
-            "message": "No push tokens registered for this account. Grant notification permission in the app and restart.",
-            "tokens_found": 0,
-        }
-    result = await send_expo_push_batch(
-        tokens,
-        "🔔 Test notification",
-        "If you see this, push notifications are working!",
-        {"type": "self_test", "user_id": user["user_id"]},
-    )
-    # Also drop an in-app note so it's visible in the bell
-    try:
-        await create_notification(
-            user_id=user["user_id"],
-            title="🔔 Test notification",
-            body="If you see this, push notifications are working!",
-            kind="self_test",
-            data={"type": "self_test"},
-            push=False,  # push already fired above
-        )
-    except Exception:
-        pass
-    return {
-        "ok": (result.get("sent") or 0) > 0,
-        "tokens_found": len(tokens),
-        "sent": result.get("sent"),
-        "errors": result.get("errors"),
-        "purged": result.get("purged"),
-    }
+# (moved) push block (L5263-5299) → /app/backend/routers/push.py
 
 
-@app.post("/api/broadcasts")
-async def create_broadcast(payload: BroadcastCreate, user=Depends(require_staff)):
-    title = (payload.title or "").strip()
-    body = (payload.body or "").strip()
-    if not title or not body:
-        raise HTTPException(status_code=400, detail="Title and body are required")
-    if len(title) > 240 or len(body) > 2000:
-        raise HTTPException(status_code=400, detail="Title max 240 chars, body max 2000 chars")
-    target = payload.target if payload.target in ("all", "patients", "staff") else "all"
-    bid = f"bc_{uuid.uuid4().hex[:10]}"
-    is_owner = user.get("role") == "owner"
-    is_approver = is_owner or bool(user.get("can_approve_broadcasts"))
-    doc = {
-        "broadcast_id": bid,
-        "title": title,
-        "body": body,
-        "image_url": (payload.image_url or "").strip() or None,
-        "link": (payload.link or "").strip() or None,
-        "target": target,
-        "author_id": user["user_id"],
-        "author_name": user.get("name") or user.get("email"),
-        # Owner / approvers: auto-approved (but still need explicit approve to send).
-        "status": "approved" if is_approver else "pending_approval",
-        "created_at": datetime.now(timezone.utc),
-        "approved_by": user["user_id"] if is_approver else None,
-        "approved_at": datetime.now(timezone.utc) if is_approver else None,
-        "rejected_by": None,
-        "rejected_at": None,
-        "reject_reason": None,
-        "sent_at": None,
-        "sent_count": 0,
-    }
-    await db.broadcasts.insert_one(doc)
-    doc.pop("_id", None)
-    # Ping owner on Telegram for new pending broadcast
-    if doc["status"] == "pending_approval":
-        await notify_telegram(
-            f"📝 <b>Broadcast awaiting approval</b>\n"
-            f"By: {htmllib.escape(doc['author_name'] or '')}\n"
-            f"<b>{htmllib.escape(title)}</b>\n{htmllib.escape(body)[:300]}"
-        )
-        # Push to owner + all users with broadcast approver permission
-        approver_uids_cursor = db.users.find(
-            {"$or": [{"role": "owner"}, {"can_approve_broadcasts": True}]},
-            {"user_id": 1},
-        )
-        approver_uids = [u["user_id"] async for u in approver_uids_cursor]
-        if approver_uids:
-            tokens = await collect_user_tokens(approver_uids)
-            if tokens:
-                await send_expo_push_batch(
-                    tokens,
-                    "Broadcast awaiting approval",
-                    f"{doc['author_name']}: {title}",
-                    {"type": "broadcast_review", "broadcast_id": bid},
-                )
-            # Persist an in-app notification for each approver so they see
-            # it in their bell even if the push arrived while offline.
-            for uid in approver_uids:
-                await create_notification(
-                    user_id=uid,
-                    title="Broadcast awaiting approval",
-                    body=f"{doc['author_name']}: {title}",
-                    kind="broadcast",
-                    data={"broadcast_id": bid, "status": "pending_approval"},
-                    push=False,
-                )
-    return doc
+# (moved) broadcasts block (L5302-5369) → /app/backend/routers/broadcasts.py
 
 
-@app.get("/api/broadcasts")
-async def list_broadcasts(status: Optional[str] = None, user=Depends(require_staff)):
-    q: Dict[str, Any] = {}
-    if status:
-        q["status"] = status
-    cursor = db.broadcasts.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=300)
+# (moved) broadcasts block (L5372-5378) → /app/backend/routers/broadcasts.py
 
 
-@app.get("/api/broadcasts/pending_count")
-async def broadcasts_pending_count(user=Depends(require_staff)):
-    is_approver = user.get("role") == "owner" or bool(user.get("can_approve_broadcasts"))
-    if not is_approver:
-        return {"count": 0}
-    n = await db.broadcasts.count_documents({"status": "pending_approval"})
-    return {"count": n}
+# (moved) broadcasts block (L5381-5387) → /app/backend/routers/broadcasts.py
 
 
-@app.patch("/api/broadcasts/{bid}")
-async def review_broadcast(bid: str, body: BroadcastReview, user=Depends(require_user)):
-    role = user.get("role")
-    is_owner = role == "owner"
-    is_approver = bool(user.get("can_approve_broadcasts"))
-    if not (is_owner or is_approver):
-        raise HTTPException(status_code=403, detail="Only owner or designated approvers can review broadcasts")
-    existing = await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    now = datetime.now(timezone.utc)
-    action = (body.action or "").lower()
-    updates: Dict[str, Any] = {}
-    send_now = False
-    if action == "approve":
-        if existing["status"] in ("sent",):
-            raise HTTPException(status_code=400, detail="Already sent")
-        updates["status"] = "approved"
-        updates["approved_by"] = user["user_id"]
-        updates["approved_at"] = now
-        updates["reject_reason"] = None
-        send_now = True
-    elif action == "reject":
-        updates["status"] = "rejected"
-        updates["rejected_by"] = user["user_id"]
-        updates["rejected_at"] = now
-        updates["reject_reason"] = (body.reject_reason or "").strip() or None
-    else:
-        raise HTTPException(status_code=400, detail="action must be approve or reject")
-
-    await db.broadcasts.update_one({"broadcast_id": bid}, {"$set": updates})
-
-    if send_now:
-        # Gather target tokens
-        target = existing.get("target") or "all"
-        if target == "staff":
-            target_roles = STAFF_ROLES
-        elif target == "patients":
-            target_roles = ["patient"]
-        else:
-            target_roles = VALID_ROLES
-        tokens = await collect_role_tokens(target_roles)
-        res = await send_expo_push_batch(
-            tokens,
-            existing["title"],
-            existing["body"],
-            {"type": "broadcast", "broadcast_id": bid, "link": existing.get("link") or ""},
-            image_url=existing.get("image_url"),
-        )
-        # Build inbox records for every user in the target audience — not just those
-        # with push tokens — so the in-app inbox is always reliable.
-        target_users = await db.users.find(
-            {"role": {"$in": target_roles}},
-            {"user_id": 1},
-        ).to_list(length=10000)
-        uids = [u["user_id"] for u in target_users if u.get("user_id")]
-        if uids:
-            inbox_docs = [
-                {
-                    "inbox_id": f"ib_{uuid.uuid4().hex[:10]}",
-                    "broadcast_id": bid,
-                    "user_id": uid,
-                    "title": existing["title"],
-                    "body": existing["body"],
-                    "image_url": existing.get("image_url"),
-                    "link": existing.get("link"),
-                    "created_at": now,
-                    "read_at": None,
-                }
-                for uid in uids
-            ]
-            await db.broadcast_inbox.insert_many(inbox_docs)
-        await db.broadcasts.update_one(
-            {"broadcast_id": bid},
-            {"$set": {"status": "sent", "sent_at": now, "sent_count": res.get("sent", 0)}},
-        )
-        # Notify the original author
-        await push_to_user(
-            existing["author_id"],
-            None,
-            "Broadcast approved & sent ✅",
-            f"{existing['title']} — reached {res.get('sent', 0)} devices",
-            {"type": "broadcast_sent", "broadcast_id": bid},
-        )
-        await create_notification(
-            user_id=existing.get("author_id"),
-            title="Broadcast approved & sent ✅",
-            body=f"{existing['title']} — reached {res.get('sent', 0)} devices",
-            kind="broadcast",
-            data={"broadcast_id": bid, "status": "sent"},
-            push=False,
-        )
-    else:
-        # Reject path — notify author
-        reason = (body.reject_reason or "").strip()
-        await push_to_user(
-            existing["author_id"],
-            None,
-            "Broadcast not approved",
-            existing["title"] + (f" — {reason}" if reason else ""),
-            {"type": "broadcast_rejected", "broadcast_id": bid},
-        )
-        await create_notification(
-            user_id=existing.get("author_id"),
-            title="Broadcast not approved",
-            body=existing["title"] + (f" — Reason: {reason}" if reason else ""),
-            kind="broadcast",
-            data={"broadcast_id": bid, "status": "rejected"},
-            push=False,
-        )
-
-    return await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})
+# (moved) broadcasts block (L5390-5501) → /app/backend/routers/broadcasts.py
 
 
-@app.delete("/api/broadcasts/{bid}")
-async def delete_broadcast(bid: str, user=Depends(require_user)):
-    existing = await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    if user.get("role") != "owner" and existing.get("author_id") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
-    if existing.get("status") == "sent":
-        raise HTTPException(status_code=400, detail="Cannot delete a broadcast already sent")
-    await db.broadcasts.delete_one({"broadcast_id": bid})
-    return {"ok": True}
+# (moved) broadcasts block (L5504-5514) → /app/backend/routers/broadcasts.py
 
 
-@app.get("/api/broadcasts/inbox")
-async def broadcasts_inbox(user=Depends(require_user)):
-    cursor = db.broadcast_inbox.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1)
-    rows = await cursor.to_list(length=200)
-    unread = sum(1 for r in rows if not r.get("read_at"))
-    return {"items": rows, "unread": unread}
+# (moved) broadcasts block (L5517-5522) → /app/backend/routers/broadcasts.py
 
 
-@app.post("/api/broadcasts/inbox/read")
-async def mark_inbox_read(user=Depends(require_user)):
-    now = datetime.now(timezone.utc)
-    await db.broadcast_inbox.update_many(
-        {"user_id": user["user_id"], "read_at": None},
-        {"$set": {"read_at": now}},
-    )
-    return {"ok": True}
+# (moved) broadcasts block (L5525-5532) → /app/backend/routers/broadcasts.py
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -5543,152 +4253,10 @@ async def mark_inbox_read(user=Depends(require_user)):
 # (`user` | `broadcast` | `push` | `other`) so the frontend can render
 # distinct icons per type.
 # ──────────────────────────────────────────────────────────────────
-@app.get("/api/inbox/all")
-async def inbox_all(user=Depends(require_user), limit: int = 100):
-    limit = max(1, min(limit, 300))
-    user_id = user["user_id"]
-
-    # 1) User-specific notifications.
-    notif_cursor = db.notifications.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    notifs = await notif_cursor.to_list(length=limit)
-
-    # Stamp `delivered_at` on any personal message that doesn't have it
-    # yet. From the recipient's perspective, fetching the inbox means
-    # the device has the message — that's our in-app "delivered" signal
-    # (sender's WhatsApp-style ✓✓). Best-effort and idempotent.
-    pending_delivered = [
-        n.get("id") for n in notifs
-        if n.get("kind") == "personal"
-        and not n.get("delivered_at")
-        and n.get("id")
-    ]
-    if pending_delivered:
-        try:
-            now = datetime.now(timezone.utc)
-            await db.notifications.update_many(
-                {"id": {"$in": pending_delivered}, "delivered_at": {"$in": [None, False]}},
-                {"$set": {"delivered_at": now}},
-            )
-            for n in notifs:
-                if n.get("id") in pending_delivered:
-                    n["delivered_at"] = now
-        except Exception:
-            pass
-
-    # 2) Broadcast inbox deliveries.
-    bx_cursor = db.broadcast_inbox.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    broadcasts = await bx_cursor.to_list(length=limit)
-    # 3) Push log entries that don't have an in-app row (rare).
-    push_cursor = db.push_log.find({"user_ids": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    pushes = await push_cursor.to_list(length=limit)
-
-    feed: List[Dict[str, Any]] = []
-
-    for n in notifs:
-        kind = (n.get("kind") or "info").lower()
-        # Broadcasts that flowed through `create_notification` are tagged
-        # with kind="broadcast" already — preserve that so the frontend
-        # icon picker stays consistent.
-        if kind == "broadcast":
-            stype = "broadcast"
-        elif kind == "personal":
-            stype = "personal"
-        elif kind in ("push", "system"):
-            stype = "push"
-        else:
-            stype = "user"
-        feed.append({
-            "id": n.get("id"),
-            "title": n.get("title") or "",
-            "body": n.get("body") or "",
-            "kind": kind,
-            "source_type": stype,
-            "read": bool(n.get("read")),
-            "created_at": n.get("created_at"),
-            "data": n.get("data") or {},
-            "image_url": (n.get("data") or {}).get("image_url"),
-            "link": (n.get("data") or {}).get("link"),
-        })
-
-    # Track ids already in feed (broadcasts that also have a notification
-    # row will be deduped via broadcast_id key).
-    notif_ids = {f["id"] for f in feed if f.get("id")}
-
-    for b in broadcasts:
-        bid = b.get("broadcast_id") or b.get("inbox_id")
-        if bid and bid in notif_ids:
-            continue
-        feed.append({
-            "id": b.get("inbox_id") or bid,
-            "broadcast_id": b.get("broadcast_id"),
-            "title": b.get("title") or "",
-            "body": b.get("body") or "",
-            "kind": "broadcast",
-            "source_type": "broadcast",
-            "read": bool(b.get("read_at")),
-            "created_at": b.get("created_at"),
-            "image_url": b.get("image_url"),
-            "link": b.get("link"),
-            "data": {},
-        })
-
-    # Push log entries — only include if not already represented by a
-    # notification or broadcast (most pushes have one). We match by title
-    # within a 24h window, conservatively. Coerce datetimes to ISO str
-    # before slicing — Mongo returns datetime objects which can't be
-    # subscripted with [:13].
-    def _ck(v):
-        if isinstance(v, datetime):
-            return v.isoformat()[:13]
-        return (str(v) if v else '')[:13]
-    seen_titles = {f"{(f.get('title') or '').strip()}::{_ck(f.get('created_at'))}" for f in feed}
-    for p in pushes:
-        key = f"{(p.get('title') or '').strip()}::{_ck(p.get('created_at'))}"
-        if key in seen_titles:
-            continue
-        feed.append({
-            "id": f"push_{p.get('_id') or _secrets.token_hex(4)}",
-            "title": p.get("title") or "Notification",
-            "body": p.get("body") or "",
-            "kind": "push",
-            "source_type": "push",
-            "read": True,  # push log has no read state per-user
-            "created_at": p.get("created_at"),
-            "data": p.get("data") or {},
-            "image_url": None,
-            "link": None,
-        })
-
-    # Sort newest-first by `created_at`.
-    def _ts(x):
-        v = x.get("created_at")
-        if isinstance(v, datetime):
-            return v.timestamp()
-        if isinstance(v, str):
-            try: return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
-            except Exception: return 0
-        return 0
-    feed.sort(key=_ts, reverse=True)
-    feed = feed[:limit]
-
-    unread_total = sum(1 for f in feed if not f.get("read"))
-    return {"items": feed, "unread": unread_total}
+# (moved) messaging block (L5546-5675) → /app/backend/routers/messaging.py
 
 
-@app.post("/api/inbox/all/read")
-async def inbox_all_mark_read(user=Depends(require_user)):
-    """Mark every item in the unified inbox as read for this user
-    (covers both notifications and broadcast_inbox)."""
-    now = datetime.now(timezone.utc)
-    a = await db.notifications.update_many(
-        {"user_id": user["user_id"], "read": False},
-        {"$set": {"read": True, "read_at": now}},
-    )
-    b = await db.broadcast_inbox.update_many(
-        {"user_id": user["user_id"], "read_at": None},
-        {"$set": {"read_at": now}},
-    )
-    return {"ok": True, "marked": a.modified_count + b.modified_count}
+# (moved) messaging block (L5678-5691) → /app/backend/routers/messaging.py
 
 
 
@@ -5728,30 +4296,7 @@ def _can_send_personal_messages(user: Dict[str, Any]) -> bool:
 # (moved) class MessagingPermissionBody → /app/backend/models.py
 
 
-@app.post("/api/admin/users/{user_id}/messaging-permission")
-async def set_messaging_permission(
-    user_id: str,
-    body: MessagingPermissionBody,
-    user=Depends(require_owner),
-):
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if is_owner_or_partner(target):
-        return {"ok": True, "user_id": user_id, "allowed": True, "note": "Owner / Partner is always permitted"}
-    await db.users.update_one(
-        {"user_id": user_id},
-        {"$set": {"can_send_personal_messages": bool(body.allowed)}},
-    )
-    # Mirror onto team_invites if a row exists (so role assignment via
-    # invite flow doesn't reset the bit later).
-    if target.get("email"):
-        await db.team_invites.update_one(
-            {"email": target["email"].lower()},
-            {"$set": {"can_send_personal_messages": bool(body.allowed)}},
-            upsert=False,
-        )
-    return {"ok": True, "user_id": user_id, "allowed": bool(body.allowed)}
+# (moved) messaging block (L5731-5754) → /app/backend/routers/messaging.py
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -5842,72 +4387,13 @@ async def _promote_user_to_role(
     return {"ok": True, "email": email_l, "role": role, "user_id": (target or {}).get("user_id")}
 
 
-@app.post("/api/admin/primary-owners/promote")
-async def promote_primary_owner(body: PromoteByEmailBody, user=Depends(require_super_owner)):
-    """Promote any email to primary_owner. Only the super_owner may
-    invoke this — primary_owners managing other primary_owners is
-    explicitly disallowed (the super_owner has ultimate authority)."""
-    return await _promote_user_to_role(body.email, "primary_owner", actor=user)
+# (moved) admin_owners block (L5845-5850) → /app/backend/routers/admin_owners.py
 
 
-@app.delete("/api/admin/primary-owners/{user_id}")
-async def demote_primary_owner(user_id: str, user=Depends(require_super_owner)):
-    """Demote a primary_owner back to a regular `doctor` role. Only the
-    super_owner may invoke this. Cannot demote the configured
-    OWNER_EMAIL — that account always remains a primary_owner."""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if (target.get("email") or "").lower() == OWNER_EMAIL:
-        raise HTTPException(status_code=400, detail="Cannot demote the configured primary owner")
-    if target.get("role") != "primary_owner":
-        raise HTTPException(status_code=400, detail="User is not a primary owner")
-    return await _promote_user_to_role(target["email"], "doctor", actor=user)
+# (moved) admin_owners block (L5853-5865) → /app/backend/routers/admin_owners.py
 
 
-@app.get("/api/admin/primary-owners")
-async def list_primary_owners(user=Depends(require_owner)):
-    """List all primary_owners + super_owner. Visible to anyone in the
-    owner tier. Includes `can_create_blog` + `dashboard_full_access`
-    so the super-owner UI can render per-row toggles. Also includes
-    `created_at` (ISO string — set on first promotion or earliest
-    timestamp recoverable from the user doc) and `suspended` so the
-    super-owner UI can render an "Active since X" tag and a
-    Suspend/Resume button per row."""
-    rows: List[Dict[str, Any]] = []
-    seen_emails: set = set()
-    async for u in db.users.find({"role": {"$in": ["primary_owner", "super_owner"]}}, {"_id": 0}):
-        # Defensive dedupe — the unique email index should make this
-        # impossible, but a legacy snapshot or a race during migration
-        # could still surface duplicates. Render at most one card per
-        # email (case-insensitive).
-        em_key = (u.get("email") or "").lower().strip()
-        if em_key and em_key in seen_emails:
-            continue
-        if em_key:
-            seen_emails.add(em_key)
-        dfa_raw = u.get("dashboard_full_access")
-        dfa = (dfa_raw is not False) if u.get("role") in {"primary_owner", "super_owner"} else bool(dfa_raw)
-        # `created_at` may be missing on rows that pre-date the field —
-        # fall back to `promoted_at`, then to a stable string so the UI
-        # can still render an Active-since label.
-        created_at = u.get("created_at") or u.get("promoted_at")
-        if isinstance(created_at, datetime):
-            created_at = created_at.isoformat()
-        rows.append({
-            "user_id": u.get("user_id"),
-            "email": u.get("email"),
-            "name": u.get("name"),
-            "role": u.get("role"),
-            "picture": u.get("picture"),
-            "can_create_blog": bool(u.get("can_create_blog")) or u.get("role") == "super_owner",
-            "dashboard_full_access": dfa,
-            "created_at": created_at,
-            "suspended": bool(u.get("suspended")),
-            "suspended_at": (u.get("suspended_at").isoformat() if isinstance(u.get("suspended_at"), datetime) else u.get("suspended_at")),
-            "suspended_reason": u.get("suspended_reason"),
-        })
-    return {"items": rows}
+# (moved) admin_owners block (L5868-5910) → /app/backend/routers/admin_owners.py
 
 
 # (moved) class BlogPermBody → /app/backend/models.py
@@ -5928,587 +4414,40 @@ async def list_primary_owners(user=Depends(require_owner)):
 # one row per primary_owner with: bookings (today/week/month/total),
 # Rx written, surgeries logged, team size, last-active, language,
 # and a 90-day daily series for the growth chart.
-@app.get("/api/admin/primary-owner-analytics")
-async def super_owner_primary_owner_analytics(user=Depends(require_super_owner)):
-    """Strictly super-owner-only. One row per primary_owner with
-    aggregated usage stats sourced from users / bookings /
-    prescriptions / surgeries / user_sessions collections."""
-    from datetime import timedelta as _td
-    now = datetime.now(timezone.utc)
-    today_iso = now.strftime("%Y-%m-%d")
-    week_start = (now - _td(days=now.weekday())).date().isoformat()
-    month_start = now.replace(day=1).date().isoformat()
-    ninety_ago = (now - _td(days=90)).date().isoformat()
-
-    owners = await db.users.find(
-        {"role": "primary_owner"}, {"_id": 0}
-    ).to_list(length=200)
-
-    rows = []
-    for o in owners:
-        oid = o.get("user_id") or ""
-        oemail = (o.get("email") or "").lower()
-
-        # Bookings: created_by matches owner OR clinic-wide
-        # (we treat any booking as "their clinic" since this is single
-        #  tenant today; multi-tenant work is on the backlog).
-        # Use booking_date for today/week/month windows.
-        b_total = await db.bookings.count_documents({})
-        b_today = await db.bookings.count_documents({"booking_date": today_iso})
-        b_week  = await db.bookings.count_documents({"booking_date": {"$gte": week_start}})
-        b_month = await db.bookings.count_documents({"booking_date": {"$gte": month_start}})
-
-        # Prescriptions written by this owner specifically.
-        rx_total = await db.prescriptions.count_documents({"created_by": oid})
-
-        # Surgeries logged by this owner.
-        sx_total = await db.surgeries.count_documents({"created_by": oid})
-
-        # Team size — staff users + pending invites (excluding super_owners
-        # since they are cross-tenant platform admins, not team members).
-        team_users = await db.users.count_documents({
-            "role": {"$in": ["doctor", "partner", "assistant", "reception", "nursing"]}
-        })
-        team_invites = await db.team_invites.count_documents({})
-        team_size = team_users + team_invites
-
-        # Last-active: most recent user_session for this user_id.
-        last_session = None
-        try:
-            sess = await db.user_sessions.find_one(
-                {"user_id": oid}, sort=[("created_at", -1)], projection={"_id": 0, "created_at": 1}
-            )
-            if sess and sess.get("created_at"):
-                last_session = sess["created_at"]
-        except Exception:
-            pass
-
-        # Login frequency over the last 30 days (count of distinct
-        # session days). Cheap & informative.
-        try:
-            since = now - _td(days=30)
-            distinct_days = await db.user_sessions.distinct(
-                "created_at_day",
-                {"user_id": oid, "created_at": {"$gte": since}},
-            )
-            login_days_30 = len(distinct_days) if distinct_days is not None else 0
-        except Exception:
-            login_days_30 = 0
-
-        # 90-day growth series — count bookings + Rx per day for chart.
-        series = []
-        try:
-            pipeline_b = [
-                {"$match": {"booking_date": {"$gte": ninety_ago}}},
-                {"$group": {"_id": "$booking_date", "n": {"$sum": 1}}},
-                {"$sort": {"_id": 1}},
-            ]
-            b_by_day = {row["_id"]: row["n"] async for row in db.bookings.aggregate(pipeline_b)}
-            pipeline_rx = [
-                {"$match": {"created_by": oid, "created_at": {"$gte": now - _td(days=90)}}},
-                {"$group": {
-                    "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
-                    "n": {"$sum": 1},
-                }},
-                {"$sort": {"_id": 1}},
-            ]
-            rx_by_day = {row["_id"]: row["n"] async for row in db.prescriptions.aggregate(pipeline_rx)}
-            # Build a continuous 90-day series.
-            for i in range(90, -1, -1):
-                d = (now - _td(days=i)).date().isoformat()
-                series.append({
-                    "date": d,
-                    "bookings": int(b_by_day.get(d, 0) or 0),
-                    "rx": int(rx_by_day.get(d, 0) or 0),
-                })
-        except Exception:
-            series = []
-
-        rows.append({
-            "user_id": oid,
-            "email": oemail,
-            "name": o.get("name") or oemail,
-            "language": o.get("language") or "en",
-            "suspended": bool(o.get("suspended")),
-            "created_at": o.get("created_at"),
-            "last_active": last_session,
-            "login_days_last_30": login_days_30,
-            "bookings": {
-                "today": b_today, "week": b_week, "month": b_month, "total": b_total,
-            },
-            "rx_total": rx_total,
-            "surgeries_total": sx_total,
-            "team_size": team_size,
-            "subscription_tier": o.get("subscription_tier") or "free",  # future billing
-            "growth_90d": series,
-        })
-
-    # Sort by last_active desc (most recently used owners first).
-    rows.sort(key=lambda r: r.get("last_active") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    return {"items": rows, "generated_at": now.isoformat()}
+# (moved) admin_owners block (L5931-6048) → /app/backend/routers/admin_owners.py
 
 
-@app.patch("/api/admin/primary-owners/{user_id}/suspend")
-async def set_primary_owner_suspended(
-    user_id: str, body: SuspendBody, user=Depends(require_super_owner)
-):
-    """Super-owner-only. Temporarily suspend (or resume) a primary owner.
-    A suspended user is blocked from logging in and from making any
-    authenticated API call (auth middleware enforces). Useful when the
-    super-owner needs to pause a clinic without deleting historical
-    data."""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") not in ("primary_owner", "owner"):
-        raise HTTPException(status_code=400, detail="Only primary owners can be suspended")
-    update: Dict[str, Any] = {"suspended": bool(body.suspended)}
-    if body.suspended:
-        update["suspended_at"] = datetime.utcnow()
-        update["suspended_by"] = user.get("user_id")
-        update["suspended_reason"] = (body.reason or "").strip() or None
-    else:
-        update["suspended_at"] = None
-        update["suspended_by"] = None
-        update["suspended_reason"] = None
-        # Drop any active sessions for this user so they're forced to
-        # re-authenticate after we resume them. This is a low-cost
-        # hygiene step — sessions for suspended-then-resumed accounts
-        # may carry stale role flags.
-    await db.users.update_one({"user_id": user_id}, {"$set": update})
-    if body.suspended:
-        # Hard-stop: invalidate every existing session token so the
-        # user is logged out immediately on their next request.
-        await db.user_sessions.delete_many({"user_id": user_id})
-    return {"ok": True, "suspended": bool(body.suspended)}
+# (moved) admin_owners block (L6051-6083) → /app/backend/routers/admin_owners.py
 
 
-@app.patch("/api/admin/primary-owners/{user_id}/blog-perm")
-async def set_primary_owner_blog_perm(
-    user_id: str, body: BlogPermBody, user=Depends(require_super_owner)
-):
-    """Super-owner-only. Grant / revoke blog editorial access for a
-    specific primary_owner. Super_owner is always allowed regardless of
-    this flag (immutable)."""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") != "primary_owner":
-        raise HTTPException(status_code=400, detail="Target must be a primary_owner")
-    val = bool(body.can_create_blog)
-    await db.users.update_one({"user_id": user_id}, {"$set": {"can_create_blog": val}})
-    # Persist on team_invites too so the flag survives sign-out / sign-in.
-    email_l = (target.get("email") or "").lower()
-    if email_l:
-        # NOTE: upsert=False — we must NOT auto-create a stub team_invites
-        # row that only carries the `can_create_blog` flag (no role, no
-        # name). Such stubs surface later as "ghost" pending invites and
-        # were the root cause of the duplicate Primary Owner perception
-        # for sagar.joshi133@gmail.com. The flag is already persisted on
-        # the live `users` row above; mirroring onto an existing invite
-        # is best-effort only.
-        await db.team_invites.update_one(
-            {"email": email_l}, {"$set": {"can_create_blog": val}}, upsert=False
-        )
-    try:
-        await db.audit_log.insert_one({
-            "ts": datetime.now(timezone.utc),
-            "kind": "blog_perm_change",
-            "target_email": email_l,
-            "target_user_id": user_id,
-            "new_value": val,
-            "actor_email": (user.get("email") or "").lower(),
-        })
-    except Exception:
-        pass
-    return {"ok": True, "user_id": user_id, "can_create_blog": val}
+# (moved) admin_owners block (L6086-6124) → /app/backend/routers/admin_owners.py
 
 
-@app.patch("/api/admin/primary-owners/{user_id}/dashboard-perm")
-async def set_primary_owner_dashboard_perm(
-    user_id: str, body: DashboardPermBody, user=Depends(require_super_owner)
-):
-    """Super-owner-only. Grant / revoke full-dashboard access for a
-    specific primary_owner. All owner-tier accounts start with full
-    access by default — this flips the explicit override. Super_owner
-    can never be limited (flag is forced True)."""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") != "primary_owner":
-        raise HTTPException(status_code=400, detail="Target must be a primary_owner")
-    val = bool(body.dashboard_full_access)
-    await db.users.update_one(
-        {"user_id": user_id}, {"$set": {"dashboard_full_access": val}}
-    )
-    email_l = (target.get("email") or "").lower()
-    if email_l:
-        # See blog-perm above — same rationale: never upsert a stub.
-        await db.team_invites.update_one(
-            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=False
-        )
-    try:
-        await db.audit_log.insert_one({
-            "ts": datetime.now(timezone.utc),
-            "kind": "dashboard_perm_change",
-            "target_email": email_l,
-            "target_user_id": user_id,
-            "new_value": val,
-            "actor_email": (user.get("email") or "").lower(),
-        })
-    except Exception:
-        pass
-    return {"ok": True, "user_id": user_id, "dashboard_full_access": val}
+# (moved) admin_owners block (L6127-6161) → /app/backend/routers/admin_owners.py
 
 
-@app.patch("/api/admin/partners/{user_id}/dashboard-perm")
-async def set_partner_dashboard_perm(
-    user_id: str, body: DashboardPermBody, user=Depends(require_primary_owner_strict)
-):
-    """Primary-owner / super-owner. Grant / revoke full-dashboard access
-    for a specific partner. Partners start with full access by default —
-    this flips the explicit override. The Partner role is otherwise
-    co-equal to Primary Owner clinically; this control lets a Primary
-    Owner narrow their Partner's administrative reach (Backups, Team,
-    Analytics, Blog, Broadcasts) without demoting the role itself."""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") != "partner":
-        raise HTTPException(status_code=400, detail="Target must be a partner")
-    val = bool(body.dashboard_full_access)
-    await db.users.update_one(
-        {"user_id": user_id}, {"$set": {"dashboard_full_access": val}}
-    )
-    email_l = (target.get("email") or "").lower()
-    if email_l:
-        # Mirror onto pending-invite row if any (no upsert — we never
-        # want to spawn a stub team_invites doc here).
-        await db.team_invites.update_one(
-            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=False
-        )
-    try:
-        await db.audit_log.insert_one({
-            "ts": datetime.now(timezone.utc),
-            "kind": "partner_dashboard_perm_change",
-            "target_email": email_l,
-            "target_user_id": user_id,
-            "new_value": val,
-            "actor_email": (user.get("email") or "").lower(),
-        })
-    except Exception:
-        pass
-    return {"ok": True, "user_id": user_id, "dashboard_full_access": val}
+# (moved) admin_owners block (L6164-6201) → /app/backend/routers/admin_owners.py
 
 
-@app.post("/api/admin/partners/promote")
-async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary_owner_strict)):
-    """Promote any email to partner. primary_owner or super_owner may
-    invoke this — partners themselves cannot create partners."""
-    return await _promote_user_to_role(body.email, "partner", actor=user)
+# (moved) admin_owners block (L6204-6208) → /app/backend/routers/admin_owners.py
 
 
-@app.delete("/api/admin/partners/{user_id}")
-async def demote_partner(user_id: str, user=Depends(require_primary_owner_strict)):
-    """Demote a partner to a regular doctor role.
-    Accepts user_id='pending:<email>' to revoke a partner who hasn't
-    signed in yet (only the team_invite exists)."""
-    if user_id.startswith("pending:"):
-        email_l = user_id.split(":", 1)[1].strip().lower()
-        res = await db.team_invites.delete_many({"email": email_l, "role": "partner"})
-        return {"ok": True, "revoked_invites": res.deleted_count, "email": email_l}
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    if target.get("role") != "partner":
-        raise HTTPException(status_code=400, detail="User is not a partner")
-    return await _promote_user_to_role(target["email"], "doctor", actor=user)
+# (moved) admin_owners block (L6211-6225) → /app/backend/routers/admin_owners.py
 
 
-@app.get("/api/admin/partners")
-async def list_partners(user=Depends(require_owner)):
-    """List all partners — visible to anyone in the owner tier.
-    Includes both LIVE users with role='partner' AND pending team_invites
-    (partners promoted via email but who haven't signed in yet). The
-    pending row carries `signed_in:false` and `user_id:null`."""
-    rows: List[Dict[str, Any]] = []
-    seen_emails: set = set()
-    async for u in db.users.find({"role": "partner"}, {"_id": 0}):
-        em = (u.get("email") or "").lower()
-        if em in seen_emails:
-            continue
-        seen_emails.add(em)
-        # Default-True for owner-tier roles unless explicitly revoked,
-        # mirrors the rule in /api/me/tier so the toggle UI stays in
-        # sync with what the partner actually experiences.
-        dfa_raw = u.get("dashboard_full_access")
-        dfa = (dfa_raw is not False)
-        rows.append({
-            "user_id": u.get("user_id"),
-            "email": em,
-            "name": u.get("name"),
-            "role": u.get("role"),
-            "picture": u.get("picture"),
-            "signed_in": True,
-            "dashboard_full_access": dfa,
-        })
-    async for iv in db.team_invites.find({"role": "partner"}, {"_id": 0}):
-        em = (iv.get("email") or "").lower()
-        if em in seen_emails:
-            continue
-        seen_emails.add(em)
-        rows.append({
-            "user_id": None,
-            "email": em,
-            "name": iv.get("name"),
-            "role": "partner",
-            "picture": None,
-            "signed_in": False,
-            "dashboard_full_access": True,
-        })
-    return {"items": rows}
+# (moved) admin_owners block (L6228-6269) → /app/backend/routers/admin_owners.py
 
 
-@app.get("/api/me/tier")
-async def get_my_tier(user=Depends(require_user)):
-    """Flat boolean flags describing the current user's tier so the
-    frontend can render role-gated UI without re-implementing the
-    hierarchy logic. Always safe to call."""
-    can_blog = is_super_owner(user) or (
-        user.get("role") == "primary_owner" and bool(user.get("can_create_blog"))
-    )
-    # Dashboard access — all owner-tier roles (super_owner, primary_owner,
-    # partner, legacy owner) get FULL dashboard access BY DEFAULT. The
-    # super_owner can demote a specific primary_owner to LIMITED by
-    # flipping `dashboard_full_access: false` on their user record.
-    # Non-owner roles (doctor/assistant/etc) keep the legacy per-user
-    # opt-in semantic.
-    role = user.get("role")
-    dfa_raw = user.get("dashboard_full_access")
-    if role in {"super_owner", "primary_owner", "owner", "partner"}:
-        dashboard_full_access = (dfa_raw is not False)  # default True unless explicitly revoked
-    else:
-        dashboard_full_access = bool(dfa_raw)
-    return {
-        "role": role,
-        "is_super_owner": is_super_owner(user),
-        "is_primary_owner": (role in {"primary_owner", "owner"}),
-        "is_partner": role == "partner",
-        "is_owner_tier": is_owner_or_partner(user),
-        "can_manage_partners": is_primary_or_super(user),
-        "can_manage_primary_owners": is_super_owner(user),
-        "can_create_blog": can_blog,
-        "dashboard_full_access": dashboard_full_access,
-        "is_demo": bool(user.get("is_demo")),
-    }
+# (moved) me_tier block (L6272-6303) → /app/backend/routers/me_tier.py
 
 
-@app.get("/api/admin/messaging-permissions")
-async def list_messaging_permissions(
-    role: Optional[str] = None,
-    q: str = "",
-    user=Depends(require_owner),
-):
-    """List users alongside their messaging-permission status. Used by
-    the new Owner UI panel for managing patient/user authorisations.
-    Filterable by role and a free-text query.
-    """
-    base: Dict[str, Any] = {}
-    if role:
-        base["role"] = role
-    if q:
-        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
-        base["$or"] = [{"name": rx}, {"email": rx}, {"phone": rx}]
-    rows = await db.users.find(
-        base,
-        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "phone": 1, "role": 1, "picture": 1, "can_send_personal_messages": 1},
-    ).limit(500).to_list(length=500)
-    out = []
-    for u in rows:
-        role_ = u.get("role", "")
-        explicit = u.get("can_send_personal_messages")
-        if role_ == "owner":
-            allowed = True; default_allowed = True
-        elif role_ and role_ != "patient":
-            allowed = (explicit is not False); default_allowed = True
-        else:
-            allowed = bool(explicit); default_allowed = False
-        out.append({
-            "user_id": u.get("user_id"),
-            "name": u.get("name"),
-            "email": u.get("email"),
-            "phone": u.get("phone"),
-            "role": role_,
-            "picture": u.get("picture"),
-            "allowed": allowed,
-            "default_allowed": default_allowed,
-            "explicit": explicit,
-        })
-    return {"items": out}
+# (moved) messaging block (L6306-6347) → /app/backend/routers/messaging.py
 
 
-@app.get("/api/messages/recipients")
-async def messages_recipients(
-    q: str = "",
-    scope: str = "team",
-    user=Depends(require_user),
-):
-    """Search-as-you-type recipient picker for the personal-message
-    composer. `scope` ∈ {team, patients}.
-      • team     — staff members (owner + non-patient roles).
-      • patients — users with role="patient".
-    Returns at most 20 lightweight rows: user_id, name, email, phone,
-    role, picture.
-    """
-    if not _can_send_personal_messages(user):
-        raise HTTPException(status_code=403, detail="Not permitted to send personal messages")
-    qs = (q or "").strip().lower()
-    base: Dict[str, Any]
-    # Patients can only message the clinic team, never other patients.
-    requester_role = (user or {}).get("role", "")
-    is_patient = requester_role in ("", "patient")
-    effective_scope = "team" if is_patient else scope
-    if effective_scope == "patients":
-        base = {"role": "patient"}
-    else:
-        # Team recipients:
-        #   • never patients (use scope="patients" for that)
-        #   • never super_owner — EXCEPT when the caller is a
-        #     primary_owner. Per the hierarchy rule only Primary
-        #     Owners can personally message the Super Owner; partners,
-        #     doctors and other staff cannot see the super_owner in
-        #     their recipient search.
-        exclude_roles: List[str] = ["patient"]
-        if requester_role != "primary_owner":
-            exclude_roles.append("super_owner")
-        base = {"role": {"$nin": exclude_roles}}
-    base["user_id"] = {"$ne": user["user_id"]}
-    if qs:
-        regex = {"$regex": re.escape(qs), "$options": "i"}
-        base["$or"] = [
-            {"name": regex},
-            {"email": regex},
-            {"phone": regex},
-        ]
-    cur = db.users.find(
-        base,
-        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "phone": 1, "role": 1, "picture": 1},
-    ).limit(25)
-    rows = await cur.to_list(length=25)
-    return {"items": rows}
+# (moved) messaging block (L6350-6398) → /app/backend/routers/messaging.py
 
 
-@app.post("/api/messages/send")
-async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
-    if not _can_send_personal_messages(user):
-        raise HTTPException(status_code=403, detail="Not permitted to send personal messages")
-    title = (body.title or "").strip()
-    msg_body = (body.body or "").strip()
-    if not title or not msg_body:
-        raise HTTPException(status_code=400, detail="Title and body are required")
-    if len(title) > 140 or len(msg_body) > 2000:
-        raise HTTPException(status_code=400, detail="Message too long")
-
-    recipient = None
-    if body.recipient_user_id:
-        recipient = await db.users.find_one({"user_id": body.recipient_user_id}, {"_id": 0})
-    elif body.recipient_email:
-        recipient = await db.users.find_one(
-            {"email": body.recipient_email.lower()}, {"_id": 0}
-        )
-    if not recipient:
-        raise HTTPException(status_code=404, detail="Recipient not found")
-    if recipient["user_id"] == user["user_id"]:
-        raise HTTPException(status_code=400, detail="Cannot message yourself")
-    # Hierarchy rule: only Primary Owners can message the Super Owner.
-    if recipient.get("role") == "super_owner" and user.get("role") != "primary_owner":
-        raise HTTPException(
-            status_code=403,
-            detail="Only Primary Owners can send personal messages to the Super Owner.",
-        )
-
-    sender_name = user.get("name") or user.get("email") or "Team"
-    sender_role = user.get("role") or "staff"
-    # Sanitize attachments — cap count and per-file size to keep
-    # MongoDB documents reasonable. Larger files should later move to
-    # an object-store; for now we store the data URI inline so the
-    # detail screen renders without an extra fetch.
-    MAX_ATTACHMENTS = 6
-    MAX_BYTES = 8 * 1024 * 1024  # 8 MB per attachment
-    attachments_clean: List[Dict[str, Any]] = []
-    for a in (body.attachments or [])[:MAX_ATTACHMENTS]:
-        d = a.model_dump() if hasattr(a, "model_dump") else (a.dict() if hasattr(a, "dict") else dict(a))
-        url = (d.get("data_url") or "").strip()
-        if not url.startswith("data:"):
-            continue
-        # Estimate size from base64 length when not provided.
-        if not d.get("size_bytes"):
-            try:
-                b64 = url.split(",", 1)[1] if "," in url else ""
-                d["size_bytes"] = int(len(b64) * 3 / 4)
-            except Exception:
-                d["size_bytes"] = 0
-        if int(d.get("size_bytes") or 0) > MAX_BYTES:
-            raise HTTPException(status_code=400, detail=f"Attachment '{d.get('name')}' exceeds 8 MB limit")
-        # Infer kind from mime if missing.
-        if not d.get("kind"):
-            mime = (d.get("mime") or "").lower()
-            d["kind"] = "image" if mime.startswith("image/") else "video" if mime.startswith("video/") else "file"
-        attachments_clean.append(d)
-
-    note_data: Dict[str, Any] = {
-        "sender_user_id": user["user_id"],
-        "sender_name": sender_name,
-        "sender_role": sender_role,
-    }
-    if attachments_clean:
-        note_data["attachments"] = attachments_clean
-    note = await create_notification(
-        recipient["user_id"],
-        title=title,
-        body=msg_body,
-        kind="personal",
-        data=note_data,
-        # Suppress the implicit push fired by create_notification — we
-        # send our own one below with the correct payload (`type` +
-        # `kind` + optional attachment label). This avoids a double-push
-        # that earlier delivered ONLY `kind` (no `type`), which the
-        # frontend tap handler couldn't route into /inbox.
-        push=False,
-    )
-
-    try:
-        push_body = msg_body[:160]
-        if attachments_clean:
-            kinds = {a.get("kind") for a in attachments_clean}
-            label = "📷 photo" if kinds == {"image"} else ("🎥 video" if kinds == {"video"} else "📎 attachment")
-            push_body = f"{label} · {push_body}" if push_body else label
-        push_ok = await push_to_user(
-            recipient["user_id"],
-            None,
-            title=f"{sender_name}: {title}",
-            body=push_body,
-            # `type` is the convention used by every other push payload
-            # (booking_*, broadcast, note_reminder…) — the frontend
-            # `_layout.tsx` tap handler routes on `data.type`. We keep
-            # `kind` for backward compatibility with older clients.
-            data={"type": "personal", "kind": "personal"},
-        )
-        # If a push was actually fanned out to at least one device, the
-        # message is considered "delivered" right now (WhatsApp ✓✓).
-        if push_ok and isinstance(note, dict) and note.get("id"):
-            await db.notifications.update_one(
-                {"id": note["id"]},
-                {"$set": {"delivered_at": datetime.now(timezone.utc)}},
-            )
-    except Exception:
-        pass
-
-    return {
-        "ok": True,
-        "notification_id": note.get("id") if isinstance(note, dict) else None,
-        "recipient_user_id": recipient["user_id"],
-    }
+# (moved) messaging block (L6401-6511) → /app/backend/routers/messaging.py
 
 
 
@@ -6516,97 +4455,11 @@ async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
 
 
 # ── Sent personal messages ──
-@app.get("/api/messages/sent")
-async def messages_sent(user=Depends(require_user), limit: int = 100):
-    """List personal messages SENT by the current user, newest first.
-
-    Returns rows shaped like inbox items (so the frontend can re-use the
-    InboxItem renderer): each row contains the title/body/created_at +
-    `data.recipient_*` (recipient name/role/email when available).
-    """
-    limit = max(1, min(limit, 300))
-    cursor = (
-        db.notifications.find(
-            {"kind": "personal", "data.sender_user_id": user["user_id"]},
-            {"_id": 0},
-        )
-        .sort("created_at", -1)
-        .limit(limit)
-    )
-    docs = await cursor.to_list(length=limit)
-    # Resolve recipient details once per request to enrich the response.
-    recipient_ids = list({d.get("user_id") for d in docs if d.get("user_id")})
-    recipients_by_id: Dict[str, Dict[str, Any]] = {}
-    if recipient_ids:
-        rcursor = db.users.find(
-            {"user_id": {"$in": recipient_ids}},
-            {"_id": 0, "user_id": 1, "name": 1, "email": 1, "phone": 1, "role": 1, "picture": 1},
-        )
-        async for r in rcursor:
-            recipients_by_id[r["user_id"]] = r
-
-    items: List[Dict[str, Any]] = []
-    for n in docs:
-        data = dict(n.get("data") or {})
-        rid = n.get("user_id")
-        rec = recipients_by_id.get(rid) if rid else None
-        if rec:
-            data.setdefault("recipient_name", rec.get("name"))
-            data.setdefault("recipient_email", rec.get("email"))
-            data.setdefault("recipient_phone", rec.get("phone"))
-            data.setdefault("recipient_role", rec.get("role"))
-            data.setdefault("recipient_picture", rec.get("picture"))
-        items.append({
-            "id": n.get("id"),
-            "title": n.get("title") or "",
-            "body": n.get("body") or "",
-            "kind": "personal",
-            "source_type": "personal",
-            # Sender's perspective: this is read=True (sender authored
-            # it). The recipient's read state is exposed separately so
-            # the UI can render WhatsApp-style ticks (✓ sent · ✓✓
-            # delivered · ✓✓ blue read).
-            "read": True,
-            "recipient_read": bool(n.get("read")),
-            "recipient_read_at": n.get("read_at"),
-            "delivered": bool(n.get("delivered_at")),
-            "delivered_at": n.get("delivered_at"),
-            "created_at": n.get("created_at"),
-            "data": data,
-            "image_url": data.get("image_url"),
-            "link": data.get("link"),
-            "recipient_user_id": rid,
-        })
-    return {"items": items, "count": len(items)}
+# (moved) messaging block (L6519-6580) → /app/backend/routers/messaging.py
 
 
 # ── Lookup user_id by phone (for "Send Message" buttons on bookings) ──
-@app.get("/api/messages/lookup-by-phone")
-async def messages_lookup_by_phone(phone: str = "", user=Depends(require_user)):
-    """Resolve a phone number to a registered user so the staff can open
-    the personal-message composer pre-filled. Returns 200 with
-    {"found": false} when no user is registered under that phone — the
-    frontend can then suggest WhatsApp instead.
-    """
-    p = _normalize_phone(phone)
-    if not p:
-        raise HTTPException(status_code=400, detail="Phone required")
-    suffix = p[-10:] if len(p) >= 10 else p
-    # Phones in `users` are stored with country code; match by suffix so
-    # legacy records still resolve.
-    doc = await db.users.find_one(
-        {"phone": {"$regex": f"{suffix}$"}},
-        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "phone": 1, "role": 1, "picture": 1},
-    )
-    if not doc:
-        return {"found": False, "phone": p}
-    role = (user.get("role") or "").lower()
-    if role not in ("owner", "partner", "doctor", "assistant", "reception", "nursing"):
-        # Patients can only resolve clinic team accounts.
-        target_role = (doc.get("role") or "").lower()
-        if target_role not in ("owner", "partner", "doctor", "assistant", "reception", "nursing"):
-            return {"found": False, "phone": p}
-    return {"found": True, "user": doc}
+# (moved) messaging block (L6584-6609) → /app/backend/routers/messaging.py
 
 
 # ============================================================
@@ -6662,42 +4515,10 @@ async def get_homepage_settings() -> Dict[str, Any]:
     return out
 
 
-@app.get("/api/settings/homepage")
-async def settings_homepage_public():
-    """Public — patients & guests see this to render the home hero."""
-    return await get_homepage_settings()
+# (moved) settings_homepage block (L6665-6668) → /app/backend/routers/settings_homepage.py
 
 
-@app.patch("/api/settings/homepage")
-async def settings_homepage_update(body: HomepageSettingsBody, user=Depends(require_owner)):
-    updates: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc), "updated_by": user["user_id"]}
-    defaults_map = {
-        "doctor_photo_url": DEFAULT_DOCTOR_PHOTO,
-        "cover_photo_url": DEFAULT_COVER_PHOTO,
-        "doctor_name": DEFAULT_DOCTOR_NAME,
-        "tagline": DEFAULT_TAGLINE,
-        "clinic_name": DEFAULT_CLINIC_NAME,
-        "clinic_address": DEFAULT_CLINIC_ADDRESS,
-        "clinic_phone": DEFAULT_CLINIC_PHONE,
-        "doctor_degrees": DEFAULT_DEGREES,
-        "doctor_reg_no": DEFAULT_REG_NO,
-        "signature_url": "",
-        "clinic_whatsapp": DEFAULT_CLINIC_WHATSAPP,
-        "clinic_email": DEFAULT_CLINIC_EMAIL,
-        "clinic_map_url": DEFAULT_CLINIC_MAP_URL,
-        "clinic_hours": DEFAULT_CLINIC_HOURS,
-        "emergency_note": DEFAULT_EMERGENCY_NOTE,
-    }
-    for key, default_val in defaults_map.items():
-        val = getattr(body, key, None)
-        if val is not None:
-            if key == "signature_url":
-                # signature can be explicitly cleared with empty string
-                updates[key] = val.strip()
-            else:
-                updates[key] = val.strip() or default_val
-    await db.app_settings.update_one({"key": "homepage"}, {"$set": updates}, upsert=True)
-    return await get_homepage_settings()
+# (moved) settings_homepage block (L6671-6700) → /app/backend/routers/settings_homepage.py
 
 
 # ============================================================
@@ -7469,3 +5290,27 @@ app.include_router(_ipss_router)
 app.include_router(_referrers_router)
 app.include_router(_patients_router)
 app.include_router(_tools_router)
+
+# ─── Phase-3 router registrations ───
+from routers.me_tier import router as _me_tier_router
+from routers.settings_homepage import router as _settings_homepage_router
+from routers.blog import router as _blog_router
+from routers.push import router as _push_router
+from routers.notifications import router as _notifications_router
+from routers.broadcasts import router as _broadcasts_router
+from routers.messaging import router as _messaging_router
+from routers.team import router as _team_router
+from routers.admin_owners import router as _admin_owners_router
+app.include_router(_me_tier_router)
+app.include_router(_settings_homepage_router)
+app.include_router(_blog_router)
+app.include_router(_push_router)
+app.include_router(_notifications_router)
+app.include_router(_broadcasts_router)
+app.include_router(_messaging_router)
+app.include_router(_team_router)
+app.include_router(_admin_owners_router)
+
+# ─── Phase-3 router registrations ───
+from routers.auth import router as _auth_router
+app.include_router(_auth_router)
