@@ -632,6 +632,8 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
             "can_approve_broadcasts": True,
             "can_send_personal_messages": True,
             "can_prescribe": True,
+            "can_manage_surgeries": True,
+            "can_manage_availability": True,
         }
     # Primary Owner — the original clinic owner email. Anyone the
     # super_owner promotes later is also a primary_owner (stored in
@@ -643,6 +645,8 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
             "can_approve_broadcasts": True,
             "can_send_personal_messages": True,
             "can_prescribe": True,
+            "can_manage_surgeries": True,
+            "can_manage_availability": True,
         }
     invite = await db.team_invites.find_one({"email": email_l}, {"_id": 0})
     if invite:
@@ -669,10 +673,16 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
                     "can_approve_broadcasts", role in OWNER_TIER_ROLES
                 ),
                 "can_send_personal_messages": invite.get("can_send_personal_messages", False),
-                # `can_prescribe` follows the same rule — owner-tier
-                # always; team-members opt-in only.
+                # Three independent prescriber-tier flags — owner-tier
+                # always on; team-members opt-in per flag.
                 "can_prescribe": invite.get(
                     "can_prescribe", role in OWNER_TIER_ROLES
+                ),
+                "can_manage_surgeries": invite.get(
+                    "can_manage_surgeries", role in OWNER_TIER_ROLES
+                ),
+                "can_manage_availability": invite.get(
+                    "can_manage_availability", role in OWNER_TIER_ROLES
                 ),
             }
     return {
@@ -681,6 +691,8 @@ async def resolve_role_for_email(email: str) -> Dict[str, Any]:
         "can_approve_broadcasts": False,
         "can_send_personal_messages": False,
         "can_prescribe": False,
+        "can_manage_surgeries": False,
+        "can_manage_availability": False,
     }
 
 
@@ -807,6 +819,10 @@ class TeamInviteBody(BaseModel):
     # rights automatically; everyone else (doctor / nursing /
     # reception / custom) must be explicitly enabled.
     can_prescribe: bool = False
+    # Independent gates split out from `can_prescribe` so a clinic
+    # can grant e.g. surgery-logbook access without giving Rx rights.
+    can_manage_surgeries: bool = False
+    can_manage_availability: bool = False
 
 
 class TeamUpdateBody(BaseModel):
@@ -815,6 +831,8 @@ class TeamUpdateBody(BaseModel):
     can_approve_broadcasts: Optional[bool] = None
     can_send_personal_messages: Optional[bool] = None
     can_prescribe: Optional[bool] = None
+    can_manage_surgeries: Optional[bool] = None
+    can_manage_availability: Optional[bool] = None
     dashboard_full_access: Optional[bool] = None
     # When `dashboard_full_access` is False, owner can pick a SUBSET of
     # dashboard tab ids (e.g. ["bookings", "rx"]) the team member is
@@ -1107,6 +1125,35 @@ async def is_prescriber(user: Dict[str, Any]) -> bool:
     if role in OWNER_TIER_ROLES:
         return True
     return bool(user.get("can_prescribe"))
+
+
+async def require_can_manage_surgeries(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for owner-tier OR any team member whose
+    `can_manage_surgeries` flag has been enabled by a Primary Owner
+    / Partner. Used by every surgery CRUD endpoint (POST/PATCH/
+    DELETE /api/surgeries, /api/surgeries/import, surgeries.csv).
+    """
+    role = user.get("role")
+    if role in OWNER_TIER_ROLES:
+        return user
+    if bool(user.get("can_manage_surgeries")):
+        return user
+    raise HTTPException(status_code=403, detail="Surgery management access required")
+
+
+async def require_can_manage_availability(user=Depends(require_user)) -> Dict[str, Any]:
+    """Pass for owner-tier OR any team member whose
+    `can_manage_availability` flag has been enabled by a Primary
+    Owner / Partner. Used by:
+       - GET/PUT /api/availability/me  (own weekly schedule)
+       - GET/POST/DELETE /api/unavailabilities  (holiday / time-off)
+    """
+    role = user.get("role")
+    if role in OWNER_TIER_ROLES:
+        return user
+    if bool(user.get("can_manage_availability")):
+        return user
+    raise HTTPException(status_code=403, detail="Availability management access required")
 
 
 # ── Blog write-access gate ─────────────────────────────────────────
@@ -4074,6 +4121,10 @@ async def update_team_member(email: str, body: TeamUpdateBody, user=Depends(requ
         updates["can_send_personal_messages"] = bool(body.can_send_personal_messages)
     if body.can_prescribe is not None:
         updates["can_prescribe"] = bool(body.can_prescribe)
+    if body.can_manage_surgeries is not None:
+        updates["can_manage_surgeries"] = bool(body.can_manage_surgeries)
+    if body.can_manage_availability is not None:
+        updates["can_manage_availability"] = bool(body.can_manage_availability)
     if body.dashboard_full_access is not None:
         # Only the owner can grant Full Dashboard Access. Cascading is
         # disabled by design (require_owner above already enforces this).
@@ -4117,6 +4168,8 @@ async def list_team(user=Depends(require_owner)):
             "can_approve_broadcasts": iv.get("can_approve_broadcasts", False),
             "can_send_personal_messages": iv.get("can_send_personal_messages", False),
             "can_prescribe": iv.get("can_prescribe", False),
+            "can_manage_surgeries": iv.get("can_manage_surgeries", False),
+            "can_manage_availability": iv.get("can_manage_availability", False),
             "status": "invited",
         }
     # Determine custom role slugs so we include their holders as staff.
@@ -4136,6 +4189,8 @@ async def list_team(user=Depends(require_owner)):
                 "can_approve_broadcasts": u.get("can_approve_broadcasts", role in OWNER_TIER_ROLES),
                 "can_send_personal_messages": bool(u.get("can_send_personal_messages", role in PRIMARY_TIER_ROLES)),
                 "can_prescribe": bool(u.get("can_prescribe", role in OWNER_TIER_ROLES)),
+                "can_manage_surgeries": bool(u.get("can_manage_surgeries", role in OWNER_TIER_ROLES)),
+                "can_manage_availability": bool(u.get("can_manage_availability", role in OWNER_TIER_ROLES)),
                 "dashboard_full_access": bool(u.get("dashboard_full_access", False)),
                 "dashboard_tabs": list(u.get("dashboard_tabs") or []),
                 "status": "active",
@@ -4218,7 +4273,7 @@ async def remove_team_member(email: str, user=Depends(require_owner)):
 
 
 @app.post("/api/surgeries")
-async def create_surgery(body: SurgeryBody, user=Depends(require_prescriber)):
+async def create_surgery(body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
     surgery_id = f"sx_{uuid.uuid4().hex[:10]}"
     digits = re.sub(r"\D", "", body.patient_phone)
     patient_user_id = None
@@ -4267,7 +4322,7 @@ async def list_surgeries(user=Depends(require_staff)):
 
 
 @app.get("/api/surgeries/export.csv")
-async def export_surgeries_csv(user=Depends(require_prescriber)):
+async def export_surgeries_csv(user=Depends(require_can_manage_surgeries)):
     """Download the full surgery logbook as a CSV, sorted latest first."""
     import csv as _csv
     from io import StringIO
@@ -4330,7 +4385,7 @@ async def export_surgeries_csv(user=Depends(require_prescriber)):
 
 
 @app.patch("/api/surgeries/{surgery_id}")
-async def update_surgery(surgery_id: str, body: SurgeryBody, user=Depends(require_prescriber)):
+async def update_surgery(surgery_id: str, body: SurgeryBody, user=Depends(require_can_manage_surgeries)):
     digits = re.sub(r"\D", "", body.patient_phone)
     patient_user_id = None
     if digits:
@@ -4346,7 +4401,7 @@ async def update_surgery(surgery_id: str, body: SurgeryBody, user=Depends(requir
 
 
 @app.delete("/api/surgeries/{surgery_id}")
-async def delete_surgery(surgery_id: str, user=Depends(require_prescriber)):
+async def delete_surgery(surgery_id: str, user=Depends(require_can_manage_surgeries)):
     res = await db.surgeries.delete_one({"surgery_id": surgery_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Surgery not found")
@@ -4356,7 +4411,7 @@ async def delete_surgery(surgery_id: str, user=Depends(require_prescriber)):
 @app.post("/api/surgeries/import")
 async def import_surgeries(
     payload: Dict[str, Any] = Body(...),
-    user=Depends(require_prescriber),
+    user=Depends(require_can_manage_surgeries),
 ):
     """
     Bulk import historic logbook rows.
@@ -4586,7 +4641,7 @@ def _default_availability() -> Dict[str, Any]:
 
 
 @app.get("/api/availability/me")
-async def get_my_availability(user=Depends(require_prescriber)):
+async def get_my_availability(user=Depends(require_can_manage_availability)):
     doc = await db.availability.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not doc:
         return {"user_id": user["user_id"], **_default_availability()}
@@ -4594,7 +4649,7 @@ async def get_my_availability(user=Depends(require_prescriber)):
 
 
 @app.put("/api/availability/me")
-async def set_my_availability(body: DayAvailabilityBody, user=Depends(require_prescriber)):
+async def set_my_availability(body: DayAvailabilityBody, user=Depends(require_can_manage_availability)):
     payload = body.model_dump()
     payload["user_id"] = user["user_id"]
     payload["updated_at"] = datetime.now(timezone.utc)
@@ -4880,7 +4935,7 @@ class UnavailabilityBody(BaseModel):
 
 
 @app.get("/api/unavailabilities")
-async def list_unavailabilities(user=Depends(require_doctor_or_full_access)):
+async def list_unavailabilities(user=Depends(require_can_manage_availability)):
     """List all currently-effective unavailability rules.
 
     Excludes single-date rules in the past so the dashboard stays uncluttered.
@@ -4906,7 +4961,7 @@ async def list_unavailabilities(user=Depends(require_doctor_or_full_access)):
 
 
 @app.post("/api/unavailabilities")
-async def create_unavailability(body: UnavailabilityBody, user=Depends(require_doctor_or_full_access)):
+async def create_unavailability(body: UnavailabilityBody, user=Depends(require_can_manage_availability)):
     if not body.recurring_weekly and not body.date:
         raise HTTPException(status_code=400, detail="Provide a date or mark as recurring weekly")
     if not body.all_day and (not body.start_time or not body.end_time):
@@ -4951,7 +5006,7 @@ async def create_unavailability(body: UnavailabilityBody, user=Depends(require_d
 
 
 @app.delete("/api/unavailabilities/{rule_id}")
-async def delete_unavailability(rule_id: str, user=Depends(require_doctor_or_full_access)):
+async def delete_unavailability(rule_id: str, user=Depends(require_can_manage_availability)):
     res = await db.unavailabilities.delete_one({"id": rule_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -6620,6 +6675,8 @@ async def _promote_user_to_role(
         "can_approve_broadcasts": True,
         "can_send_personal_messages": True,
         "can_prescribe": True,
+        "can_manage_surgeries": True,
+        "can_manage_availability": True,
     }
     # Demoting to a regular team-member role (doctor / nursing /
     # reception / assistant) clears every elevated flag — they must
@@ -6632,6 +6689,8 @@ async def _promote_user_to_role(
             "can_approve_broadcasts": False,
             "can_send_personal_messages": False,
             "can_prescribe": False,
+            "can_manage_surgeries": False,
+            "can_manage_availability": False,
         }
     if target:
         # Stamp `created_at` (now) only when this row never had one

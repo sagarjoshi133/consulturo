@@ -30,6 +30,8 @@ type Member = {
   can_approve_bookings?: boolean;
   can_approve_broadcasts?: boolean;
   can_prescribe?: boolean;
+  can_manage_surgeries?: boolean;
+  can_manage_availability?: boolean;
   /** Owner-granted: gives the same dashboard tabs as the doctor */
   dashboard_full_access?: boolean;
   status: 'invited' | 'active';
@@ -50,6 +52,8 @@ export function TeamPanelV2() {
   const [canApproveBookings, setCanApproveBookings] = useState(false);
   const [canApproveBroadcasts, setCanApproveBroadcasts] = useState(false);
   const [canPrescribe, setCanPrescribe] = useState(false);
+  const [canManageSurgeries, setCanManageSurgeries] = useState(false);
+  const [canManageAvailability, setCanManageAvailability] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -59,6 +63,8 @@ export function TeamPanelV2() {
   const [editCanBook, setEditCanBook] = useState(false);
   const [editCanBc, setEditCanBc] = useState(false);
   const [editCanPrescribe, setEditCanPrescribe] = useState(false);
+  const [editCanSurgery, setEditCanSurgery] = useState(false);
+  const [editCanAvailability, setEditCanAvailability] = useState(false);
   const [editFullAccess, setEditFullAccess] = useState(false);
   // Selected dashboard tabs when access mode = 'custom'
   const [editTabs, setEditTabs] = useState<string[]>([]);
@@ -159,12 +165,16 @@ export function TeamPanelV2() {
         can_approve_bookings: canApproveBookings,
         can_approve_broadcasts: canApproveBroadcasts,
         can_prescribe: canPrescribe,
+        can_manage_surgeries: canManageSurgeries,
+        can_manage_availability: canManageAvailability,
       });
       setEmail('');
       setName('');
       setCanApproveBookings(false);
       setCanApproveBroadcasts(false);
       setCanPrescribe(false);
+      setCanManageSurgeries(false);
+      setCanManageAvailability(false);
       load();
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Could not invite');
@@ -199,6 +209,8 @@ export function TeamPanelV2() {
     setEditCanBook(!!m.can_approve_bookings);
     setEditCanBc(!!m.can_approve_broadcasts);
     setEditCanPrescribe(!!m.can_prescribe);
+    setEditCanSurgery(!!m.can_manage_surgeries);
+    setEditCanAvailability(!!m.can_manage_availability);
     setEditFullAccess(!!m.dashboard_full_access);
     setEditTabs(Array.isArray((m as any).dashboard_tabs) ? (m as any).dashboard_tabs : []);
   };
@@ -211,6 +223,8 @@ export function TeamPanelV2() {
         can_approve_bookings: editCanBook,
         can_approve_broadcasts: editCanBc,
         can_prescribe: editCanPrescribe,
+        can_manage_surgeries: editCanSurgery,
+        can_manage_availability: editCanAvailability,
         dashboard_full_access: editFullAccess,
         // Sending [] when full-access is on keeps the data clean (full-
         // access supersedes the per-tab list anyway).
@@ -358,11 +372,25 @@ export function TeamPanelV2() {
           testID="team-approver-broadcasts"
         />
         <PermCheck
-          label="Can prescribe (Rx, surgeries, availability)"
-          description="Enable for clinicians on the team — gives access to write prescriptions, surgery records, and manage their own availability."
+          label="Can prescribe (write Rx, medicines)"
+          description="Enable for clinicians who write prescriptions — also unlocks reg-no overrides, the medicine catalogue, and referrer management."
           value={canPrescribe}
           onToggle={() => setCanPrescribe((v) => !v)}
           testID="team-prescribe"
+        />
+        <PermCheck
+          label="Can manage surgeries"
+          description="Add, edit, import, and export surgery / OT logbook records."
+          value={canManageSurgeries}
+          onToggle={() => setCanManageSurgeries((v) => !v)}
+          testID="team-surgeries"
+        />
+        <PermCheck
+          label="Can manage availability"
+          description="Edit own weekly schedule and add holidays / time-off rules."
+          value={canManageAvailability}
+          onToggle={() => setCanManageAvailability((v) => !v)}
+          testID="team-availability"
         />
 
         {err ? <Text style={{ color: COLORS.accent, ...FONTS.body, marginTop: 6 }}>{err}</Text> : null}
@@ -512,11 +540,25 @@ export function TeamPanelV2() {
               testID="team-edit-approver-broadcasts"
             />
             <PermCheck
-              label="Can prescribe (Rx, surgeries, availability)"
-              description="Enable for clinicians on the team — write prescriptions, surgery records, and manage their own availability."
+              label="Can prescribe (Rx, medicines)"
+              description="Write prescriptions, reg-no overrides, medicine catalogue, referrers."
               value={editCanPrescribe}
               onToggle={() => setEditCanPrescribe((v) => !v)}
               testID="team-edit-prescribe"
+            />
+            <PermCheck
+              label="Can manage surgeries"
+              description="Add / edit / import / export surgery & OT records."
+              value={editCanSurgery}
+              onToggle={() => setEditCanSurgery((v) => !v)}
+              testID="team-edit-surgeries"
+            />
+            <PermCheck
+              label="Can manage availability"
+              description="Edit own weekly schedule and holiday / time-off rules."
+              value={editCanAvailability}
+              onToggle={() => setEditCanAvailability((v) => !v)}
+              testID="team-edit-availability"
             />
             <PermCheck
               label="Full Dashboard Access"

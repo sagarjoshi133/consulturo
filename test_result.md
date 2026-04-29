@@ -9321,3 +9321,70 @@ agent_communication_2026_04_28_session3:
       their role; their elevated permissions reset to False on their
       next sign-in unless explicitly enabled in the Team panel. No
       mocks. Backend + Expo restarted.
+
+  - agent: main
+    message: |
+      [follow-up: split can_prescribe into 3 independent flags]
+
+      User asked to split the umbrella `can_prescribe` flag into three
+      narrower gates so a clinic can grant e.g. surgery-logbook
+      access without giving Rx rights:
+
+        • can_prescribe          → prescriptions ONLY (Rx, medicines
+                                   catalogue, reg-no overrides,
+                                   referrers, analytics dashboard).
+        • can_manage_surgeries   → surgery / OT logbook CRUD + import
+                                   + CSV export.
+        • can_manage_availability → own weekly schedule + holiday /
+                                    time-off rules.
+
+      Backend (server.py):
+        - Added two new dependency helpers:
+            require_can_manage_surgeries
+            require_can_manage_availability
+          Each: pass for OWNER_TIER_ROLES OR the matching flag.
+        - Repointed endpoints:
+            POST/PATCH/DELETE /api/surgeries
+            POST /api/surgeries/import
+            GET  /api/export/surgeries.csv
+                                 → require_can_manage_surgeries
+            GET/PUT /api/availability/me
+            GET/POST/DELETE /api/unavailabilities
+                                 → require_can_manage_availability
+            (Rx + medicines + reg_no + referrers + analytics keep
+             require_prescriber, which now ONLY checks can_prescribe.)
+        - TeamInviteBody / TeamUpdateBody add the two new fields.
+        - resolve_role_for_email + list_team + _promote_user_to_role
+          + super-owner / primary-owner defaults all return all three
+          flags. Owner-tier defaults to True for every flag; team-
+          member roles default to False.
+        - Slot-listing endpoints (/api/availability/doctors and
+          /api/availability/slots) still gate clinician visibility on
+          can_prescribe — a member who can manage availability but
+          can't prescribe still won't appear as a bookable doctor.
+
+      Frontend (team-panel.tsx):
+        - Replaced the single "Can prescribe (Rx, surgeries,
+          availability)" toggle with three separate PermCheck rows in
+          BOTH the invite and edit forms.
+        - Edit modal seeds each toggle from the current member doc.
+        - Submit handlers send all three flags to the backend.
+        - Existing doctor / staff rows that were granted the umbrella
+          flag retain only what they had before; the new
+          can_manage_surgeries / can_manage_availability default to
+          False for them.
+
+      Smoke verified:
+        - 401 returned when calling surgery / availability /
+          unavailability endpoints anonymously (gates wired).
+        - Slot listing for tomorrow still returns Sagar's 18 slots
+          (owner-tier always passes).
+        - Capacity badges still render (2/5 green, 4/5 orange,
+          5/5 hidden) on the Book screen — verified via screenshot.
+
+      Files changed:
+        • /app/backend/server.py (multi-edit)
+        • /app/frontend/src/team-panel.tsx (state + 4 new toggle UI
+          rows + payload plumbing)
+
+      No mocks. No DB migration.
