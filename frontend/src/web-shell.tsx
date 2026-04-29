@@ -28,6 +28,8 @@ import { useResponsive, DESKTOP, getForcedView, setForcedView, type ForceView } 
 import { useAuth } from './auth';
 import { useNotifications } from './notifications';
 import { useI18n } from './i18n';
+import { useTenant } from './tenant-context';
+import * as Clipboard from 'expo-clipboard';
 
 const STAFF_ROLES = new Set(['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing']);
 
@@ -186,6 +188,33 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ── Clinic Link (public /c/<slug>) helper ─────────────────────────
+  // Surfaced as a sidebar shortcut for primary_owner/partner. Tapping
+  // copies the URL to clipboard (and also opens it in a new tab on web)
+  // so the owner can paste it into WhatsApp / printed material instantly.
+  const tenant = useTenant();
+  const clinicSlug = tenant?.currentClinic?.slug || '';
+  const clinicLink = React.useMemo(() => {
+    if (!clinicSlug || clinicSlug === 'all') return '';
+    let origin = '';
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+      origin = window.location.origin;
+    } else {
+      origin = (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://urology-pro.emergent.host').replace(/\/$/, '');
+    }
+    return `${origin}/c/${clinicSlug}`;
+  }, [clinicSlug]);
+  const copyClinicLink = async () => {
+    if (!clinicLink) return;
+    try {
+      await Clipboard.setStringAsync(clinicLink);
+    } catch {}
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      // brief, unobtrusive notice and open in new tab
+      try { window.open(clinicLink, '_blank'); } catch {}
+    }
+  };
+
   // Build sidebar nav items based on role (see new section ordering above).
   const items: NavItem[] = [
     { label: t('tabs.home') || 'Home', icon: 'home', route: '/', section: SEC_MAIN },
@@ -249,6 +278,16 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   if (isOwner && !isSuperOwner) {
     items.push({ label: t('more.branding')    || 'Branding',  icon: 'color-palette', route: '/branding', ownerOnly: true, section: !(isStaff && (isOwner || isFullAccess)) ? SEC_ADMIN : undefined });
     items.push({ label: t('more.permissions') || 'Permissions', icon: 'key', route: '/permission-manager', ownerOnly: true });
+    if (clinicLink) {
+      items.push({
+        label: t('more.clinicLink') || 'Clinic Link',
+        icon: 'link',
+        route: '#clinic-link',
+        onPress: copyClinicLink,
+        ownerOnly: true,
+        pill: t('more.copy') || 'Copy',
+      });
+    }
   }
   if ((isOwner || isFullAccess) && !isSuperOwner) {
     items.push({ label: t('more.backups') || 'Backups', icon: 'cloud-upload', route: '/admin/backups', staffOnly: true });

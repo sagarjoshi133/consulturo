@@ -29,6 +29,8 @@ import { useAuth } from '../../src/auth';
 import { useI18n } from '../../src/i18n';
 import { useNotifications } from '../../src/notifications';
 import { useResponsive, getForcedView, setForcedView, type ForceView } from '../../src/responsive';
+import { useTenant } from '../../src/tenant-context';
+import * as Clipboard from 'expo-clipboard';
 
 const WHATSAPP = '+918155075669';
 const STAFF_ROLES = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
@@ -143,6 +145,41 @@ export default function More() {
   };
 
   const goSignIn = () => router.push('/login');
+
+  // ── Clinic Link (public /c/<slug>) — shown to primary_owner & partners
+  // so they can quickly grab/share their clinic's public URL. Excludes
+  // super_owner since the platform owner has no clinic of their own.
+  const tenant = useTenant();
+  const clinicSlug = tenant?.currentClinic?.slug || '';
+  const clinicLink = React.useMemo(() => {
+    if (!clinicSlug || clinicSlug === 'all') return '';
+    let origin = '';
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+      origin = window.location.origin;
+    } else {
+      origin = (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://urology-pro.emergent.host').replace(/\/$/, '');
+    }
+    return `${origin}/c/${clinicSlug}`;
+  }, [clinicSlug]);
+  const copyClinicLink = async () => {
+    if (!clinicLink) return;
+    try {
+      await Clipboard.setStringAsync(clinicLink);
+    } catch {}
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') window.alert(`Clinic link copied:\n${clinicLink}`);
+    } else {
+      const { Alert } = require('react-native');
+      Alert.alert(
+        'Clinic link copied',
+        clinicLink,
+        [
+          { text: 'OK' },
+          { text: 'Open', onPress: () => Linking.openURL(clinicLink) },
+        ],
+      );
+    }
+  };
 
   // ── Sections ────────────────────────────────────────────────────────
   const sections: { title: string; items: MenuItem[] }[] = [];
@@ -296,6 +333,20 @@ export default function More() {
         route: '/branding' as any,
         testID: 'more-branding',
       });
+      // Clinic Link — only for primary_owner / partner with a real clinic
+      // (super_owner doesn't have one). Tap copies the URL & offers
+      // to open it in a browser.
+      if (!isSuperOwner && clinicLink) {
+        adminItems.push({
+          icon: 'link',
+          label: t('more.clinicLink') || 'Clinic Link',
+          sub: clinicLink.replace(/^https?:\/\//, ''),
+          action: copyClinicLink,
+          testID: 'more-clinic-link',
+          pill: t('more.copy') || 'Copy',
+          pillColor: COLORS.primary,
+        });
+      }
     }
     if (isOwner || isFullAccess) {
       adminItems.push(
@@ -581,7 +632,7 @@ export default function More() {
           ))}
         </View>
 
-        <Text style={styles.footer}>ConsultUro v1.0.9 · © Dr. Sagar Joshi</Text>
+        <Text style={styles.footer}>ConsultUro v1.0.11 · © Dr. Sagar Joshi</Text>
       </ScrollView>
     </SafeAreaView>
   );

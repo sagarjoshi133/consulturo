@@ -358,7 +358,7 @@ const hi = {
     changeEmail:           '← ईमेल बदलें',
     pushOffTitle:          'सूचनाएँ बंद कर दी',
     pushOffMsg:            'आपको अब पुश सूचनाएँ नहीं मिलेंगी। कभी भी फिर से चालू करें।',
-    versionFooter:         'ConsultUro v1.0.6 · © डॉ. सागर जोशी',
+    versionFooter:         'ConsultUro v1.0.11 · © डॉ. सागर जोशी',
   },
   records: {
     title: 'मेरे रिकॉर्ड',
