@@ -731,9 +731,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
 
   /* ---- ConsultUro brand stamp — shown on every page ---------------- */
   /* Sits inside the page-level dashed footer. In screen + print
-     modes it rides along with `.foot`. For multi-page Rx, the .page
-     element is duplicated by the renderer so the stamp repeats on
-     every page automatically. */
+     modes it rides along with the .foot block. For multi-page Rx, the
+     .page element is duplicated by the renderer so the stamp repeats
+     on every page automatically. */
   .consulturo-stamp{
     margin-top: 4px;
     display: flex;
@@ -1225,9 +1225,8 @@ export async function downloadPrescriptionPdf(rx: RxDoc, settings?: ClinicSettin
       console.error('[rx-pdf v3] iframe print failed too:', e2);
     }
 
-    // Last resort — both paths failed. One clean alert (v3.2 marker
-    // so we can confirm in the wild whether the new bundle is loaded).
-    showWebAlert('Could not generate PDF on this device. Please retry — if it keeps failing, switch to a desktop browser. (rx v3.2)');
+    // Last resort — both paths failed. One clean alert.
+    showWebAlert('Could not generate PDF on this device. Please retry — if it keeps failing, switch to a desktop browser.');
     return;
   }
 
