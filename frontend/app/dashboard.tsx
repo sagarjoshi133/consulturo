@@ -28,6 +28,7 @@ import { SurgeriesPanel } from '../src/surgery-panel';
 import { AvailabilityPanel } from '../src/availability-panel';
 import { BroadcastsPanel } from '../src/broadcasts-panel';
 import { HomepagePanel } from '../src/homepage-panel';
+import BrandingPanel from '../src/branding-panel';
 import { TeamPanelV2 } from '../src/team-panel';
 import { AnalyticsPanel } from '../src/analytics-panel';
 import { ReferrersPanel } from '../src/referrers-panel';
@@ -323,8 +324,8 @@ export default function Dashboard() {
   // Initial tab from URL search params (`?tab=analytics` etc.) so More
   // tab routes like `/dashboard?tab=team` open the right panel.
   const params = useLocalSearchParams<{ tab?: string }>();
-  type TabStateType = 'today' | 'consultations' | 'bookings' | 'analytics' | 'prescriptions' | 'surgeries' | 'referrers' | 'availability' | 'team' | 'blog' | 'broadcasts' | 'homepage';
-  const TAB_VALUES: TabStateType[] = ['today', 'consultations', 'bookings', 'analytics', 'prescriptions', 'surgeries', 'referrers', 'availability', 'team', 'blog', 'broadcasts', 'homepage'];
+  type TabStateType = 'today' | 'consultations' | 'bookings' | 'analytics' | 'prescriptions' | 'surgeries' | 'referrers' | 'availability' | 'team' | 'blog' | 'broadcasts' | 'homepage' | 'branding';
+  const TAB_VALUES: TabStateType[] = ['today', 'consultations', 'bookings', 'analytics', 'prescriptions', 'surgeries', 'referrers', 'availability', 'team', 'blog', 'broadcasts', 'homepage', 'branding'];
   const initialTab: TabStateType = (() => {
     const v = String(params?.tab || '').toLowerCase();
     return (TAB_VALUES as string[]).includes(v) ? (v as TabStateType) : 'today';
@@ -466,6 +467,7 @@ export default function Dashboard() {
         { id: 'blog', label: 'Blog', icon: 'newspaper', canSee: tier.canCreateBlog },
         { id: 'team', label: 'Team', icon: 'people', canSee: allowTab('team') },
         { id: 'push', label: 'Notifs', icon: 'notifications', canSee: allowTab('push') },
+        { id: 'branding', label: 'Branding', icon: 'color-palette', canSee: isOwner },
         { id: 'homepage', label: 'Settings', icon: 'cog', canSee: isOwner },
         { id: 'backups', label: 'Backups', icon: 'cloud-upload', canSee: allowTab('backups') },
       ];
@@ -684,6 +686,7 @@ export default function Dashboard() {
           if (id === 'availability') return <AvailabilityPanel />;
           if (id === 'broadcasts') return <BroadcastsPanel autoOpen={bcAutoOpen} />;
           if (id === 'homepage') return <HomepagePanel />;
+          if (id === 'branding') return <BrandingPanel />;
           if (id === 'team') return <TeamPanelV2 />;
           if (id === 'push') return <NotificationsHealthPanel />;
           if (id === 'backups') return <BackupHealthPanel />;

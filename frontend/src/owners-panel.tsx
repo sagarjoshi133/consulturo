@@ -422,6 +422,31 @@ export default function OwnersPanel() {
                 p={{ ...p, name: p.name ? `${p.name}${isPending ? ' (pending sign-in)' : ''}` : p.email }}
                 actionLabel={tier.canManagePartners ? (isPending ? 'Revoke' : 'Demote') : undefined}
                 onAction={() => demotePartner(p)}
+                dashboardToggle={
+                  // Primary-owner / super-owner can flip a Partner's
+                  // full-dashboard access. Pending invites have no
+                  // user_id yet, so we hide the toggle until the
+                  // partner signs in.
+                  tier.canManagePartners && !isPending && p.user_id
+                    ? {
+                        value: p.dashboard_full_access !== false,
+                        disabled: false,
+                        onChange: async (v: boolean) => {
+                          if (!p.user_id) return;
+                          setBusy(true);
+                          try {
+                            await api.patch(
+                              `/admin/partners/${p.user_id}/dashboard-perm`,
+                              { dashboard_full_access: v }
+                            );
+                            await loadAll();
+                          } catch (e: any) {
+                            alertX('Failed', e?.response?.data?.detail || 'Could not update dashboard access');
+                          } finally { setBusy(false); }
+                        },
+                      }
+                    : undefined
+                }
               />
             );
           })

@@ -7075,6 +7075,46 @@ async def set_primary_owner_dashboard_perm(
     return {"ok": True, "user_id": user_id, "dashboard_full_access": val}
 
 
+@app.patch("/api/admin/partners/{user_id}/dashboard-perm")
+async def set_partner_dashboard_perm(
+    user_id: str, body: DashboardPermBody, user=Depends(require_primary_owner_strict)
+):
+    """Primary-owner / super-owner. Grant / revoke full-dashboard access
+    for a specific partner. Partners start with full access by default —
+    this flips the explicit override. The Partner role is otherwise
+    co-equal to Primary Owner clinically; this control lets a Primary
+    Owner narrow their Partner's administrative reach (Backups, Team,
+    Analytics, Blog, Broadcasts) without demoting the role itself."""
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") != "partner":
+        raise HTTPException(status_code=400, detail="Target must be a partner")
+    val = bool(body.dashboard_full_access)
+    await db.users.update_one(
+        {"user_id": user_id}, {"$set": {"dashboard_full_access": val}}
+    )
+    email_l = (target.get("email") or "").lower()
+    if email_l:
+        # Mirror onto pending-invite row if any (no upsert — we never
+        # want to spawn a stub team_invites doc here).
+        await db.team_invites.update_one(
+            {"email": email_l}, {"$set": {"dashboard_full_access": val}}, upsert=False
+        )
+    try:
+        await db.audit_log.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "kind": "partner_dashboard_perm_change",
+            "target_email": email_l,
+            "target_user_id": user_id,
+            "new_value": val,
+            "actor_email": (user.get("email") or "").lower(),
+        })
+    except Exception:
+        pass
+    return {"ok": True, "user_id": user_id, "dashboard_full_access": val}
+
+
 @app.post("/api/admin/partners/promote")
 async def promote_partner(body: PromoteByEmailBody, user=Depends(require_primary_owner_strict)):
     """Promote any email to partner. primary_owner or super_owner may
@@ -7112,6 +7152,11 @@ async def list_partners(user=Depends(require_owner)):
         if em in seen_emails:
             continue
         seen_emails.add(em)
+        # Default-True for owner-tier roles unless explicitly revoked,
+        # mirrors the rule in /api/me/tier so the toggle UI stays in
+        # sync with what the partner actually experiences.
+        dfa_raw = u.get("dashboard_full_access")
+        dfa = (dfa_raw is not False)
         rows.append({
             "user_id": u.get("user_id"),
             "email": em,
@@ -7119,6 +7164,7 @@ async def list_partners(user=Depends(require_owner)):
             "role": u.get("role"),
             "picture": u.get("picture"),
             "signed_in": True,
+            "dashboard_full_access": dfa,
         })
     async for iv in db.team_invites.find({"role": "partner"}, {"_id": 0}):
         em = (iv.get("email") or "").lower()
@@ -7132,6 +7178,7 @@ async def list_partners(user=Depends(require_owner)):
             "role": "partner",
             "picture": None,
             "signed_in": False,
+            "dashboard_full_access": True,
         })
     return {"items": rows}
 

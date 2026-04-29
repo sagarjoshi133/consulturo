@@ -1003,6 +1003,84 @@ backend_june_2025_patch:
             bookings_last_30d, prescriptions_last_30d, demo_accounts).
 
 
+backend_partner_dashboard_perm:
+  - task: "Partner Dashboard Permission — PATCH /api/admin/partners/{user_id}/dashboard-perm + dashboard_full_access on /api/admin/partners list + /api/me/tier respects explicit-false for partner"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 24/24 assertions PASS via
+          /app/backend_test_partner_dashboard_perm.py against
+          http://localhost:8001.
+
+          SEED ✅
+          - Inserted partner fixture: user_id=test-partner-pdp-<ts>,
+            email=test-partner-pdp-<ts>@example.com, role='partner'.
+            Session test_partner_pdp_<ts> valid 7d. Sanity GET
+            /api/auth/me with that token → 200 role=partner.
+          - Reused existing super_owner row (app.consulturo@gmail.com,
+            user_f4556817bf29) by attaching a 7d session token
+            test_so_pdp_<ts>.
+
+          T1 GET /api/admin/partners includes dashboard_full_access ✅
+          - 200 with items list. Seeded partner row present.
+          - Every row has the new `dashboard_full_access` field.
+          - Default value for the seeded partner is `true`
+            (server.py:7158-7159 uses `dfa_raw is not False` →
+            default-True semantics for partner rows).
+
+          T2 PATCH dashboard-perm auth gating (401) ✅
+          - PATCH /api/admin/partners/<uid>/dashboard-perm with no
+            Authorization header → 401 "Not authenticated".
+
+          T3 PATCH dashboard-perm forbidden roles (403) ✅
+          - Caller=partner (the test partner's own session) → 403
+            "Primary owner only — partner management is a clinic-owner
+             action."  (require_primary_owner_strict at server.py:1047
+             rejects partner.)
+          - Caller=doctor (test_doc_1776771431524) → 403 same.
+
+          T4 PATCH dashboard-perm happy path — primary_owner ✅
+          - PATCH false (OWNER token) → 200 with
+            {ok:true, user_id:<p_uid>, dashboard_full_access:false}.
+          - GET /api/admin/partners → seeded partner row
+            dashboard_full_access:false (persisted).
+          - GET /api/me/tier as the PARTNER → 200 with
+              role:'partner', is_owner_tier:true,
+              dashboard_full_access:false  ← KEY check from review
+            brief: explicit-false IS respected even though the
+            default-true rule covers partners.
+          - PATCH true → 200 with dashboard_full_access:true; partner's
+            /api/me/tier flips back to dashboard_full_access:true.
+
+          T5 Target-not-partner → 400 ✅
+          - PATCH /api/admin/partners/<doctor_uid>/dashboard-perm as
+            primary_owner → 400 "Target must be a partner".
+          - Same against sagar's primary_owner uid → 400 (also
+            non-partner role).
+
+          T6 Unknown user_id → 404 ✅
+          - PATCH /api/admin/partners/does_not_exist_user_xyz/
+            dashboard-perm as primary_owner → 404 "User not found".
+
+          T7 Regression smoke ✅
+          - GET /api/health → 200 {"ok":true,"db":"connected"}.
+
+          CLEANUP ✅
+          - Partner user + session deleted (users=0, sessions=0).
+          - SO test session token deleted.
+          - audit_log partner_dashboard_perm_change rows for the
+            test partner email purged. No prod data pollution.
+
+          No 5xx, no auth bypasses. Implementation matches spec
+          exactly (server.py:7078-7115).
+
 backend_messaging_hierarchy:
   - task: "Hierarchy messaging — only Primary Owners can message the Super Owner"
     implemented: true
@@ -1094,7 +1172,28 @@ backend_messaging_hierarchy:
 
   - agent: "testing"
     message: |
-      Frontend regression (2026-04-28) for 6 recent features completed.
+      Partner Dashboard Permission backend smoke (review request):
+      ALL 24/24 assertions PASS via /app/backend_test_partner_dashboard_perm.py
+      against http://localhost:8001.
+      ✅ GET /api/admin/partners — every row carries dashboard_full_access
+         (default-true unless explicitly revoked).
+      ✅ PATCH /api/admin/partners/{user_id}/dashboard-perm:
+            no token → 401
+            partner caller → 403 ("Primary owner only — partner management is
+              a clinic-owner action.")
+            doctor caller → 403 (same)
+            primary_owner → 200, flips/persists, list & /api/me/tier reflect
+            target=non-partner (doctor or primary_owner) → 400 ("Target must
+              be a partner")
+            unknown user_id → 404 ("User not found")
+      ✅ Partner /api/me/tier with explicit dashboard_full_access:false
+         RESPECTS the explicit-false (even though default-true rule
+         normally covers partner) — KEY guarantee from the brief.
+      Cleanup verified — partner fixture + audit rows + SO test session
+      all purged. No prod data pollution. Implementation at
+      server.py:7078-7115 + 7142-7183 + 7186-7217.
+
+  - agent: "testing"
       PASSING: (T1) Collapsible Desktop Sidebar — collapse/expand + localStorage
       `web_sidebar_collapsed` persistence verified end-to-end. (T2) Force
       Desktop/Mobile View Toggle — row visible at /more, cycles Auto→Desktop→
