@@ -7,14 +7,20 @@ high-signal audit events. Failures are logged but never raised.
 import os
 import logging
 
-import requests
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 log = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
+# Match server.py canonical env-var name (some deployments still use
+# the older TELEGRAM_CHAT_ID — fall back so we don't break legacy).
+TELEGRAM_OWNER_CHAT_ID = (
+    os.environ.get("TELEGRAM_OWNER_CHAT_ID")
+    or os.environ.get("TELEGRAM_CHAT_ID")
+    or ""
+)
 
 
 async def notify_telegram(text: str) -> None:

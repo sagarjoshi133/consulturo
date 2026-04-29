@@ -1105,11 +1105,11 @@ backend_phase2_modularization_smoke_2026_04_29:
 backend_phase6_modularization_smoke_2026_04_29:
   - task: "Phase 6 server.py modularization smoke — services/{reg_no,email,telegram}.py extraction; ZERO behaviour change intended"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py, /app/backend/services/reg_no.py, /app/backend/services/email.py, /app/backend/services/telegram.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "testing"
@@ -1217,12 +1217,67 @@ backend_phase6_modularization_smoke_2026_04_29:
           it because cleanup wasn't possible without first running a
           successful POST). Suggest main agent runs the smoke after
           the fix to validate end-to-end.
+      - working: true
+        agent: "testing"
+        comment: |
+          RE-RUN POST-FIX (2026-04-29 v2): ALL 25/25 ASSERTIONS PASS via
+          /app/backend_test_phase6_modularization.py against
+          http://localhost:8001. Both regressions reported in the
+          previous run are RESOLVED.
+
+          ✅ FIX 1 — services/email.py (lines 12 + 21):
+             `import resend as _resend` and
+             `_resend.api_key = os.environ.get("RESEND_API_KEY") or ""`
+             are now at module level. POST /api/auth/otp/request with
+             {"email":"sagar.joshi133@gmail.com"} → 200 {"ok":true}
+             (previously 500 NameError on `_resend`).
+
+          ✅ FIX 2 — services/telegram.py (lines 10 + 19-23):
+             `import httpx` (replaced `requests`), and module variable
+             renamed to `TELEGRAM_OWNER_CHAT_ID` with fallback to
+             legacy TELEGRAM_CHAT_ID. POST /api/bookings (valid future
+             date+slot, primary_owner token) → 200 with
+             registration_no="006290426" (9-digit SSSDDMMYY, DDMMYY
+             suffix=290426 matches today IST). Previously 500
+             NameError on TELEGRAM_OWNER_CHAT_ID.
+
+          ✅ FULL SMOKE (25/25):
+          1. PUBLIC endpoints (5/5): /health, /diseases, /blog,
+             /clinic-settings, /calculators all → 200.
+          2. AUTH (4/4): POST /auth/otp/request → 200 {"ok":true};
+             not 5xx; GET /auth/me (primary_owner) → 200,
+             role=primary_owner.
+          3. CLINICAL CRUD (5/5):
+             - POST /bookings → 200; reg_no=006290426 (9-digit);
+               DDMMYY suffix matches today IST.
+             - POST /prescriptions → 200; reg_no=002260426 (9-digit).
+          4. AUTH GATING (2/2):
+             - GET /bookings/all no-token → 401.
+             - GET /bookings/all (owner) → 200.
+          5. UNTOUCHED endpoints sanity (5/5): /team,
+             /admin/partners, /notifications, /broadcasts, /blog all
+             → 200 for owner.
+          6. SERVICES IMPORT REGRESSION (4/4) — all re-binds resolve
+             to the SAME object:
+               server._send_email IS services.email._send_email
+               server.allocate_reg_no IS services.reg_no.allocate_reg_no
+               server.get_or_set_reg_no IS services.reg_no.get_or_set_reg_no
+               server.notify_telegram IS services.telegram.notify_telegram
+
+          CLEANUP ✅ — Test artefacts purged via mongosh:
+            bookings_deleted=2 rx_deleted=2 patients_deleted=2
+            (collected the stale row from the earlier 500-failure run
+            plus the freshly-created row). Phones 9999900001 /
+            9999900002 fully cleared from bookings, prescriptions, and
+            patients collections. No DB pollution. End-state clean.
+
+          No 5xx, no auth bypasses, no data leakage. Phase 6
+          modularization is now behaviour-equivalent to pre-refactor.
 
 test_plan:
   current_focus:
     - "FRONTEND REGRESSION + NEW FEATURE PASS — Verify the UI on both DESKTOP (≥1280px) and MOBILE (390x844) using primary_owner credentials (token: test_session_1776770314741, email sagar.joshi133@gmail.com). Required tests: (1) DESKTOP SIDEBAR — confirm sections render in order Account → Dashboard → Practice → Administration → Explore → App → About. Account/Dashboard/Practice expanded by default; Administration/Explore/App/About collapsed by default. Tapping a section header toggles its items and persists across reload. View mode pill in App section cycles Auto/Desktop/Mobile and triggers a layout refresh. (2) DESKTOP HOME (/) — for staff (primary_owner), the hero shows 3 quick-action pills: Bookings · Consult · Prescription which navigate to dashboard tabs. Patients still see the single 'Book Consultation' pill. (3) MOBILE HOME (/) — for clinical roles (primary_owner / partner / doctor), the second quick-action card shows 'Consult' (medkit) instead of 'WhatsApp'. Tapping it goes to /dashboard?tab=consultations. (4) MOBILE MORE TAB — sections render in order Account → Dashboard → Practice → Administration → Explore → App → About with same default-collapsed behavior. Tapping a section title toggles its rows. (5) APPOINTMENT PAGE (/bookings/[id]) — Communication card buttons (Call/WhatsApp/Message) NEVER overflow or wrap to 2 lines on a 360px viewport. Single-line truncation works. (6) DASHBOARD BOOKINGS TAB — booking card action row (Call·WhatsApp·Copy·Confirm·Reschedule·Reject·Message) wraps gracefully — NO buttons spilling outside the card edge. (7) PROFILE → SHORTCUTS row labelled 'Inbox' (was 'Notifications') routes to /inbox. (8) PERMISSION MANAGER → DEMO ACCOUNTS — as super_owner, after creating a demo via OwnersPanel, the demo (signed_in:false) appears immediately in the list with a 'Revoke' button. (9) PERMISSION MANAGER → PARTNERS — as primary_owner, after promoting an email to partner, that pending entry appears with '(pending sign-in)' suffix and a 'Revoke' button. Revoke removes it. (10) i18n — toggle language EN→HI→GU; sidebar section headers and item labels translate (Administration → प्रशासन / વ્યવસ્થાપન; Consults → कंसल्ट्स / કન્સલ્ટ્સ; etc). (11) PRESCRIPTION PDF — verify the patient summary band shows 5 distinct cells: Patient · Age/Sex · Phone · Visit · Reg. No. with no overlaps. Login with token test_session_1776770314741 (already extended 7 days)."
-  stuck_tasks:
-    - "Phase 6 server.py modularization smoke — services/{reg_no,email,telegram}.py extraction; ZERO behaviour change intended"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
@@ -1244,6 +1299,22 @@ agent_communication:
         Bug is in the EXTRACTED helper bodies, not the re-import wiring.
         services/reg_no.py is healthy (Rx creation returned reg_no
         002260426 in correct SSSDDMMYY format).
+    - agent: "testing"
+      message: |
+        Phase 6 RE-RUN POST-FIX (2026-04-29 v2): ALL 25/25 PASS via
+        /app/backend_test_phase6_modularization.py against
+        http://localhost:8001. Both regressions RESOLVED:
+        ✅ services/email.py — `_resend` now imported + api_key bound.
+           POST /api/auth/otp/request → 200 {"ok":true} (was 500).
+        ✅ services/telegram.py — `httpx` imported, module variable
+           renamed to TELEGRAM_OWNER_CHAT_ID. POST /api/bookings →
+           200 with reg_no=006290426 (was 500).
+        Plus: original 23 still PASS (5 public, 4 auth, 5 clinical,
+        2 auth-gating, 5 untouched, 4 services-import-regression).
+        Cleanup via mongosh (bookings_deleted=2, rx_deleted=2,
+        patients_deleted=2 — phones 9999900001/9999900002).
+        Phase 6 modularization is now behaviour-equivalent to
+        pre-refactor. No 5xx, no auth bypasses.
 
 backend_june_2025_patch:
   - task: "Demo Accounts list — pending invites visibility + signed_in flag (BUG FIX #1)"

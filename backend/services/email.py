@@ -9,11 +9,16 @@ import json
 import logging
 from typing import Optional
 
-import requests
+import resend as _resend
 from dotenv import load_dotenv
 
 load_dotenv()
 log = logging.getLogger(__name__)
+
+# Configure Resend at module import. Falls back to empty key — the
+# `_send_email` helper short-circuits when the key is empty so dev
+# environments without RESEND_API_KEY don't crash.
+_resend.api_key = os.environ.get("RESEND_API_KEY") or ""
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 RESEND_FROM    = os.environ.get("RESEND_FROM_EMAIL", "ConsultUro <noreply@consulturo.com>")
