@@ -31,9 +31,56 @@ BLOGGER_FEED_URL = os.environ.get(
     "https://consulturo.blogspot.com/feeds/posts/default?alt=json",
 )
 
-# 15-minute in-process cache for the Blogger feed — avoids hammering
-# the public feed on every /api/blog list call.
 _BLOG_CACHE: Dict[str, Any] = {"at": None, "data": []}
+
+# Compiled regexes used by the public helpers below — defined once
+# at module scope so the helpers stay allocation-free on the
+# hot path.
+_IMG_RE = re.compile(r'<img[^>]+src="([^"]+)"', re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+# Static cover overrides for the in-app patient-education library.
+# Sourced from the customer-assets agent — these win over the auto-
+# generated covers from the trilingual education_content module.
+_EDU_CUSTOM_COVERS: Dict[str, str] = {
+    "kegel-exercises": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/l8lew19k_kegel-exercises.png",
+    "bladder-training": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/ldp1ptw5_bladder-training.png",
+    "fluid-management": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/jp8oigj5_fluid-management.png",
+    "pre-op-prep": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/20rjyu3l_pre-op-prep.png",
+    "psa-testing": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/236tiy5s_psa-testing.png",
+    "stone-prevention": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/owc6yhgd_stone-prevention.png",
+    "uti-prevention": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/spbpzrg2_uti-prevention.png",
+    "post-surgery-care": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/oosn7esm_post-surgery-care.png",
+    "bph-lifestyle": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/a1theb2u_bph-lifestyle.png",
+    "ed-overview": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/gji6t5ah_ed-overview.png",
+    "catheter-care": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/v8h8jvl6_catheter-care.png",
+    "dj-stent-care": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/cv2jr3re_dj-stent-care.png",
+    "travel-kidney-stones": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/3ujztgy6_travel-kidney-stones.png",
+    "vasectomy-guide": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/bmbsnu7x_vasectomy-guide.png",
+    "circumcision-care": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/ag2i8ofo_circumcision-care.png",
+    "pregnancy-urology": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/32bc4962_pregnancy-urology.png",
+    "kidney-donor": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/h9uehlhe_kidney-donor.png",
+    "telehealth-tips": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/yb5q5peq_telehealth-tips.png",
+    "sexual-health-general": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/o3mji7p1_sexual-health-general.png",
+    "prostate-cancer-screening": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/7eb0gtrq_prostate-cancer-screening.png",
+    "bladder-cancer-haematuria": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/n0c9r1u1_bladder-cancer-haematuria.png",
+    "kidney-cancer": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/vg21g7mo_kidney-cancer.png",
+    "testicular-self-exam": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/3ds1nlgo_testicular-self-exam.png",
+    "overactive-bladder": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/o7hd6yem_overactive-bladder.png",
+    "nocturia": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/ifbhb30q_nocturia.png",
+    "varicocele": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/ajluw3u8_varicocele.png",
+    "male-infertility": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/uz8aytiq_male-infertility.png",
+    "low-testosterone": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/7b4gmpxb_low-testosterone.png",
+    "peyronies-disease": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/zn56l8pq_peyronies-disease.png",
+    "prostatitis": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/rid3zc0e_prostatitis.png",
+    "urethral-stricture": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/nuo4kjh7_urethral-stricture.png",
+    "eswl-shockwave": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/5xmv39uz_eswl-shockwave.png",
+    "rirs-flexible-ureteroscopy": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/1onj0b8c_rirs-flexible-ureteroscopy.png",
+    "turp-holep-bph": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/md7v1jy2_turp-holep-bph.png",
+    "paediatric-bedwetting": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/xndfw7qn_paediatric-bedwetting.png",
+    "diet-for-urology": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/a73yftb4_diet-for-urology.png",
+    "exercise-urology": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/f52bncsd_exercise-urology.png",
+}
 
 
 def _extract_first_img(html: str) -> Optional[str]:

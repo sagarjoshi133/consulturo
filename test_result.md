@@ -11627,3 +11627,141 @@ agent_communication_2026_04_29_phase7_polish_smoke:
 
       YOU MUST ASK USER BEFORE DOING FRONTEND TESTING.
 
+
+
+backend_phase7_polish_smoke_RERUN_2026_04_29:
+  - task: "Phase 7 polish RE-VERIFY — services/blog_helpers.py module-level deps fix (_IMG_RE, _TAG_RE, _EDU_CUSTOM_COVERS)"
+    implemented: true
+    working: true
+    file: "/app/backend/services/blog_helpers.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          RE-RUN POST-FIX (2026-04-29 v2): ALL 31/31 PASS via
+          /app/backend_test_phase7_polish.py against
+          http://localhost:8001. The previously-flagged regression in
+          services/blog_helpers.py is RESOLVED.
+
+          ✅ FIX VERIFIED — /app/backend/services/blog_helpers.py now
+          carries the three module-level deps that were missing:
+            • _IMG_RE = re.compile(r'<img[^>]+src="([^"]+)"', re.IGNORECASE)
+              (line 39)
+            • _TAG_RE = re.compile(r"<[^>]+>")
+              (line 40)
+            • _EDU_CUSTOM_COVERS dict copied verbatim from server.py
+              starting at line 45.
+          Backend restarted clean — no NameError in the supervisor
+          err.log.
+
+          ─── Phase 7 smoke (31/31 PASS) ───────────────────────────
+            0. Partner fixture seed (mongosh)               ✅
+               • /auth/me as partner → 200, role echoed.
+            1. PUBLIC endpoints
+               • GET /health → 200                          ✅
+               • GET /blog   → 200 (was [] silently — Blogger
+                 feed now reachable)                        ✅
+               • GET /diseases → 200                        ✅
+               • GET /clinic-settings → 200                 ✅
+               • /api/blog returns a list                   ✅
+            2. AUTH FLOW
+               • POST /auth/otp/request → 200               ✅
+            3. CLINICAL CRUD (notifications + booking_helpers)
+               • POST /bookings (primary_owner) → 200       ✅
+                 (booking_id present, registration_no=
+                  "001260426" in SSSDDMMYY format)
+               • PATCH /bookings/{id} status=completed → 200 ✅
+               • POST /prescriptions (primary_owner) → 200  ✅
+                 (registration_no allocated)
+               • DELETE /prescriptions/{id} as primary_owner
+                 → 200 (was 403 pre-fix on OWNER_TIER_ROLES) ✅
+               • re-DELETE same id → 404                    ✅
+               • POST /prescriptions #2 → 200               ✅
+               • DELETE /prescriptions/{id} as partner
+                 → 200 (OWNER_TIER_ROLES includes partner)  ✅
+            4. AUTH GATING regression
+               • GET /bookings/all without token → 401      ✅
+            5. ROLE-CHANGE flow (notify_role_change →
+               pretty_role → create_notification → push_to_user)
+               • POST /team/invites doctor → 200            ✅
+               • PATCH /team/{email} role=nursing → 200     ✅
+               • DELETE /team/{email} → 200                 ✅
+               • role_change notification(s) for team user
+                 (count ≥ 1)                                ✅
+            6. UNTOUCHED endpoints (primary_owner)
+               • GET /team → 200                            ✅
+               • GET /admin/partners → 200                  ✅
+               • GET /notifications → 200                   ✅
+               • GET /broadcasts → 200                      ✅
+            7. SERVICES IMPORT REGRESSION (in-process probe)
+               • server.push_to_user is
+                 services.notifications.push_to_user        ✅
+               • server._admin_to_html is
+                 services.blog_helpers._admin_to_html       ✅
+               • server._time_12h is
+                 services.booking_helpers._time_12h         ✅
+
+          ─── Additional curl spot-checks (per review request) ────
+            1. GET /api/education?lang=en
+               • 200, list length = 37                      ✅
+               • Every item has cover populated
+                 (missing covers count = 0)                 ✅
+               • Custom-overridden entries verified:
+                   kegel-exercises  → customer-assets…/l8lew19k_kegel-exercises.png
+                   bladder-training → customer-assets…/ldp1ptw5_bladder-training.png
+                   psa-testing      → customer-assets…/236tiy5s_psa-testing.png
+                   stone-prevention → customer-assets…/owc6yhgd_stone-prevention.png
+                 (all surfaced from _EDU_CUSTOM_COVERS via
+                 _apply_custom_cover, which is no longer
+                 raising NameError — was 500 pre-fix.)
+            2. GET /api/education/kegel-exercises?lang=en
+               • 200                                        ✅
+               • cover key populated from _EDU_CUSTOM_COVERS
+                 (l8lew19k_kegel-exercises.png).
+                 Note: review brief mentioned "cover_url"; the
+                 actual response field is `cover` (consistent
+                 with the list response). Same value either
+                 way — feature works.
+            3. GET /api/blog
+               • 200, list with 23 entries (Blogger feed
+                 reachable). Was previously returning [] via
+                 the swallowed NameError on _IMG_RE/_TAG_RE.
+                 Real entries now flow through.
+
+          ─── Cleanup ─────────────────────────────────────────────
+          mongosh purged all fixtures:
+            users_deleted=2 sessions_deleted=1 invites_deleted=0
+            notifs_deleted=1 bookings_deleted=1
+          End-state DB clean.
+
+          Zero regressions, zero 5xx, zero auth bypasses. Phase 7
+          modularization is now functionally complete and verified.
+
+agent_communication_2026_04_29_phase7_polish_smoke_RERUN:
+  - agent: "testing"
+    message: |
+      ✅ Phase 7 polish RE-VERIFY: 31/31 Phase-7 smoke + all 3
+      additional curl spot-checks PASS. The mechanical fix in
+      /app/backend/services/blog_helpers.py (added _IMG_RE,
+      _TAG_RE, _EDU_CUSTOM_COVERS at module scope) resolved both
+      previously-flagged regressions:
+        • /api/education?lang=en is back to 200 with 37 items
+          (was 500 NameError on _EDU_CUSTOM_COVERS / _IMG_RE).
+        • /api/blog now returns a real 23-entry list from the
+          Blogger feed (was [] silently due to a swallowed
+          NameError on _IMG_RE in _extract_first_img).
+      Custom education covers correctly applied from
+      _EDU_CUSTOM_COVERS (kegel-exercises, bladder-training,
+      psa-testing, stone-prevention all overridden).
+
+      Test artefacts torn down (mongosh cleanup ran clean).
+      Backend healthy, no startup errors, supervisor uptime
+      stable.
+
+      Phase 7 modularization iteration is COMPLETE.
+      No further action required for the backend.
+
+      YOU MUST ASK USER BEFORE DOING FRONTEND TESTING.
