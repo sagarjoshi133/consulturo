@@ -886,24 +886,45 @@ export async function loadClinicSettings(): Promise<ClinicSettings> {
 }
 
 // Sanitises any error/value into a short, plain-text message safe to put into
-// window.alert / Alert.alert. Strips HTML tags (so we NEVER leak the Rx
-// template HTML), collapses whitespace, and truncates aggressively. The full
-// error is still console.error'd for engineering diagnosis.
+// window.alert / Alert.alert. Defends in depth against the "raw HTML/CSS dump
+// to screen" bug — if the message contains ANY tag-like, CSS-like, or
+// long-block-of-code-looking content, we discard it and surface the
+// fallback instead. The full original error is still console.error'd for
+// engineering diagnosis.
+//
+// SAFE_MSG_VERSION: rx-pdf-2026-06-15-v3 (hard fix for code-leak alert bug)
 function safeMsg(e: any, fallback: string): string {
   try {
     // eslint-disable-next-line no-console
-    console.error('[rx-pdf] action failed:', e);
+    console.error('[rx-pdf v3] action failed:', e);
   } catch {}
-  let m: any = e?.response?.data?.detail ?? e?.message ?? e;
-  if (m == null) return fallback;
-  if (typeof m !== 'string') {
-    try { m = String(m); } catch { return fallback; }
+  let raw: any = e?.response?.data?.detail ?? e?.message ?? e;
+  if (raw == null) return fallback;
+  let m: string;
+  if (typeof raw === 'string') {
+    m = raw;
+  } else {
+    try { m = String(raw); } catch { return fallback; }
   }
-  // Strip HTML tags & control chars so the alert can't render an entire
-  // Rx template if some upstream code accidentally surfaces it as a message.
+  // Quick heuristic — if the message looks like it contains an HTML
+  // template (style/script/html/body/meta/link/table tags), or
+  // CSS at-rules (@page / @media / @keyframes / @font-face), or a
+  // CSS comment block, or a `selector { … }` declaration — treat
+  // it as a CODE LEAK and silently switch to the friendly fallback.
+  // This is the defense that prevents the prior bug from ever
+  // recurring even if some upstream code path stringifies the Rx
+  // template into an error message.
+  const looksLikeCode =
+    /<\s*\/?\s*(style|script|html|head|body|meta|link|table|div|section|span)\b/i.test(m) ||
+    /@(page|media|keyframes|font-face|import|charset)\b/i.test(m) ||
+    /\/\*[\s\S]*?\*\//.test(m) ||
+    (/\{[^{}]{0,400}[:;][^{}]{0,400}\}/.test(m) && /(:|;)/.test(m)) ||
+    (m.length > 600);
+  if (looksLikeCode) return fallback;
+  // Strip residual tags (defensive — should already be gone via the
+  // heuristic above), control chars, and collapse whitespace.
   m = m.replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001F]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!m) return fallback;
-  // Some backends prefix detail with the full HTML on render failure — guard.
   if (m.length > 240) m = m.slice(0, 237) + '…';
   return m;
 }

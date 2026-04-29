@@ -128,10 +128,15 @@ export async function previewSampleRx(settings?: ClinicSettings): Promise<void> 
   } catch (e: any) {
     // Sanitise message — never let the Rx HTML template leak into an alert.
     let raw: any = e?.message ?? e;
-    let msg: string = (typeof raw === 'string' ? raw : String(raw ?? ''))
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    let msg: string = typeof raw === 'string' ? raw : String(raw ?? '');
+    // If the message looks like leaked HTML/CSS, replace with a safe fallback.
+    const looksLikeCode =
+      /<\s*\/?\s*(style|script|html|head|body|meta|table|div|section)\b/i.test(msg) ||
+      /@(page|media|keyframes|font-face)\b/i.test(msg) ||
+      /\/\*[\s\S]*?\*\//.test(msg) ||
+      msg.length > 600;
+    if (looksLikeCode) msg = 'Could not render sample preview';
+    msg = msg.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     if (msg.length > 240) msg = msg.slice(0, 237) + '…';
     if (!msg) msg = 'Could not render sample preview';
     if (Platform.OS === 'web') window.alert(msg);
