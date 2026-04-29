@@ -9959,3 +9959,55 @@ agent_communication_2026_04_29_letterhead_smoke:
         and deleted it during cleanup.
       Test runner: /app/backend_test_letterhead_smoke.py against
       https://urology-pro.preview.emergentagent.com/api.
+
+
+# ──────────────────────────────────────────────────────────────────
+# Iteration: Branding Tab in Dashboard + Partner Dashboard-Access Toggle
+# ──────────────────────────────────────────────────────────────────
+
+  Date: 2026-04-29
+  Author: main agent
+
+  Summary
+    User feedback: (1) Branding panel was not reachable from the
+    Dashboard tab bar, only via the side-shell menu / More tab. (2)
+    Partners need full dashboard access by default and Primary Owner
+    must be able to revoke it per-partner.
+
+  Files changed
+    • /app/frontend/app/dashboard.tsx
+        - Added 'branding' to TabStateType + TAB_VALUES so deep-links
+          (?tab=branding) work too.
+        - New "Branding" tab (icon: color-palette, owner-only) sits
+          between "Notifs" and "Settings" in the tab bar.
+        - Imported BrandingPanel; mounts when active tab === 'branding'.
+    • /app/backend/server.py
+        - GET /api/admin/partners now includes `dashboard_full_access`
+          per row (default-True unless explicitly revoked, mirroring
+          /api/me/tier semantics for the partner role).
+        - NEW endpoint: PATCH /api/admin/partners/{user_id}/dashboard-perm
+          (auth: require_primary_owner_strict). Body
+          `{dashboard_full_access: bool}`. Persists onto users doc +
+          mirrors onto pending team_invites row (no upsert). Audit
+          log entry written.
+    • /app/frontend/src/owners-panel.tsx
+        - Each Partner row in the Partners section now renders the
+          shared dashboardToggle component (visible to primary_owner
+          / super_owner; hidden for pending invites without user_id).
+
+  Backend test (deep_testing_backend_v2)
+    24/24 assertions PASS. Verified:
+      • 401 unauth, 403 partner / doctor caller, 200 primary_owner,
+        400 wrong target role, 404 unknown user_id.
+      • Explicit-false on a partner's record IS respected by /api/me/tier
+        (previously default-true overrode it on owner-tier — now the
+        revoke is honoured).
+
+  Awaiting user verification
+    a) Log in as Primary Owner → Dashboard → see "Branding" tab → tap
+       it → see the new Letterhead UI (image picker, toggle, custom
+       Patient-Education / Need-Help fields).
+    b) Log in as Primary Owner → Dashboard → Permission Manager →
+       Owners & Partners → toggle a Partner's "Full Dashboard Access"
+       → re-log-in as that Partner and confirm Backups / Team /
+       Analytics / Blog / Broadcasts disappear from the tab bar.
