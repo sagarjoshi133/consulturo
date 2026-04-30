@@ -51,11 +51,15 @@ function RootNav() {
         return;
       }
       if (type === 'broadcast_review') {
-        router.push('/dashboard' as any);
+        // replace (not push) to avoid stacking duplicate /dashboard
+        // routes on the native nav stack — stacked duplicates caused
+        // the "dashboard collapses back to home on back-press" bug
+        // reported on v1.0.11.
+        router.replace('/dashboard' as any);
         return;
       }
       if (type === 'new_booking' || type === 'booking_cancelled_by_patient') {
-        router.push('/dashboard' as any);
+        router.replace('/dashboard' as any);
         return;
       }
       if (type === 'booking_confirmed' || type === 'booking_rejected' || type === 'booking_cancelled' || type === 'booking_completed' || type === 'booking_note' || type === 'booking_rescheduled') {

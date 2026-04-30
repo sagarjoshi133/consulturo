@@ -370,7 +370,7 @@ const en = {
     changeEmail:           '← Change email',
     pushOffTitle:          'Notifications turned off',
     pushOffMsg:            'You will no longer receive push notifications. Re-enable any time.',
-    versionFooter:         'ConsultUro v1.0.12 · © Dr. Sagar Joshi',
+    versionFooter:         'ConsultUro v1.0.13 · © Dr. Sagar Joshi',
   },
   records: {
     title: 'My Records',

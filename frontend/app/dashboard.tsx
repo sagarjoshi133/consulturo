@@ -338,11 +338,17 @@ export default function Dashboard() {
 
   // Re-sync when the user navigates back to dashboard with a different
   // ?tab=... param (Expo router can push the same screen with new params).
+  // NOTE: extracting `params?.tab` into a plain variable so the effect
+  // deps reference a stable primitive (string) instead of the `params`
+  // object — on Android APK, `useLocalSearchParams` can return a NEW
+  // params object identity on every render, which previously caused an
+  // infinite re-render loop when used directly as a dep.
+  const paramTab = params?.tab;
   React.useEffect(() => {
-    const v = String(params?.tab || '').toLowerCase();
+    const v = String(paramTab || '').toLowerCase();
     if ((TAB_VALUES as string[]).includes(v) && v !== tab) setTab(v as TabStateType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.tab]);
+  }, [paramTab]);
   const [pendingCount, setPendingCount] = useState(0);
   const [fabOpen, setFabOpen] = useState(false);
   // Bump these counters to signal "open the compose/new-entry form on mount"

@@ -52,8 +52,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Initial load + whenever the active clinic switches, refetch.
+  // Initial load + whenever the active clinic switches, refetch —
+  // BUT skip the transient null phase during auth/tenant boot. On the
+  // APK, `currentClinicId` starts as `null`, then briefly flips to the
+  // user's default clinic after AsyncStorage loads. Firing a fetch on
+  // every one of those intermediate states (while the dashboard is
+  // mounting heavy panels) starves the JS thread and causes visible
+  // UI jitter. Waiting until `currentClinicId` is non-null gives the
+  // dashboard a chance to render its first frame before we start
+  // additional network work.
+  const lastFetchedIdRef = React.useRef<string | null>(null);
   useEffect(() => {
+    if (!currentClinicId) return;
+    if (lastFetchedIdRef.current === currentClinicId) return;
+    lastFetchedIdRef.current = currentClinicId;
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentClinicId]);
