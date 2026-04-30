@@ -564,14 +564,23 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   .rxmark{font-family:'Times New Roman',serif; font-size:15px; font-weight:700;}
 
   /* ---- Footer / 4-col grid: QR · Promise · Blessing · Signature ----
-     Tight 4-pillar band hugged to the bottom of the page (margin-top:auto)
-     just above the dashed footer text. All four cells share the same
-     min-height (82px) and content is vertically centred inside each. */
+     Tight 4-pillar band hugged to the bottom of the page. The .rxSpacer
+     sibling ABOVE absorbs any free vertical space (flex:1), so the
+     footer sits flush with the bottom of the page regardless of how
+     short the prescription body is — works reliably in both screen
+     preview and print/PDF export. */
+  .rxSpacer{
+    flex: 1 1 auto;
+    /* No visible content — pure layout spacer. A min-height of 0 would
+       be collapsed to 0 by the flex algorithm; we want it to consume
+       whatever free space is available, so leave height unset and
+       rely on flex-grow:1. */
+    min-height: 0;
+  }
   .footwrap{
     display:grid;
     grid-template-columns: repeat(4, 1fr);
     align-items:stretch;
-    margin-top:auto;
     padding-top:6px;
     gap:6px;
     page-break-inside: avoid;
@@ -813,6 +822,14 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
       ${rightLower ? `<div class="lower">${rightLower}</div>` : ''}
     </div>
   </div>` : ''}
+
+  <!-- Explicit flex-spacer: guarantees the .footwrap sits flush with the
+       bottom of the page in print mode, even when the prescription body
+       is sparse. Earlier we relied on margin-top:auto on .footwrap,
+       which is unreliable under WebKit/Chromium print pagination —
+       min-height + flex-column does not always propagate free-space to
+       margin-auto children. This spacer absorbs the free space itself. -->
+  <div class="rxSpacer"></div>
 
   <div class="footwrap">
     ${qrDataUrl ? `

@@ -336,7 +336,9 @@ export default function NewPrescription() {
   const validateForFinal = (): string | null => {
     if (!patientName.trim()) return 'Patient name is required.';
     if (!complaints.trim()) return 'Chief complaints are required.';
-    if (meds.filter((m) => m.name).length === 0) return 'At least one medicine is required for a final prescription.';
+    // Medicines are now OPTIONAL: some prescriptions are purely
+    // advisory (admission recommended, reassurance, lifestyle guidance,
+    // investigation-only). Per Dr. Joshi's request — relax this check.
     return null;
   };
 

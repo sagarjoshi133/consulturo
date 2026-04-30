@@ -70,8 +70,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data);
       // Fire-and-forget push registration once the user is authenticated
       registerForPushNotifications().catch(() => {});
-    } catch {
-      setUser(null);
+    } catch (e: any) {
+      // DIFFERENTIATE network errors from authentication errors:
+      //  - Explicit 401/403: the token is invalid/expired → clear the
+      //    user so they're sent to Sign In.
+      //  - Anything else (ECONNABORTED, no response, DNS failure, 5xx,
+      //    timeout): the SERVER never said "you're logged out" — this is
+      //    a transient connectivity blip. Keep the current `user` intact
+      //    so a flaky cellular/Wi-Fi hop doesn't log the user out.
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) {
+        await AsyncStorage.removeItem('session_token').catch(() => {});
+        setUser(null);
+      }
+      // On network errors, intentionally DO NOT touch `user` — the
+      // previous value (null on cold start, or the logged-in user on
+      // warm refresh) stays as-is. The next refresh will retry.
     } finally {
       setLoading(false);
     }
