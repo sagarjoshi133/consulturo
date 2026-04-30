@@ -409,7 +409,7 @@ export default function Dashboard() {
   });
   const userCardMargin = scrollY.interpolate({
     inputRange: [0, COLLAPSE_RANGE],
-    outputRange: [10, 0],
+    outputRange: [6, 0],
     extrapolate: 'clamp',
   });
 
@@ -2214,8 +2214,8 @@ function EmptyStateLocal({ icon, title, sub }: { icon: any; title: string; sub: 
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 16, paddingBottom: 12, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
-  heroDesktop: { paddingHorizontal: 24, paddingBottom: 6, paddingTop: 6, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  hero: { paddingHorizontal: 16, paddingBottom: 4, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
+  heroDesktop: { paddingHorizontal: 24, paddingBottom: 4, paddingTop: 6, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
@@ -2229,7 +2229,7 @@ const styles = StyleSheet.create({
   fabMain: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10 },
   fabAction: { position: 'absolute', right: 20, bottom: 84, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, backgroundColor: COLORS.primary, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
   fabActionText: { color: '#fff', ...FONTS.bodyMedium, fontSize: 13 },
-  userCard: { flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 16, padding: 10 },
+  userCard: { flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 16, padding: 10 },
   heroPhoto: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff' },
   heroName: { ...FONTS.h4, color: '#fff', fontSize: 16 },
   heroEmail: { ...FONTS.body, color: '#E0F7FA', fontSize: 12 },
@@ -2256,11 +2256,11 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   fullAccessText: { ...FONTS.label, color: '#5C3D00', fontSize: 10, letterSpacing: 0.4 },
-  tabBarContainer: { backgroundColor: COLORS.bg, paddingTop: 8, paddingBottom: 4 },
-  tabBarContainerDesktop: { paddingTop: 6, paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  tabBarWrap: { maxHeight: 56 },
+  tabBarContainer: { backgroundColor: COLORS.bg, paddingTop: 4, paddingBottom: 2 },
+  tabBarContainerDesktop: { paddingTop: 4, paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tabBarWrap: { maxHeight: 48 },
   tabBarScroll: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
-  tabBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 11, paddingHorizontal: 16, borderRadius: RADIUS.pill, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2, minWidth: 90 },
+  tabBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS.pill, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2, minWidth: 90 },
   tabBtnDesktop: { paddingVertical: 7, paddingHorizontal: 12, minWidth: 0, gap: 5 },
   tabBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, shadowOpacity: 0.22, shadowRadius: 6 },
   tabText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 14 },
