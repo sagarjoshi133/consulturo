@@ -418,19 +418,21 @@ export default function Home() {
             style={styles.ctaCard}
           >
             {/* Compact single-row CTA: icon bubble on the left, title +
-                small one-line sub in the middle, pill CTA on the right.
-                ~⅓ the vertical space of the previous 120px card while
-                still feeling premium (gradient, glassy icon, tight pill). */}
+                small one-line sub in the middle, short pill CTA on the
+                right. Sizes trimmed so the title never truncates on a
+                standard 360–430px mobile width. */}
             <View style={styles.ctaIconBubble}>
-              <MaterialCommunityIcons name="calendar-heart" size={22} color="#fff" />
+              <MaterialCommunityIcons name="calendar-heart" size={18} color="#fff" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.ctaTitle} numberOfLines={1}>{t('home.bookConsultation')}</Text>
+              <Text style={styles.ctaTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                {t('home.bookConsultation')}
+              </Text>
               <Text style={styles.ctaSub} numberOfLines={1}>{t('home.bookCtaSub')}</Text>
             </View>
             <View style={styles.ctaBtn}>
               <Text style={[styles.ctaBtnText, { color: themeColors.primary }]}>{t('home.bookNow')}</Text>
-              <Ionicons name="arrow-forward" size={14} color={themeColors.primary} />
+              <Ionicons name="arrow-forward" size={13} color={themeColors.primary} />
             </View>
           </LinearGradient>
         </TouchableOpacity>
