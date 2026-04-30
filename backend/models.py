@@ -157,7 +157,7 @@ class ReferrerBody(BaseModel):
     notes: Optional[str] = ""
 
 class BookingStatusBody(BaseModel):
-    status: Optional[str] = None  # confirmed | completed | cancelled | rejected
+    status: Optional[str] = None  # confirmed | completed | cancelled | rejected | missed
     booking_date: Optional[str] = None
     booking_time: Optional[str] = None
     note: Optional[str] = ""

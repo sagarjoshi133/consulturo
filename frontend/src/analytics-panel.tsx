@@ -21,7 +21,15 @@ type Dashboard = {
   monthly_prescriptions: { month: string; count: number }[];
   daily_bookings: { date: string; count: number }[];
   mode_breakdown: { online: number; offline: number };
-  status_breakdown: { requested: number; confirmed: number; cancelled: number };
+  status_breakdown: {
+    requested: number;
+    confirmed: number;
+    rescheduled?: number;
+    completed?: number;
+    cancelled: number;
+    rejected?: number;
+    missed?: number;
+  };
   top_diagnoses: { label: string; count: number }[];
   top_surgeries: { label: string; count: number }[];
   top_referrers: { label: string; count: number }[];
@@ -208,6 +216,39 @@ export function AnalyticsPanel() {
           </View>
         </View>
       </View>
+
+      {/* ── Booking status breakdown (all 7 categories) ─────────────────
+           Shows the complete lifecycle of every booking: Pending →
+           Confirmed (optionally Rescheduled) → Completed, plus the
+           drop-off paths Cancelled / Rejected / Missed. Numbers come
+           from the analytics endpoint; "rescheduled" is a flag on
+           confirmed bookings so it's aggregated separately. */}
+      {(() => {
+        const sb2 = data.status_breakdown;
+        const cats: { key: string; label: string; count: number; color: string }[] = [
+          { key: 'requested',   label: 'Pending',      count: sb2.requested || 0,      color: '#F59E0B' },
+          { key: 'confirmed',   label: 'Confirmed',    count: sb2.confirmed || 0,      color: '#10B981' },
+          { key: 'rescheduled', label: 'Rescheduled',  count: sb2.rescheduled || 0,    color: '#3B82F6' },
+          { key: 'completed',   label: 'Completed',    count: sb2.completed || 0,      color: '#0E7C8B' },
+          { key: 'missed',      label: 'Missed',       count: sb2.missed || 0,         color: '#C0392B' },
+          { key: 'cancelled',   label: 'Cancelled',    count: sb2.cancelled || 0,      color: '#EF4444' },
+          { key: 'rejected',    label: 'Rejected',     count: sb2.rejected || 0,       color: '#7F1D1D' },
+        ];
+        const total = Math.max(1, cats.reduce((n, c) => n + c.count, 0));
+        return (
+          <View style={{ marginTop: 8 }}>
+            <Text style={styles.hdr}>Booking status breakdown</Text>
+            <View style={styles.stackBar}>
+              {cats.map((c) => (c.count > 0 ? <Seg key={c.key} flex={c.count / total} color={c.color} /> : null))}
+            </View>
+            <View style={[styles.legend, { flexWrap: 'wrap' }]}>
+              {cats.map((c) => (
+                <Legend key={c.key} dot={c.color} label={`${c.label} · ${c.count}`} />
+              ))}
+            </View>
+          </View>
+        );
+      })()}
 
       {/* Top lists — 3-up grid on desktop (wide screen), stacked on mobile */}
       <View style={isWebDesktop ? styles.topGrid : undefined}>

@@ -52,6 +52,7 @@ import {
 import { MedicineAutocomplete, CatalogMedicine } from '../../src/medicine-autocomplete';
 import { haptics } from '../../src/haptics';
 import { useAuth } from '../../src/auth';
+import { clearRxDraft, loadRxDraft, scheduleSaveRxDraft } from '../../src/rx-draft';
 
 type Med = {
   name: string;
@@ -267,6 +268,82 @@ export default function NewPrescription() {
     setMeds(copy);
   };
 
+  // ── Offline draft persistence ─────────────────────────────────────
+  // Saves the entire form snapshot to AsyncStorage (keyed per booking)
+  // so a doctor on a flaky/offline connection doesn't lose work. Auto-
+  // restores on next mount if a draft exists. Cleared once the rx is
+  // successfully saved to the server.
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
+  // On mount — check for a local draft (only in create-from-booking
+  // mode, not edit-mode which already has server state).
+  useEffect(() => {
+    if (!isFromBooking || !bookingId) return;
+    let cancelled = false;
+    (async () => {
+      const d = await loadRxDraft(bookingId);
+      if (cancelled || !d) return;
+      // Small delay so the booking pre-fill effect finishes first; our
+      // draft values override pre-fill where present.
+      setTimeout(() => {
+        if (cancelled) return;
+        if (d.patientName) setPatientName(d.patientName);
+        if (d.age) setAge(d.age);
+        if (d.gender) setGender(d.gender);
+        if (d.phone) setPhone(d.phone);
+        if (d.address) setAddress(d.address);
+        if (d.regNo) setRegNo(d.regNo);
+        if (typeof d.regNoAuto === 'boolean') setRegNoAuto(d.regNoAuto);
+        if (d.refDr) setRefDr(d.refDr);
+        if (d.visitDate) setVisitDate(d.visitDate);
+        if (d.pulse) setPulse(d.pulse);
+        if (d.bp) setBp(d.bp);
+        if (d.complaints) setComplaints(d.complaints);
+        if (d.ipss) setIpss(d.ipss);
+        if (d.exPa) setExPa(d.exPa);
+        if (d.exGen) setExGen(d.exGen);
+        if (d.exEum) setExEum(d.exEum);
+        if (d.exTestis) setExTestis(d.exTestis);
+        if (d.exDre) setExDre(d.exDre);
+        if (d.invBlood) setInvBlood(d.invBlood);
+        if (d.invPsa) setInvPsa(d.invPsa);
+        if (d.invUsg) setInvUsg(d.invUsg);
+        if (d.invUroflow) setInvUroflow(d.invUroflow);
+        if (d.invCt) setInvCt(d.invCt);
+        if (d.invMri) setInvMri(d.invMri);
+        if (d.invPet) setInvPet(d.invPet);
+        if (d.diagnosis) setDiagnosis(d.diagnosis);
+        if (Array.isArray(d.meds) && d.meds.length > 0) setMeds(d.meds);
+        if (d.investigationsAdvised) setInvestigationsAdvised(d.investigationsAdvised);
+        if (d.advice) setAdvice(d.advice);
+        if (d.followUp) setFollowUp(d.followUp);
+        setDraftRestoredAt(d._savedAt || null);
+      }, 350);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFromBooking, bookingId]);
+
+  // Auto-save on EVERY meaningful change (debounced inside helper).
+  // Note: we key the draft per booking — if there's no bookingId
+  // (free-form Rx), we don't persist.
+  useEffect(() => {
+    if (!bookingId || isEdit) return;
+    scheduleSaveRxDraft(bookingId, {
+      patientName, age, gender, phone, address, regNo, regNoAuto, refDr, visitDate,
+      pulse, bp, complaints, ipss,
+      exPa, exGen, exEum, exTestis, exDre,
+      invBlood, invPsa, invUsg, invUroflow, invCt, invMri, invPet,
+      diagnosis, meds, investigationsAdvised, advice, followUp,
+    });
+  }, [
+    bookingId, isEdit,
+    patientName, age, gender, phone, address, regNo, regNoAuto, refDr, visitDate,
+    pulse, bp, complaints, ipss,
+    exPa, exGen, exEum, exTestis, exDre,
+    invBlood, invPsa, invUsg, invUroflow, invCt, invMri, invPet,
+    diagnosis, meds, investigationsAdvised, advice, followUp,
+  ]);
+
   const applyCatalogMedicine = (i: number, m: CatalogMedicine) => {
     const cur = meds[i];
     const next: Med = {
@@ -362,6 +439,8 @@ export default function NewPrescription() {
       const savedRegNo = data?.registration_no || regNo;
       if (savedRegNo && savedRegNo !== regNo) setRegNo(savedRegNo);
       if (data?.status) setStatus(data.status);
+      // Offline draft is now obsolete — the server has a copy.
+      if (bookingId) clearRxDraft(bookingId).catch(() => {});
       haptics.success();
       return data;
     } catch (e: any) {
@@ -442,6 +521,25 @@ export default function NewPrescription() {
             Draft started by <Text style={{ fontWeight: '700' }}>{createdByName}</Text>
             {isPrescriber ? ' — review & complete to issue Rx.' : ' — you can keep editing.'}
           </Text>
+        </View>
+      )}
+
+      {/* Offline draft restored banner — shown when the doctor resumes
+          a consultation that was partially typed while offline or from
+          a prior app session. */}
+      {!!draftRestoredAt && (
+        <View style={[styles.draftBanner, { borderColor: '#10B981', backgroundColor: '#10B98115' }]}>
+          <Ionicons name="cloud-offline-outline" size={16} color="#10B981" />
+          <Text style={[styles.draftBannerText, { color: '#0A7E5A' }]}>
+            Offline draft restored (auto-saved {new Date(draftRestoredAt).toLocaleString()}). Save to finalize.
+          </Text>
+          <TouchableOpacity
+            onPress={() => { if (bookingId) clearRxDraft(bookingId); setDraftRestoredAt(null); }}
+            style={{ marginLeft: 8 }}
+            accessibilityLabel="Dismiss draft notice"
+          >
+            <Ionicons name="close" size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
 

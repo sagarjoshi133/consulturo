@@ -1,237 +1,328 @@
-"""Backend test for the unified inbox endpoints (review request).
+"""Backend tests — Missed-flip self-healing, Primary-Owner Hard-Delete,
+Analytics status_breakdown extension, and PATCH status="missed".
 
-Covers:
-  - GET  /api/inbox/all
-  - POST /api/inbox/all/read
-  - Regression: /api/notifications, /api/broadcasts/inbox, /api/auth/me
+Targets the public ingress URL; uses the pre-seeded sessions documented
+in /app/memory/test_credentials.md.
+
+End-state: all test bookings/notifications are cleaned up.
 """
-from __future__ import annotations
 import os
-import random
 import sys
+import json
+import uuid
 import time
+import subprocess
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-BASE = "http://localhost:8001"
-OWNER_TOKEN = "test_session_1776770314741"
-DOCTOR_TOKEN = "test_doc_1776771431524"
-IST = timezone(timedelta(hours=5, minutes=30))
+BASE = "https://urology-pro.preview.emergentagent.com/api"
+OWNER_TOKEN = "test_session_1776770314741"   # sagar.joshi133@gmail.com (primary_owner)
+DOCTOR_TOKEN = "test_doc_1776771431524"      # dr.test@example.com (doctor)
+CLINIC_ID = "clinic_a97b903f2fb2"
+
+OWNER_HDR = {
+    "Authorization": f"Bearer {OWNER_TOKEN}",
+    "X-Clinic-Id": CLINIC_ID,
+    "Content-Type": "application/json",
+}
+DOCTOR_HDR = {
+    "Authorization": f"Bearer {DOCTOR_TOKEN}",
+    "X-Clinic-Id": CLINIC_ID,
+    "Content-Type": "application/json",
+}
+
+PASS = 0
+FAIL = 0
+FAILS = []
 
 
-def hdr(tok: Optional[str]) -> Dict[str, str]:
-    return {"Authorization": f"Bearer {tok}"} if tok else {}
-
-
-passes: List[str] = []
-fails: List[str] = []
-
-
-def check(cond: bool, label: str, extra: str = "") -> bool:
+def check(cond, label):
+    global PASS, FAIL
     if cond:
-        passes.append(label); print(f"  PASS  {label}")
+        PASS += 1
+        print(f"  ✓ {label}")
     else:
-        msg = label + (f" — {extra}" if extra else "")
-        fails.append(msg); print(f"  FAIL  {msg}")
-    return cond
+        FAIL += 1
+        FAILS.append(label)
+        print(f"  ✗ {label}")
 
 
-def section(t: str) -> None:
-    print(); print("=" * 78); print(t); print("=" * 78)
+def section(name):
+    print("\n" + "=" * 70)
+    print(name)
+    print("=" * 70)
 
 
-def get_first_future_slot() -> Tuple[str, str]:
-    for delta in range(2, 30):
-        d = (datetime.now(IST) + timedelta(days=delta)).strftime("%Y-%m-%d")
-        r = requests.get(f"{BASE}/api/availability/slots",
-                         params={"date": d, "mode": "in-person"}, timeout=10)
-        if r.status_code != 200:
-            continue
-        body = r.json()
-        slots = body.get("slots") or []
-        booked = set(body.get("booked_slots") or [])
-        for s in slots:
-            if s not in booked:
-                return d, s
-    raise RuntimeError("No future slot found in next 30 days")
+def mongo(js: str) -> str:
+    full = f'db = db.getSiblingDB("consulturo"); {js}'
+    r = subprocess.run(
+        ["mongosh", "--quiet", "--eval", full],
+        capture_output=True, text=True, timeout=30,
+    )
+    return (r.stdout or "") + (r.stderr or "")
 
 
-def main() -> int:
-    section("0. Pre-flight — owner /api/auth/me")
-    r = requests.get(f"{BASE}/api/auth/me", headers=hdr(OWNER_TOKEN), timeout=10)
-    check(r.status_code == 200, "owner /api/auth/me 200")
-    me_owner = r.json() if r.status_code == 200 else {}
-    check(me_owner.get("role") == "owner", "owner role")
+# ============================================================
+# A. MISSED-FLIP SELF-HEALING
+# ============================================================
+section("A. Missed-flip self-healing")
 
-    section("1. GET /api/inbox/all without auth → 401")
-    r = requests.get(f"{BASE}/api/inbox/all", timeout=10)
-    check(r.status_code == 401, "GET /api/inbox/all no auth → 401",
-          extra=f"got {r.status_code}: {r.text[:200]}")
+ist = timezone(timedelta(hours=5, minutes=30))
+now_ist = datetime.now(ist)
+two_days_ago = (now_ist - timedelta(days=2)).date().isoformat()
+today_ist = now_ist.date().isoformat()
+yesterday_ist = (now_ist - timedelta(days=1)).date().isoformat()
 
-    section("1b. POST /api/inbox/all/read without auth → 401")
-    r = requests.post(f"{BASE}/api/inbox/all/read", timeout=10)
-    check(r.status_code == 401, "POST /api/inbox/all/read no auth → 401",
-          extra=f"got {r.status_code}: {r.text[:200]}")
+bk_test_missed = f"bk_testmiss_{uuid.uuid4().hex[:8]}"
+bk_test_today = f"bk_testtoday_{uuid.uuid4().hex[:8]}"
+bk_test_yest = f"bk_testyest_{uuid.uuid4().hex[:8]}"
 
-    section("2. Trigger notification — POST /api/bookings (anonymous)")
-    bdate, btime = get_first_future_slot()
-    print(f"  using slot {bdate} {btime}")
-    rand_phone = "9" + "".join(str(random.randint(0, 9)) for _ in range(9))
-    payload = {
-        "patient_name": "Inbox Test Patient",
-        "patient_phone": rand_phone,
-        "patient_age": 42,
-        "patient_gender": "Male",
-        "reason": "Routine check (inbox test)",
-        "booking_date": bdate,
-        "booking_time": btime,
-        "mode": "in-person",
+# Cleanup any leftover from prior runs first.
+mongo("""db.bookings.deleteMany({booking_id: {$regex: "^bk_(testmiss|testtoday|testyest|qatest)_"}});""")
+mongo("""db.notifications.deleteMany({kind: "booking_missed", "data.booking_id": {$regex: "^bk_(testmiss|testtoday|testyest|qatest)_"}});""")
+
+mongo(f"""db.bookings.insertOne({{
+  booking_id: "{bk_test_missed}",
+  user_id: "user_4775ed40276e",
+  clinic_id: "{CLINIC_ID}",
+  patient_name: "QA Missed Test",
+  patient_phone: "9999000001",
+  country_code: "+91",
+  registration_no: "QA000001",
+  reason: "QA self-heal sweep",
+  booking_date: "{two_days_ago}",
+  booking_time: "10:00",
+  original_date: "{two_days_ago}",
+  original_time: "10:00",
+  mode: "offline",
+  status: "confirmed",
+  created_at: new Date(Date.now() - 3*24*3600*1000)
+}});""")
+
+mongo(f"""db.bookings.insertOne({{
+  booking_id: "{bk_test_today}",
+  user_id: "user_4775ed40276e",
+  clinic_id: "{CLINIC_ID}",
+  patient_name: "QA Today Test",
+  patient_phone: "9999000002",
+  country_code: "+91",
+  registration_no: "QA000002",
+  reason: "QA today not flip",
+  booking_date: "{today_ist}",
+  booking_time: "23:30",
+  original_date: "{today_ist}",
+  original_time: "23:30",
+  mode: "offline",
+  status: "confirmed",
+  created_at: new Date()
+}});""")
+
+mongo(f"""db.bookings.insertOne({{
+  booking_id: "{bk_test_yest}",
+  user_id: "user_4775ed40276e",
+  clinic_id: "{CLINIC_ID}",
+  patient_name: "QA Yesterday Edge",
+  patient_phone: "9999000003",
+  country_code: "+91",
+  registration_no: "QA000003",
+  reason: "QA edge yesterday late",
+  booking_date: "{yesterday_ist}",
+  booking_time: "23:30",
+  original_date: "{yesterday_ist}",
+  original_time: "23:30",
+  mode: "offline",
+  status: "confirmed",
+  created_at: new Date(Date.now() - 1*24*3600*1000)
+}});""")
+
+# Trigger sweep via GET /api/bookings/all
+r = requests.get(f"{BASE}/bookings/all", headers=OWNER_HDR, timeout=30)
+check(r.status_code == 200, f"GET /api/bookings/all 200 (got {r.status_code})")
+bookings = r.json() if r.status_code == 200 else []
+check(isinstance(bookings, list), "GET /api/bookings/all returns list")
+
+bk_map = {b.get("booking_id"): b for b in bookings}
+
+b1 = bk_map.get(bk_test_missed)
+check(b1 is not None, f"{bk_test_missed} appears in /bookings/all")
+if b1:
+    check(b1.get("status") == "missed", f"{bk_test_missed} status flipped to 'missed' (got {b1.get('status')})")
+    check(b1.get("missed_auto") is True, f"{bk_test_missed} missed_auto=true")
+    check(b1.get("missed_at") is not None, f"{bk_test_missed} has missed_at timestamp")
+
+b2 = bk_map.get(bk_test_today)
+check(b2 is not None, f"{bk_test_today} appears in /bookings/all")
+if b2:
+    check(b2.get("status") == "confirmed", f"{bk_test_today} (today) NOT flipped (status={b2.get('status')})")
+
+b3 = bk_map.get(bk_test_yest)
+check(b3 is not None, f"{bk_test_yest} appears in /bookings/all (no crash)")
+if b3:
+    print(f"     [edge] {bk_test_yest} status={b3.get('status')}, missed_auto={b3.get('missed_auto')}")
+
+notif_check = mongo(f"""print(db.notifications.countDocuments({{kind: "booking_missed", "data.booking_id": "{bk_test_missed}"}}));""")
+try:
+    notif_count = int(notif_check.strip().split("\n")[-1])
+except Exception:
+    notif_count = 0
+check(notif_count >= 1, f"notification kind=booking_missed written for {bk_test_missed} (count={notif_count})")
+
+r2 = requests.get(f"{BASE}/bookings/all", headers=OWNER_HDR, timeout=30)
+check(r2.status_code == 200, "Idempotent re-sweep 200")
+notif_check2 = mongo(f"""print(db.notifications.countDocuments({{kind: "booking_missed", "data.booking_id": "{bk_test_missed}"}}));""")
+try:
+    notif_count2 = int(notif_check2.strip().split("\n")[-1])
+except Exception:
+    notif_count2 = 0
+check(notif_count2 == notif_count, f"No duplicate notification on re-sweep ({notif_count2} == {notif_count})")
+
+
+# ============================================================
+# B. PRIMARY-OWNER HARD-DELETE
+# ============================================================
+section("B. Primary-Owner Hard-Delete")
+
+future_date = (now_ist + timedelta(days=7)).date().isoformat()
+payload = {
+    "patient_name": "QA Delete Test Patient",
+    "patient_phone": "9999000099",
+    "country_code": "+91",
+    "patient_age": 55,
+    "patient_gender": "Male",
+    "reason": "QA delete-test booking",
+    "booking_date": future_date,
+    "booking_time": "11:00",
+    "mode": "offline",
+}
+r = requests.post(f"{BASE}/bookings", headers=OWNER_HDR, json=payload, timeout=30)
+check(r.status_code == 200, f"POST /api/bookings 200 (got {r.status_code}: {r.text[:200]})")
+created = r.json() if r.status_code == 200 else {}
+new_bid = created.get("booking_id")
+check(bool(new_bid), f"new booking has booking_id ({new_bid})")
+
+if new_bid:
+    r = requests.delete(f"{BASE}/bookings/{new_bid}", headers=DOCTOR_HDR, timeout=20)
+    check(r.status_code == 403, f"DELETE as doctor → 403 (got {r.status_code})")
+
+if new_bid:
+    r = requests.delete(f"{BASE}/bookings/{new_bid}", headers=OWNER_HDR, timeout=20)
+    check(r.status_code == 200, f"DELETE as owner → 200 (got {r.status_code}: {r.text[:200]})")
+    body = r.json() if r.status_code == 200 else {}
+    check(body.get("ok") is True, f"DELETE response has ok:true (body={body})")
+
+    r2 = requests.get(f"{BASE}/bookings/{new_bid}", headers=OWNER_HDR, timeout=20)
+    check(r2.status_code == 404, f"GET deleted booking → 404 (got {r2.status_code})")
+
+r = requests.delete(f"{BASE}/bookings/bk_doesnotexist_xyz", headers=OWNER_HDR, timeout=20)
+check(r.status_code == 404, f"DELETE non-existent id → 404 (got {r.status_code})")
+
+
+# ============================================================
+# C. ANALYTICS status_breakdown extended
+# ============================================================
+section("C. Analytics status_breakdown shape")
+
+r = requests.get(f"{BASE}/analytics/dashboard", headers=OWNER_HDR, timeout=30)
+check(r.status_code == 200, f"GET /api/analytics/dashboard 200 (got {r.status_code})")
+data = r.json() if r.status_code == 200 else {}
+sb = data.get("status_breakdown") or {}
+
+required_keys = {"requested", "confirmed", "rescheduled", "completed", "cancelled", "rejected", "missed"}
+present = set(sb.keys())
+missing = required_keys - present
+check(not missing, f"status_breakdown contains all 7 keys (missing={missing})")
+for k in required_keys:
+    check(isinstance(sb.get(k), int), f"status_breakdown.{k} is int (got {type(sb.get(k)).__name__}={sb.get(k)})")
+
+missed_before = sb.get("missed", 0)
+print(f"     [snapshot] status_breakdown = {sb}")
+
+future_date2 = (now_ist + timedelta(days=8)).date().isoformat()
+payload2 = {
+    "patient_name": "QA Missed PATCH Patient",
+    "patient_phone": "9999000088",
+    "country_code": "+91",
+    "reason": "QA PATCH missed",
+    "booking_date": future_date2,
+    "booking_time": "12:00",
+    "mode": "offline",
+}
+r = requests.post(f"{BASE}/bookings", headers=OWNER_HDR, json=payload2, timeout=30)
+check(r.status_code == 200, f"POST /api/bookings (for PATCH test) 200 (got {r.status_code})")
+patch_bid = (r.json() or {}).get("booking_id")
+check(bool(patch_bid), f"PATCH-target booking_id ({patch_bid})")
+
+if patch_bid:
+    r = requests.patch(f"{BASE}/bookings/{patch_bid}", headers=OWNER_HDR,
+                       json={"status": "confirmed"}, timeout=20)
+    check(r.status_code == 200, f"PATCH status→confirmed 200 (got {r.status_code})")
+
+    r = requests.patch(f"{BASE}/bookings/{patch_bid}", headers=OWNER_HDR,
+                       json={"status": "missed"}, timeout=20)
+    check(r.status_code == 200, f"PATCH status→missed 200 (got {r.status_code}: {r.text[:200]})")
+
+    r = requests.get(f"{BASE}/analytics/dashboard", headers=OWNER_HDR, timeout=30)
+    sb2 = (r.json() or {}).get("status_breakdown") or {}
+    missed_after = sb2.get("missed", 0)
+    check(missed_after >= missed_before + 1,
+          f"analytics missed count increased ({missed_before} → {missed_after})")
+
+    r = requests.delete(f"{BASE}/bookings/{patch_bid}", headers=OWNER_HDR, timeout=20)
+    check(r.status_code == 200, f"cleanup DELETE PATCH-target → 200 (got {r.status_code})")
+
+
+# ============================================================
+# D. SMOKE — other PATCH status values still accepted
+# ============================================================
+section("D. PATCH status regression smoke")
+
+future_date3 = (now_ist + timedelta(days=9)).date().isoformat()
+smoke_bookings = []
+
+for idx, status in enumerate(["confirmed", "completed", "cancelled", "rejected"]):
+    p = {
+        "patient_name": f"QA Smoke {status}",
+        "patient_phone": f"99990001{idx:02d}",
+        "country_code": "+91",
+        "reason": f"QA status={status}",
+        "booking_date": future_date3,
+        "booking_time": f"{14 + idx:02d}:00",
+        "mode": "offline",
     }
-    r = requests.post(f"{BASE}/api/bookings", json=payload, timeout=15)
-    booking_id: Optional[str] = None
-    if r.status_code == 200:
-        booking_id = r.json().get("booking_id")
-        check(bool(booking_id), f"booking created ({booking_id})")
-    else:
-        check(False, "booking created",
-              extra=f"status={r.status_code} body={r.text[:300]}")
+    r = requests.post(f"{BASE}/bookings", headers=OWNER_HDR, json=p, timeout=30)
+    check(r.status_code == 200, f"POST smoke booking ({status}) 200 (got {r.status_code}: {r.text[:160]})")
+    bid = (r.json() or {}).get("booking_id")
+    if not bid:
+        continue
+    smoke_bookings.append(bid)
 
-    time.sleep(0.6)
+    r = requests.patch(f"{BASE}/bookings/{bid}", headers=OWNER_HDR,
+                       json={"status": status}, timeout=20)
+    check(r.status_code == 200, f"PATCH status→{status} 200 (got {r.status_code}: {r.text[:160]})")
 
-    section("3. GET /api/inbox/all (owner)")
-    r = requests.get(f"{BASE}/api/inbox/all", headers=hdr(OWNER_TOKEN), timeout=15)
-    check(r.status_code == 200, "GET /api/inbox/all 200",
-          extra=f"got {r.status_code}: {r.text[:200]}")
-    body: Dict[str, Any] = r.json() if r.status_code == 200 else {}
-    items = body.get("items"); unread = body.get("unread")
-    check(isinstance(items, list), "items is list")
-    check(isinstance(unread, int), f"unread is int (={unread!r})")
-    items = items or []
-    print(f"  feed length = {len(items)}, unread = {unread}")
-
-    required_keys = {"id", "title", "body", "kind", "source_type",
-                     "read", "created_at"}
-    valid_source = {"user", "broadcast", "push", "other"}
-    bad_schema, bad_source = [], []
-    for it in items:
-        missing = required_keys - set(it.keys())
-        if missing:
-            bad_schema.append((it.get("id"), missing))
-        if it.get("source_type") not in valid_source:
-            bad_source.append((it.get("id"), it.get("source_type")))
-    check(not bad_schema, "every item has all required keys",
-          extra=str(bad_schema[:3]))
-    check(not bad_source,
-          "every item.source_type in {user|broadcast|push|other}",
-          extra=str(bad_source[:3]))
-
-    def ts(v):
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
-            except Exception:
-                return 0
-        return 0
-    ts_list = [ts(it.get("created_at")) for it in items]
-    sorted_ok = all(a >= b for a, b in zip(ts_list, ts_list[1:]))
-    check(sorted_ok, "items sorted newest-first by created_at")
-
-    if booking_id:
-        booking_item = None
-        for it in items:
-            d = it.get("data") or {}
-            if d.get("booking_id") == booking_id:
-                booking_item = it; break
-        check(booking_item is not None,
-              "newly-created booking notification visible in feed")
-        if booking_item:
-            check(booking_item.get("kind") == "booking",
-                  f"booking item kind=='booking' (got {booking_item.get('kind')!r})")
-            check(booking_item.get("source_type") == "user",
-                  f"booking item source_type=='user' (got {booking_item.get('source_type')!r})")
-            check(booking_item.get("read") is False,
-                  "booking item read==False")
-            print(f"  booking item title: {booking_item.get('title')!r}")
-
-    if booking_id:
-        check(isinstance(unread, int) and unread >= 1,
-              f"unread >= 1 after booking notif (got {unread})")
-
-    section("4. POST /api/inbox/all/read (owner)")
-    r = requests.post(f"{BASE}/api/inbox/all/read", headers=hdr(OWNER_TOKEN), timeout=15)
-    check(r.status_code == 200, "POST /api/inbox/all/read 200",
-          extra=f"got {r.status_code}: {r.text[:200]}")
-    rb: Dict[str, Any] = r.json() if r.status_code == 200 else {}
-    check(rb.get("ok") is True, f"response.ok==True (got {rb.get('ok')!r})")
-    check(isinstance(rb.get("marked"), int),
-          f"response.marked is int (got {rb.get('marked')!r})")
-    print(f"  marked={rb.get('marked')}")
-
-    section("5. GET /api/inbox/all again — unread must be 0")
-    r = requests.get(f"{BASE}/api/inbox/all", headers=hdr(OWNER_TOKEN), timeout=15)
-    check(r.status_code == 200, "second GET /api/inbox/all 200")
-    body2 = r.json() if r.status_code == 200 else {}
-    check(body2.get("unread") == 0,
-          f"unread==0 after mark-read (got {body2.get('unread')!r})")
-    items2 = body2.get("items") or []
-    all_read = all(it.get("read") is True for it in items2)
-    check(all_read, "every item.read==True after mark-read")
-
-    section("6. Regression — GET /api/notifications (legacy)")
-    r = requests.get(f"{BASE}/api/notifications", headers=hdr(OWNER_TOKEN), timeout=10)
-    check(r.status_code == 200, "GET /api/notifications 200")
-    nb = r.json() if r.status_code == 200 else {}
-    check(isinstance(nb.get("items"), list),
-          "/api/notifications has items[] (legacy shape)")
-    check("unread_count" in nb,
-          "/api/notifications has unread_count (legacy key, not 'unread')")
-    print(f"  legacy items={len(nb.get('items') or [])} unread_count={nb.get('unread_count')}")
-
-    section("7. Regression — GET /api/broadcasts/inbox (legacy)")
-    r = requests.get(f"{BASE}/api/broadcasts/inbox", headers=hdr(OWNER_TOKEN), timeout=10)
-    check(r.status_code == 200, "GET /api/broadcasts/inbox 200")
-    bb = r.json() if r.status_code == 200 else {}
-    check(isinstance(bb.get("items"), list),
-          "/api/broadcasts/inbox has items[]")
-    check("unread" in bb,
-          "/api/broadcasts/inbox has 'unread' (legacy shape)")
-
-    section("8. Regression — GET /api/auth/me has 'phone' field")
-    r = requests.get(f"{BASE}/api/auth/me", headers=hdr(OWNER_TOKEN), timeout=10)
-    check(r.status_code == 200, "GET /api/auth/me 200")
-    mb = r.json() if r.status_code == 200 else {}
-    check("phone" in mb, "/api/auth/me has 'phone' key")
-    print(f"  /api/auth/me phone = {mb.get('phone')!r}")
-
-    section("9. Doctor token /api/inbox/all 200 (sanity)")
-    r = requests.get(f"{BASE}/api/inbox/all", headers=hdr(DOCTOR_TOKEN), timeout=10)
-    check(r.status_code == 200, "doctor GET /api/inbox/all 200")
-    db_body = r.json() if r.status_code == 200 else {}
-    check(isinstance(db_body.get("items"), list), "doctor items is list")
-    check(isinstance(db_body.get("unread"), int), "doctor unread is int")
-
-    section("10. Cleanup — cancel test booking")
-    if booking_id:
-        rc = requests.patch(
-            f"{BASE}/api/bookings/{booking_id}",
-            headers=hdr(OWNER_TOKEN),
-            json={"status": "cancelled", "reason": "inbox test cleanup"},
-            timeout=10,
-        )
-        print(f"  PATCH cancel → {rc.status_code}")
-
-    print(); print("=" * 78)
-    print(f"PASS: {len(passes)}    FAIL: {len(fails)}")
-    print("=" * 78)
-    if fails:
-        print("Failed assertions:")
-        for f in fails:
-            print(f"  - {f}")
-        return 1
-    return 0
+for bid in smoke_bookings:
+    requests.delete(f"{BASE}/bookings/{bid}", headers=OWNER_HDR, timeout=20)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+# ============================================================
+# CLEANUP
+# ============================================================
+section("Cleanup")
+for bid in (bk_test_missed, bk_test_today, bk_test_yest):
+    out = mongo(f"""print(db.bookings.deleteMany({{booking_id: "{bid}"}}).deletedCount);""")
+    last = out.strip().splitlines()[-1] if out.strip() else "?"
+    print(f"  deleted booking {bid}: {last}")
+
+mongo("""db.notifications.deleteMany({kind: "booking_missed", "data.booking_id": {$regex: "^bk_(testmiss|testtoday|testyest|qatest)_"}});""")
+print("  cleaned notifications kind=booking_missed for QA test bookings")
+
+
+print("\n" + "=" * 70)
+print(f"RESULT: {PASS} PASS / {FAIL} FAIL")
+if FAILS:
+    print("\nFailures:")
+    for f in FAILS:
+        print(f"  - {f}")
+print("=" * 70)
+sys.exit(0 if FAIL == 0 else 1)

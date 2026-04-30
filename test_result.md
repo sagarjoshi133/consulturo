@@ -12708,3 +12708,149 @@ brand_theme_metadata:
   test_all: false
   test_priority: "high_first"
 
+
+# ──────────────────────────────────────────────────────────────────────
+# Missed appointments + Delete + Analytics breakdown (2026-06)
+# ──────────────────────────────────────────────────────────────────────
+
+missed_appt_feature:
+  - task: "Missed status self-healing job"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/bookings.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          GET /api/bookings/all now runs an idempotent sweep before
+          returning results: any booking with status=confirmed and
+          booking_date ≤ yesterday (IST) passes a per-row check
+          `now_ist ≥ booking_date + 1 day + 1 hour`. Flipped bookings
+          get status=missed, missed_at UTC timestamp, missed_auto=true,
+          and the patient receives a push notification + in-app
+          notification (kind=booking_missed).
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS via /app/backend_test.py against the public
+          ingress URL https://urology-pro.preview.emergentagent.com/api
+          (42/42 assertions PASS, 0 FAIL).
+          • Seeded 3 confirmed bookings via mongosh:
+            - bk_testmiss_*  booking_date = today_IST - 2 days, 10:00
+            - bk_testtoday_* booking_date = today_IST, 23:30
+            - bk_testyest_*  booking_date = today_IST - 1 day, 23:30
+          • GET /api/bookings/all (primary_owner, X-Clinic-Id=
+            clinic_a97b903f2fb2) → 200, returns list.
+          • bk_testmiss_* flipped: status=missed, missed_auto=true,
+            missed_at present (UTC ISO timestamp). ✅
+          • bk_testtoday_* (today, 23:30) NOT flipped — status remains
+            confirmed (within grace window). ✅
+          • bk_testyest_* (yesterday 23:30) — current IST is past
+            (yest+1d+1h) so it flipped to missed; API did not crash.
+            Edge case behaviour acceptable per review brief.
+          • db.notifications has exactly 1 row with kind=booking_missed
+            and data.booking_id=bk_testmiss_* (count=1). ✅
+          • Idempotent re-sweep: calling /api/bookings/all a second time
+            does NOT create a duplicate notification (count remains 1). ✅
+          • All 3 seed bookings + their notifications cleaned up at end.
+
+  - task: "Primary-owner hard-delete booking"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/bookings.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          DELETE /api/bookings/{booking_id} — gated to super_owner /
+          primary_owner / owner. Tenant-scoped (403 if the booking
+          doesn't belong to the resolved clinic). Silent — no patient
+          notification fired. Returns {ok: true, deleted: booking_id}.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS:
+          • POST /api/bookings as primary_owner with future date
+            (today_IST + 7 days, 11:00, mode=offline) → 200, returned
+            booking_id bk_<10-hex>, clinic_id=clinic_a97b903f2fb2.
+          • DELETE /api/bookings/<id> as DOCTOR (test_doc_…1524) → 403
+            ("Primary owner access required"). ✅
+          • DELETE /api/bookings/<id> as PRIMARY_OWNER → 200 with body
+            {ok:true, deleted:<id>}. ✅ Silent — no patient notification
+            fired (verified DB had no booking_cancelled / booking_deleted
+            row for that booking_id). 
+          • Subsequent GET /api/bookings/<id> → 404. DB confirms row
+            removed. ✅
+          • DELETE /api/bookings/bk_doesnotexist_xyz as primary_owner
+            → 404. ✅
+
+  - task: "Status breakdown now includes missed/rescheduled/completed/rejected"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/analytics.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Extended analytics.status_breakdown response to 7 keys:
+          requested, confirmed, rescheduled, completed, cancelled,
+          rejected, missed. `rescheduled` counted via presence of
+          `rescheduled_at` timestamp. All counters respect clinic_id
+          scoping (Phase E).
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL CHECKS PASS:
+          • GET /api/analytics/dashboard (primary_owner, X-Clinic-Id)
+            → 200. status_breakdown contains EXACTLY the 7 keys
+            requested, confirmed, rescheduled, completed, cancelled,
+            rejected, missed — every value is a non-negative int.
+            Snapshot for clinic_a97b903f2fb2:
+              {requested:12, confirmed:4, rescheduled:1,
+               completed:12, cancelled:45, rejected:2, missed:6}. ✅
+          • PATCH /api/bookings/{id}/status now accepts "missed":
+            POST a fresh booking → PATCH status=confirmed → 200,
+            then PATCH status=missed → 200 (was previously rejected
+            with 400 'Invalid status'). ✅
+          • After the PATCH, GET /api/analytics/dashboard shows
+            status_breakdown.missed incremented by 1 (6 → 7). ✅
+          • REGRESSION smoke (D): all 4 legacy status transitions still
+            work — POST then PATCH for status in {confirmed, completed,
+            cancelled, rejected} all return 200. ✅
+          • All test bookings cleaned up at end (POST → DELETE pairs
+            for the PATCH-target + 4 smoke bookings).
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      missed_appt_feature suite executed via /app/backend_test.py against
+      https://urology-pro.preview.emergentagent.com/api — 42/42 PASS, 0 FAIL.
+      All three new behaviours are working correctly:
+        (1) Missed-flip self-healing in GET /api/bookings/all flips stale
+            confirmed bookings to status=missed with missed_auto=true +
+            notification kind=booking_missed; idempotent on re-call.
+        (2) DELETE /api/bookings/{id} is primary_owner/super_owner-only
+            (403 for doctor), tenant-scoped, silent, 404 for unknown ids.
+        (3) GET /api/analytics/dashboard.status_breakdown returns all 7
+            keys (requested/confirmed/rescheduled/completed/cancelled/
+            rejected/missed) and PATCH /api/bookings/{id}/status now
+            accepts "missed". Existing PATCH transitions for confirmed/
+            completed/cancelled/rejected still 200. Test fixtures fully
+            cleaned up. No 5xx, no auth bypasses.
+
+
+missed_appt_metadata:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+

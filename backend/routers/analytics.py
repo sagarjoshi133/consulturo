@@ -61,6 +61,16 @@ async def analytics_dashboard(
     confirmed_bookings = await db.bookings.count_documents(_merge(base, {"status": "confirmed"}))
     pending_bookings = await db.bookings.count_documents(_merge(base, {"status": "requested"}))
     cancelled_bookings = await db.bookings.count_documents(_merge(base, {"status": "cancelled"}))
+    # Extended status counters for the "Booking status breakdown" chart
+    # that sits below Consultation Mode on the Analytics panel.
+    completed_bookings = await db.bookings.count_documents(_merge(base, {"status": "completed"}))
+    rejected_bookings = await db.bookings.count_documents(_merge(base, {"status": "rejected"}))
+    missed_bookings = await db.bookings.count_documents(_merge(base, {"status": "missed"}))
+    # "Rescheduled" is not a terminal status in this app — it's tracked
+    # via a dedicated `rescheduled_at` timestamp on the booking doc.
+    rescheduled_bookings = await db.bookings.count_documents(
+        _merge(base, {"rescheduled_at": {"$exists": True}})
+    )
 
     # --- monthly bookings from booking_date (string YYYY-MM-DD) ---
     monthly_bookings = {k: 0 for k in month_keys}
@@ -131,7 +141,11 @@ async def analytics_dashboard(
         "status_breakdown": {
             "requested": pending_bookings,
             "confirmed": confirmed_bookings,
+            "rescheduled": rescheduled_bookings,
+            "completed": completed_bookings,
             "cancelled": cancelled_bookings,
+            "rejected": rejected_bookings,
+            "missed": missed_bookings,
         },
         "top_diagnoses": _top(diag_counter, 8),
         "top_surgeries": _top(surgery_name_counter, 8),

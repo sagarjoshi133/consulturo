@@ -13,6 +13,8 @@ import {
   RefreshControl,
   Dimensions,
   BackHandler,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -800,7 +802,7 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
   const { isWebDesktop } = useResponsive();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'requested' | 'all' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled'>('requested');
+  const [filter, setFilter] = useState<'requested' | 'all' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled' | 'missed' | 'rejected'>('requested');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [ed, setEd] = useState<{ date: string; time: string; note: string }>({ date: '', time: '', note: '' });
@@ -977,6 +979,34 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
     await patch(booking_id, { status: 'rejected', reason });
   };
 
+  // ── Primary-owner delete ─────────────────────────────────────────
+  // Hard-delete a booking with NO patient notification. Used to remove
+  // test / duplicate / accidental entries. Gated to primary_owner /
+  // owner / super_owner on both frontend (shown conditionally) and
+  // backend (DELETE /api/bookings/{id} enforces the role).
+  const canDelete = user?.role === 'super_owner' || user?.role === 'primary_owner' || user?.role === 'owner';
+  const onDelete = async (booking_id: string, patient_name: string) => {
+    const msg = `Permanently delete this booking for ${patient_name}? The patient will NOT be notified.`;
+    const go = await new Promise<boolean>((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(typeof window !== 'undefined' && window.confirm(msg));
+      } else {
+        Alert.alert('Delete booking', msg, [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+        ]);
+      }
+    });
+    if (!go) return;
+    try {
+      await api.delete(`/bookings/${booking_id}`);
+      setItems((prev) => prev.filter((b) => b.booking_id !== booking_id));
+      toast.success('Booking deleted');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Could not delete booking');
+    }
+  };
+
   const isRescheduled = (b: any) =>
     (b.original_date && b.original_date !== b.booking_date) ||
     (b.original_time && b.original_time !== b.booking_time);
@@ -1091,46 +1121,84 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
     <>
       <SmartAlerts />
 
-      {/* ── Status filter row — colored pills, one tap to filter ─────────── */}
-      <View style={styles.statusRow}>
-        {([
-          { key: 'requested',   label: 'Pending',     color: '#F59E0B' },
-          { key: 'confirmed',   label: 'Confirmed',   color: '#10B981' },
-          { key: 'rescheduled', label: 'Rescheduled', color: '#3B82F6' },
-          { key: 'completed',   label: 'Completed',   color: '#0E7C8B' },
-          { key: 'cancelled',   label: 'Cancelled',   color: '#EF4444' },
-          { key: 'all',         label: 'All',         color: COLORS.primary },
-        ] as const).map((s) => {
-          const active = filter === s.key;
-          const count =
-            s.key === 'all' ? items.length :
-            s.key === 'rescheduled' ? items.filter(isRescheduled).length :
-            items.filter((b) => b.status === s.key).length;
-          return (
+      {/* ── Status filter — compact dropdown button (mobile-friendly).
+           Replaces the previous 6-chip row. Shows the currently-active
+           status + count; tap opens a full-width popover listing every
+           status including Missed + Rejected with per-status counts. ── */}
+      {(() => {
+        const FILTERS = [
+          { key: 'requested',   label: 'Pending',      color: '#F59E0B' },
+          { key: 'confirmed',   label: 'Confirmed',    color: '#10B981' },
+          { key: 'rescheduled', label: 'Rescheduled',  color: '#3B82F6' },
+          { key: 'completed',   label: 'Completed',    color: '#0E7C8B' },
+          { key: 'missed',      label: 'Missed',       color: '#C0392B' },
+          { key: 'cancelled',   label: 'Cancelled',    color: '#EF4444' },
+          { key: 'rejected',    label: 'Rejected',     color: '#7F1D1D' },
+          { key: 'all',         label: 'All',          color: COLORS.primary },
+        ] as const;
+        const countFor = (key: string) =>
+          key === 'all' ? items.length :
+          key === 'rescheduled' ? items.filter(isRescheduled).length :
+          items.filter((b) => b.status === key).length;
+        const active = FILTERS.find((f) => f.key === filter) || FILTERS[FILTERS.length - 1];
+        return (
+          <>
             <TouchableOpacity
-              key={s.key}
-              onPress={() => setFilter(s.key as any)}
+              onPress={() => setShowFilterMenu(true)}
               activeOpacity={0.85}
-              style={[
-                styles.statusPillBtn,
-                active
-                  ? { backgroundColor: s.color, borderColor: s.color }
-                  : { backgroundColor: s.color + '14', borderColor: s.color + '55' },
-              ]}
-              testID={`bk-status-${s.key}`}
+              style={[styles.filterDropdown, { borderColor: active.color + '88', backgroundColor: active.color + '10' }]}
+              testID="bk-filter-dropdown"
             >
-              <Text style={[styles.statusPillLabel, { color: active ? '#fff' : s.color }]} numberOfLines={1}>
-                {s.label}
+              <View style={[styles.filterDot, { backgroundColor: active.color }]} />
+              <Text style={[styles.filterDropdownLabel, { color: active.color }]} numberOfLines={1}>
+                {active.label}
               </Text>
-              {count > 0 && (
-                <View style={[styles.statusPillCount, { backgroundColor: active ? 'rgba(255,255,255,0.28)' : s.color + '24' }]}>
-                  <Text style={[styles.statusPillCountText, { color: active ? '#fff' : s.color }]}>{count}</Text>
-                </View>
-              )}
+              <View style={[styles.statusPillCount, { backgroundColor: active.color + '26' }]}>
+                <Text style={[styles.statusPillCountText, { color: active.color }]}>
+                  {countFor(active.key)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-down" size={16} color={active.color} />
             </TouchableOpacity>
-          );
-        })}
-      </View>
+
+            {showFilterMenu && (
+              <Modal transparent animationType="fade" onRequestClose={() => setShowFilterMenu(false)}>
+                <Pressable style={styles.filterBackdrop} onPress={() => setShowFilterMenu(false)}>
+                  <Pressable style={styles.filterSheet} onPress={(e) => e.stopPropagation()}>
+                    <Text style={styles.filterSheetTitle}>Filter by status</Text>
+                    {FILTERS.map((f) => {
+                      const isActive = f.key === filter;
+                      const count = countFor(f.key);
+                      return (
+                        <TouchableOpacity
+                          key={f.key}
+                          onPress={() => { setFilter(f.key as any); setShowFilterMenu(false); }}
+                          style={[
+                            styles.filterRow,
+                            isActive && { backgroundColor: f.color + '14' },
+                          ]}
+                          testID={`bk-filter-${f.key}`}
+                        >
+                          <View style={[styles.filterDot, { backgroundColor: f.color }]} />
+                          <Text style={[styles.filterRowLabel, { color: f.color, fontFamily: isActive ? 'Manrope_700Bold' : 'Manrope_600SemiBold' }]}>
+                            {f.label}
+                          </Text>
+                          <View style={[styles.statusPillCount, { backgroundColor: f.color + '22' }]}>
+                            <Text style={[styles.statusPillCountText, { color: f.color }]}>{count}</Text>
+                          </View>
+                          {isActive && (
+                            <Ionicons name="checkmark" size={18} color={f.color} style={{ marginLeft: 6 }} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </Pressable>
+                </Pressable>
+              </Modal>
+            )}
+          </>
+        );
+      })()}
 
       {/* ── Toolbar — single row: search + view + sort + refresh ─────────── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 6 }}>
@@ -1514,6 +1582,16 @@ function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id:
                   >
                     <Ionicons name="paper-plane" size={14} color={COLORS.primary} />
                     <Text style={[styles.bkActionText, { color: COLORS.primary }]} numberOfLines={1}>Message</Text>
+                  </TouchableOpacity>
+                )}
+                {canDelete && (
+                  <TouchableOpacity
+                    onPress={() => onDelete(b.booking_id, b.patient_name || 'this patient')}
+                    style={[styles.bkAction, { borderColor: '#EF4444' + '55' }]}
+                    testID={`bk-delete-${b.booking_id}`}
+                  >
+                    <Ionicons name="trash" size={14} color="#EF4444" />
+                    <Text style={[styles.bkActionText, { color: '#EF4444' }]} numberOfLines={1}>Delete</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2166,6 +2244,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusPillCountText: { ...FONTS.bodyMedium, fontSize: 10 },
+  // ── Filter dropdown (replaces the 6-chip status row) ────────────
+  filterDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  filterDropdownLabel: { ...FONTS.bodyMedium, fontSize: 14, flex: 1 },
+  filterDot: { width: 10, height: 10, borderRadius: 5 },
+  filterBackdrop: {
+    flex: 1,
+    backgroundColor: '#0008',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  filterSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  filterSheetTitle: { ...FONTS.h4, color: COLORS.textPrimary, marginBottom: 10, marginLeft: 4 },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
+    marginBottom: 2,
+  },
+  filterRowLabel: { flex: 1, fontSize: 14 },
   statBox: { flex: 1, backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 6, borderRadius: RADIUS.md, borderLeftWidth: 3, borderWidth: 1, borderColor: COLORS.border, minWidth: 0, alignItems: 'flex-start' },
   statVal: { ...FONTS.h2, fontSize: 18 },
   statLbl: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3 },
