@@ -357,7 +357,7 @@ const gu = {
     changeEmail:           '← ઈમેલ બદલો',
     pushOffTitle:          'સૂચનાઓ બંધ',
     pushOffMsg:            'તમને હવે પુશ સૂચનાઓ મળશે નહીં. કોઈ પણ સમયે ફરી ચાલુ કરો.',
-    versionFooter:         'ConsultUro v1.0.11 · © ડૉ. સાગર જોશી',
+    versionFooter:         'ConsultUro v1.0.12 · © ડૉ. સાગર જોશી',
   },
   records: {
     title: 'મારા રેકોર્ડ્સ',

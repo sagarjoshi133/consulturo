@@ -632,7 +632,7 @@ export default function More() {
           ))}
         </View>
 
-        <Text style={styles.footer}>ConsultUro v1.0.11 · © Dr. Sagar Joshi</Text>
+        <Text style={styles.footer}>ConsultUro v1.0.12 · © Dr. Sagar Joshi</Text>
       </ScrollView>
     </SafeAreaView>
   );
