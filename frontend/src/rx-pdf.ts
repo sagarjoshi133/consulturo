@@ -324,9 +324,12 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     width: 210mm;
     min-height: 297mm;
     /* tighter top padding — pulls header up; matches user request.
-       Bottom padding bumped to 22mm so the footer line + sign block
-       sit comfortably above the page edge, not flush against it. */
-    padding: 12mm 14mm 22mm 14mm;
+       Bottom padding tightened (was 22mm → 10mm, 2026-04-30 per
+       Dr. Joshi) so the 4-col bottom band + dashed footer text sit
+       close to the page edge. That liberates vertical space for the
+       main body (bodyGrid) which is the common case for medium-length
+       consultations. */
+    padding: 12mm 14mm 10mm 14mm;
     margin: 8mm auto;
     background: #fff;
     box-sizing: border-box;
@@ -351,7 +354,7 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
          a sparse body, against the user's request. */
       min-height: 100vh;
       margin: 0;
-      padding: 12mm 14mm 22mm 14mm;
+      padding: 12mm 14mm 10mm 14mm;
       box-shadow: none;
       page-break-after: always;
     }
@@ -694,13 +697,13 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   .sigSub{color:#5E7C81; font-size:8px; line-height:1.3;}
 
   .foot{
-    margin-top:8px;
+    margin-top:4px;
     border-top:1px dashed #D1DDDD;
-    padding-top:5px;
+    padding-top:3px;
     font-size:8.5px;
     color:#5E7C81;
     text-align:center;
-    line-height:1.5;
+    line-height:1.4;
     position:relative; z-index:1;
   }
 
@@ -868,7 +871,7 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
 
   <div class="foot">
     Digitally generated &amp; signed prescription · ${escapeHtml(clinicName)} · ${escapeHtml(clinicAddr)}<br/>
-    Signed: <b>${escapeHtml(nowStamp)}</b> · Verify at <b>${escapeHtml(verifyUrl)}</b> · Not valid without clinician stamp.
+    Signed: <b>${escapeHtml(nowStamp)}</b> · Scan QR to verify · Not valid without clinician stamp.
     <div class="consulturo-stamp">
       <span class="cu-dot"></span>
       <span class="cu-text">ConsultUro</span>

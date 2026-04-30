@@ -634,17 +634,58 @@ export default function Dashboard() {
                   </View>
                 </View>
               </View>
-              {/* Today-at-a-glance — horizontal row below the user card so
-                  tiles can't overlap the bell or the userCard rounded edge.
-                  Uses the same data source as the Today panel (global pending
-                  + today bookings) so figures stay in sync. */}
+              {/* Mobile: 2×2 grid below user card — smaller footprint than
+                  the previous 4-wide compact row. */}
               <TodayGlance
-                compact
+                layout="grid2x2"
                 onTapBookings={() => setTab('bookings')}
                 onTapPending={() => setTab('bookings')}
               />
             </View>
           </RNAnimated.View>
+          )}
+
+          {/* Desktop: render the user card and 4 widgets SIDE-BY-SIDE so
+              the tab bar rises up to where the widgets used to sit.
+              Saves vertical screen space on 1080p+ displays. */}
+          {isWebDesktop && (
+            <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 16, marginTop: 6 }}>
+              <View style={[styles.userCard, { flex: 1, marginTop: 0 }]}>
+                <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
+                <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                  <Text style={styles.heroName} numberOfLines={1}>
+                    {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
+                  </Text>
+                  <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
+                  <View style={styles.heroBadgeRow}>
+                    <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
+                      <Ionicons name="ribbon" size={11} color={roleAccent} />
+                      <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
+                    </View>
+                    {!isOwner && isFullAccess && (
+                      <View style={styles.fullAccessBadge}>
+                        <Ionicons name="shield-checkmark" size={11} color="#fff" />
+                        <Text style={styles.fullAccessText}>FULL ACCESS</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                    <TenantSwitcher
+                      variant="compact"
+                      primaryColor="#FFFFFF"
+                      textColor="#FFFFFF"
+                      bgColor="rgba(255,255,255,0.16)"
+                      borderColor="rgba(255,255,255,0.32)"
+                    />
+                  </View>
+                </View>
+              </View>
+              <TodayGlance
+                layout="rail"
+                onTapBookings={() => setTab('bookings')}
+                onTapPending={() => setTab('bookings')}
+              />
+            </View>
           )}
         </SafeAreaView>
       </LinearGradient>

@@ -23,13 +23,18 @@ type GlanceProps = {
   onTapBookings?: () => void;
   onTapPending?: () => void;
   /**
-   * `compact` = vertical mini-stack used as a side rail next to the
-   * profile card in the dashboard hero. Saves vertical real-estate.
+   * Layout variant:
+   *   • `row`      — classic horizontal strip (4 tiles in a row)
+   *   • `grid2x2`  — 2×2 grid (compact, mobile-friendly, saves vertical space)
+   *   • `rail`     — vertical rail for desktop hero side-space
    */
+  layout?: 'row' | 'grid2x2' | 'rail';
+  /** DEPRECATED — kept for compatibility. `true` == `grid2x2`. */
   compact?: boolean;
 };
 
-export function TodayGlance({ onTapBookings, onTapPending, compact }: GlanceProps) {
+export function TodayGlance({ onTapBookings, onTapPending, layout, compact }: GlanceProps) {
+  const effective = layout || (compact ? 'grid2x2' : 'row');
   const [today, setToday] = useState<{ total: number; confirmed: number; nextLabel: string }>({
     total: 0, confirmed: 0, nextLabel: '',
   });
@@ -85,7 +90,10 @@ export function TodayGlance({ onTapBookings, onTapPending, compact }: GlanceProp
 
   if (loading) {
     return (
-      <View style={compact ? styles.glanceCompactWrap : styles.glanceWrap} testID="today-glance-loading">
+      <View
+        style={effective === 'row' ? styles.glanceWrap : effective === 'rail' ? styles.glanceRailWrap : styles.glanceGridWrap}
+        testID="today-glance-loading"
+      >
         <ActivityIndicator color="#fff" size="small" />
       </View>
     );
@@ -98,21 +106,48 @@ export function TodayGlance({ onTapBookings, onTapPending, compact }: GlanceProp
     { key: 'unavail', label: 'Off-blocks', short: 'Off', value: unavailToday, icon: 'close-circle-outline' as const },
   ];
 
-  if (compact) {
+  // ── Desktop right-side vertical rail ─────────────────────────────
+  if (effective === 'rail') {
     return (
-      <View testID="today-glance" style={styles.glanceCompactWrap}>
+      <View testID="today-glance" style={styles.glanceRailWrap}>
         {tiles.map((t) => (
           <TouchableOpacity
             key={t.key}
             disabled={!t.onPress}
             onPress={t.onPress}
-            style={styles.glanceCompactRow}
+            style={styles.glanceRailTile}
             activeOpacity={t.onPress ? 0.75 : 1}
             testID={`glance-${t.key}`}
           >
-            <Ionicons name={t.icon} size={13} color="#fff" style={{ opacity: 0.95 }} />
-            <Text style={styles.glanceCompactValue}>{t.value}</Text>
-            <Text style={styles.glanceCompactLabel} numberOfLines={1}>{t.short}</Text>
+            <View style={styles.glanceRailIconWrap}>
+              <Ionicons name={t.icon} size={16} color="#fff" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.glanceRailLabel} numberOfLines={1}>{t.label}</Text>
+              <Text style={styles.glanceRailValue}>{t.value}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  // ── Mobile 2×2 grid (saves vertical space vs the old 4-wide row) ─
+  if (effective === 'grid2x2') {
+    return (
+      <View testID="today-glance" style={styles.glanceGridWrap}>
+        {tiles.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            disabled={!t.onPress}
+            onPress={t.onPress}
+            style={styles.glanceGridTile}
+            activeOpacity={t.onPress ? 0.75 : 1}
+            testID={`glance-${t.key}`}
+          >
+            <Ionicons name={t.icon} size={14} color="#fff" style={{ opacity: 0.95 }} />
+            <Text style={styles.glanceGridValue}>{t.value}</Text>
+            <Text style={styles.glanceGridLabel} numberOfLines={1}>{t.short}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -298,6 +333,56 @@ const styles = StyleSheet.create({
   },
   glanceCompactValue: { ...FONTS.h3, color: '#fff', fontSize: 15, marginLeft: 1 },
   glanceCompactLabel: { ...FONTS.body, color: '#fff', fontSize: 10, opacity: 0.9 },
+
+  // ── NEW: 2×2 grid for mobile (compact but bigger touch targets than
+  //        the old 4-wide compact row). Saves vertical space vs the
+  //        original .glanceWrap layout.
+  glanceGridWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  glanceGridTile: {
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  glanceGridValue: { ...FONTS.h3, color: '#fff', fontSize: 17, marginLeft: 2 },
+  glanceGridLabel: { ...FONTS.body, color: '#fff', fontSize: 11, opacity: 0.9, flex: 1 },
+
+  // ── NEW: Vertical rail for desktop hero (appears on the right of
+  //        the user card so the tab bar can pull up and save vertical
+  //        space). Four tiles stacked, compact side-rail look.
+  glanceRailWrap: {
+    gap: 6,
+    minWidth: 200,
+    maxWidth: 240,
+  },
+  glanceRailTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  glanceRailIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glanceRailLabel: { ...FONTS.body, color: '#fff', fontSize: 11, opacity: 0.85 },
+  glanceRailValue: { ...FONTS.h3, color: '#fff', fontSize: 18, lineHeight: 22 },
 
   // Alerts — sits at top of Bookings panel
   alertsWrap: { marginBottom: 14, gap: 6 },
