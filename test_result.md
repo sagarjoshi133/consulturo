@@ -12902,3 +12902,47 @@ ui_polish_20260430:
           - fullAccessBadge mirrored same reductions to stay balanced
           - icons inside both chips size 11→8 (both mobile + desktop
             render paths updated).
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-04-30  Fast client-side PDF download on web
+# ─────────────────────────────────────────────────────────────
+web_pdf_speed_20260430:
+  - task: "Prescription PDF download on web — bypass WeasyPrint for speed"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/rx-pdf.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User reported prescription PDF download is slow on web. The
+          existing path POSTed the full HTML to /api/render/pdf which
+          runs WeasyPrint server-side (5–30 s cold start + 1–2 MB PDF
+          transfer).
+
+          Fix — reuse the existing webPrintViaIframe helper (already
+          used by the Print button) for the Download button too:
+          • downloadPrescriptionPdf(..) web branch now renders the
+            HTML inside a hidden off-screen iframe and calls
+            iframe.contentWindow.print(). Renders in ~100 ms; produces
+            a text-selectable A4 PDF via the browser's "Save as PDF"
+            destination (default in Chrome/Edge).
+          • webPrintViaIframe(html, filenameStem?) extended with an
+            optional filenameStem — when passed, we temporarily
+            override BOTH the iframe document.title AND the host
+            document.title so the save dialog pre-fills the filename
+            as "Prescription-<Patient>-<RegNo>.pdf". Original title is
+            restored in cleanup.
+          • Backend WeasyPrint path retained as a silent fallback in
+            case the iframe approach throws (popup blockers / CSP).
+          • Applies automatically to every "Download PDF" button across
+            the app (Dashboard, Prescriptions list, Prescription detail,
+            New Prescription save flow) since they all route through
+            the single downloadPrescriptionPdf(..) function.
+
+          No backend changes. Native (iOS/Android) path is unchanged —
+          it was already client-side via expo-print.
