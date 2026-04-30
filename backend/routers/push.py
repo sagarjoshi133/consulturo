@@ -114,8 +114,16 @@ async def push_diagnostics(user=Depends(require_owner)):
 
 @router.post("/api/push/test")
 async def push_self_test(user=Depends(require_user)):
-    """Fire a test push to the calling user's devices so they can
-    verify end-to-end delivery in <30s."""
+    """Fire a test push to the calling user's devices, then wait ~22 s
+    to poll Expo's receipts endpoint so the caller gets BOTH the send
+    outcome AND the actual FCM/APNs delivery outcome in one response.
+
+    This is the fastest way to diagnose why pushes aren't reaching a
+    device — it bypasses Mongo inspection entirely and surfaces FCM
+    errors (MismatchSenderId, InvalidCredentials, DeviceNotRegistered,
+    …) in the response body."""
+    import asyncio as _asyncio
+
     tokens = await collect_user_tokens([user["user_id"]])
     if not tokens:
         return {
@@ -142,10 +150,74 @@ async def push_self_test(user=Depends(require_user)):
         )
     except Exception:
         pass
+
+    # ── Poll receipts so the response includes the FCM outcome ───────
+    # send_expo_push_batch already kicked off the background poller,
+    # but we also wait briefly here and read the receipts ourselves so
+    # the response body can tell the doctor EXACTLY why a push didn't
+    # arrive. Budget: ≤25 s total (route keeps within the 30 s
+    # ingress timeout).
+    receipts_result: Dict[str, Any] = {"polled": False}
+    ticket_ids = result.get("ticket_ids") or []
+    if ticket_ids:
+        try:
+            import httpx  # local import, httpx already a dep
+
+            await _asyncio.sleep(10)  # initial wait — most receipts ready by now
+            delivered = 0
+            receipt_errors: List[Dict[str, Any]] = []
+            pending = list(ticket_ids)
+            # Up to 3 short polls (10 s + 7 s + 6 s) to catch slow FCM
+            # responses, bail early as soon as all receipts arrive.
+            for delay in (7, 6):
+                if not pending:
+                    break
+                async with httpx.AsyncClient(timeout=12.0) as hc:
+                    resp = await hc.post(
+                        "https://exp.host/--/api/v2/push/getReceipts",
+                        json={"ids": pending},
+                        headers={"Content-Type": "application/json"},
+                    )
+                try:
+                    rdata = resp.json() or {}
+                except Exception:
+                    rdata = {}
+                r_block = rdata.get("data") or {}
+                still_pending: List[str] = []
+                for tid in pending:
+                    r = r_block.get(tid) if isinstance(r_block, dict) else None
+                    if r is None:
+                        still_pending.append(tid)
+                        continue
+                    if isinstance(r, dict) and r.get("status") == "ok":
+                        delivered += 1
+                    elif isinstance(r, dict):
+                        d = r.get("details") or {}
+                        receipt_errors.append({
+                            "error": d.get("error") if isinstance(d, dict) else None,
+                            "message": r.get("message"),
+                            "details": d,
+                        })
+                pending = still_pending
+                if not pending:
+                    break
+                await _asyncio.sleep(delay)
+
+            receipts_result = {
+                "polled": True,
+                "delivered": delivered,
+                "pending": len(pending),
+                "receipt_errors": receipt_errors[:10],
+            }
+        except Exception as e:
+            receipts_result = {"polled": False, "error": str(e)[:300]}
+
     return {
         "ok": (result.get("sent") or 0) > 0,
         "tokens_found": len(tokens),
         "sent": result.get("sent"),
         "errors": result.get("errors"),
         "purged": result.get("purged"),
+        "ticket_ids": ticket_ids,
+        "receipts": receipts_result,
     }

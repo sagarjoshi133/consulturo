@@ -7,7 +7,14 @@ Heavy callers: bookings, prescriptions, surgeries, broadcasts,
 team management. By centralising this logic here every router
 gets the same observability (push_log writes) and token cleanup
 (invalid token purge) for free.
+
+2026-04-30 — Added a receipt-polling follow-up so that push_log
+captures the ACTUAL FCM / APNs delivery outcome (not just Expo
+ticket acceptance). Without this a push can look "sent: 1" even
+when FCM silently drops it (misconfigured credentials, invalid
+token, app uninstalled, etc.).
 """
+import asyncio
 import re
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +23,107 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from db import db
+
+
+# Number of seconds to wait before polling Expo for delivery receipts.
+# Expo's docs recommend ≥15 min in prod, but for diagnostics we want
+# faster feedback — 20 s is enough for Expo→FCM round-trip 95% of the
+# time. Receipts older than 24 h are discarded by Expo, so there's no
+# harm in polling early; we just miss a few slow ones.
+_RECEIPT_POLL_DELAY_SEC = 20
+_EXPO_SEND_URL = "https://exp.host/--/api/v2/push/send"
+_EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
+
+
+async def _poll_receipts_and_update(log_id: str, ticket_id_to_token: Dict[str, str]) -> None:
+    """Background task — polls Expo for push delivery receipts after a
+    short delay, then writes the per-ticket outcome back onto the
+    matching push_log row. Also purges tokens reported as
+    DeviceNotRegistered at the FCM/APNs layer.
+
+    This is the only reliable way to know whether the user's device
+    actually received the push. `sent: N` in the initial log entry
+    only means Expo accepted the ticket, not that FCM delivered.
+    """
+    if not ticket_id_to_token:
+        return
+    await asyncio.sleep(_RECEIPT_POLL_DELAY_SEC)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            ids = list(ticket_id_to_token.keys())
+            # Expo recommends ≤1000 ids per call; we batch at 300 for safety.
+            receipts: Dict[str, Any] = {}
+            for i in range(0, len(ids), 300):
+                chunk = ids[i:i + 300]
+                resp = await hc.post(
+                    _EXPO_RECEIPTS_URL,
+                    json={"ids": chunk},
+                    headers={
+                        "Accept": "application/json",
+                        "Accept-Encoding": "gzip, deflate",
+                        "Content-Type": "application/json",
+                    },
+                )
+                try:
+                    rdata = resp.json() or {}
+                except Exception:
+                    continue
+                r_block = rdata.get("data") or {}
+                if isinstance(r_block, dict):
+                    receipts.update(r_block)
+    except Exception as e:
+        try:
+            await db.push_log.update_one(
+                {"id": log_id},
+                {"$set": {"receipt_poll_error": str(e)[:400]}},
+            )
+        except Exception:
+            pass
+        return
+
+    # Tabulate receipt outcomes.
+    delivered = 0
+    receipt_errors: List[Dict[str, Any]] = []
+    purge_tokens: List[str] = []
+    for tid, token in ticket_id_to_token.items():
+        r = receipts.get(tid)
+        if r is None:
+            # Receipt not ready yet — Expo hasn't heard back from FCM.
+            continue
+        if isinstance(r, dict) and r.get("status") == "ok":
+            delivered += 1
+        elif isinstance(r, dict):
+            detail = r.get("details") or {}
+            err_code = detail.get("error") if isinstance(detail, dict) else None
+            receipt_errors.append({
+                "ticket_id": tid,
+                "token_preview": (token or "")[:30] + "…",
+                "error": err_code or r.get("message"),
+                "message": r.get("message"),
+                "details": detail,
+            })
+            # Tokens that FCM / APNs reports as gone → purge.
+            if err_code in ("DeviceNotRegistered", "InvalidCredentials"):
+                purge_tokens.append(token)
+
+    if purge_tokens:
+        try:
+            await db.push_tokens.delete_many({"token": {"$in": purge_tokens}})
+        except Exception:
+            pass
+
+    try:
+        await db.push_log.update_one(
+            {"id": log_id},
+            {"$set": {
+                "delivered": delivered,
+                "receipt_errors": receipt_errors[:20],
+                "receipts_polled_at": datetime.now(timezone.utc),
+                "purged_on_receipt": len(purge_tokens),
+            }},
+        )
+    except Exception:
+        pass
 
 
 async def send_expo_push_batch(
@@ -27,7 +135,9 @@ async def send_expo_push_batch(
 ) -> Dict[str, Any]:
     """Fan-out push via Expo's public Push API. No FCM keys needed.
     Tokens that come back as invalid (DeviceNotRegistered / InvalidCredentials) are purged.
-    Every batch is also recorded in `push_log` for observability.
+    Every batch is also recorded in `push_log` for observability, and a
+    background task polls Expo's receipts API to surface FCM/APNs
+    delivery errors (MismatchSenderId, credential issues, etc.).
     """
     log_entry: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
@@ -80,13 +190,16 @@ async def send_expo_push_batch(
     sent = 0
     errors: List[Dict[str, Any]] = []
     invalid: List[str] = []
+    # ticket_id -> token, so we can attribute receipt-level failures to
+    # a specific device when we poll /getReceipts later.
+    ticket_id_to_token: Dict[str, str] = {}
     try:
         # Expo recommends chunks of 100
         async with httpx.AsyncClient(timeout=15.0) as hc:
             for i in range(0, len(messages), 100):
                 chunk = messages[i:i + 100]
                 resp = await hc.post(
-                    "https://exp.host/--/api/v2/push/send",
+                    _EXPO_SEND_URL,
                     json=chunk,
                     headers={
                         "Accept": "application/json",
@@ -103,6 +216,9 @@ async def send_expo_push_batch(
                 for j, r in enumerate(receipts):
                     if isinstance(r, dict) and r.get("status") == "ok":
                         sent += 1
+                        tid = r.get("id")
+                        if tid:
+                            ticket_id_to_token[tid] = chunk[j]["to"]
                     else:
                         err_msg = r.get("message") if isinstance(r, dict) else str(r)
                         err_detail = r.get("details", {}) if isinstance(r, dict) else {}
@@ -116,6 +232,10 @@ async def send_expo_push_batch(
     log_entry["sent"] = sent
     log_entry["errors"] = errors[:10]  # keep log rows bounded
     log_entry["purged"] = len(invalid)
+    log_entry["ticket_count"] = len(ticket_id_to_token)
+    # `sent` = accepted by Expo's API. `delivered` (set by receipt
+    # poller) = actually delivered via FCM/APNs. Keep them separate.
+    log_entry["delivered"] = None  # filled in by _poll_receipts_and_update
     try:
         await db.push_log.insert_one(log_entry)
         # Keep only last 2000 log rows for space
@@ -127,7 +247,22 @@ async def send_expo_push_batch(
                 await db.push_log.delete_many({"created_at": {"$lt": cutoff_doc[0]["created_at"]}})
     except Exception:
         pass
-    return {"sent": sent, "errors": errors, "total": len(clean), "purged": len(invalid)}
+    # Schedule the receipt-polling follow-up in the background so the
+    # caller (booking route, etc.) returns promptly.
+    if ticket_id_to_token:
+        try:
+            asyncio.create_task(
+                _poll_receipts_and_update(log_entry["id"], ticket_id_to_token)
+            )
+        except Exception:
+            pass
+    return {
+        "sent": sent,
+        "errors": errors,
+        "total": len(clean),
+        "purged": len(invalid),
+        "ticket_ids": list(ticket_id_to_token.keys()),
+    }
 
 async def collect_user_tokens(user_ids: Optional[List[str]] = None) -> List[str]:
     q: Dict[str, Any] = {}
