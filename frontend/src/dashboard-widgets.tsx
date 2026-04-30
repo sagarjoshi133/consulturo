@@ -334,27 +334,28 @@ const styles = StyleSheet.create({
   glanceCompactValue: { ...FONTS.h3, color: '#fff', fontSize: 15, marginLeft: 1 },
   glanceCompactLabel: { ...FONTS.body, color: '#fff', fontSize: 10, opacity: 0.9 },
 
-  // ── NEW: 2×2 grid for mobile (compact but bigger touch targets than
-  //        the old 4-wide compact row). Saves vertical space vs the
-  //        original .glanceWrap layout.
+  // ── 2×2 grid — sits INSIDE the userCard on its right-side empty
+  //    space (not below). Tight, pill-like tiles with icon + number +
+  //    short label. The hero's free horizontal area is the target;
+  //    keep each tile compact so labels don't wrap.
   glanceGridWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
+    gap: 5,
+    // No top margin — we're inline with the avatar, not stacked below.
   },
   glanceGridTile: {
-    width: '48.5%',
+    width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
+    borderRadius: 9,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
   },
-  glanceGridValue: { ...FONTS.h3, color: '#fff', fontSize: 17, marginLeft: 2 },
-  glanceGridLabel: { ...FONTS.body, color: '#fff', fontSize: 11, opacity: 0.9, flex: 1 },
+  glanceGridValue: { ...FONTS.h3, color: '#fff', fontSize: 14, marginLeft: 1 },
+  glanceGridLabel: { ...FONTS.body, color: '#fff', fontSize: 10, opacity: 0.9, flex: 1 },
 
   // ── NEW: Vertical rail for desktop hero (appears on the right of
   //        the user card so the tab bar can pull up and save vertical

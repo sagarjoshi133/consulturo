@@ -601,9 +601,13 @@ export default function Dashboard() {
                 if (h > 0 && Math.abs(h - userCardMeasured) > 2) setUserCardMeasured(h);
               }}
             >
-              <View style={styles.userCard}>
+              {/* User card — avatar + name/email/role on the LEFT, 2×2
+                  widgets packed into the empty space on the RIGHT. This
+                  saves vertical hero real-estate and lets the tab bar
+                  pull up significantly. */}
+              <View style={[styles.userCard, { alignItems: 'flex-start' }]}>
                 <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
-                <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                <View style={{ flex: 1.2, marginLeft: 12, minWidth: 0 }}>
                   <Text style={styles.heroName} numberOfLines={1}>
                     {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
                   </Text>
@@ -620,9 +624,8 @@ export default function Dashboard() {
                       </View>
                     )}
                   </View>
-                  {/* Tenant Switcher — only renders if the user is a member of >1
-                      clinic OR is the platform super_owner. Keeps the hero
-                      compact for single-clinic accounts. */}
+                  {/* Tenant switcher only renders if the user is a member of
+                      >1 clinic OR is the platform super_owner. */}
                   <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
                     <TenantSwitcher
                       variant="compact"
@@ -633,58 +636,61 @@ export default function Dashboard() {
                     />
                   </View>
                 </View>
+                {/* 2×2 widget grid in the previously empty right-side of
+                    the user card. Flex:1 so it always fills whatever's
+                    left over after the avatar + text block. */}
+                <View style={{ flex: 1, marginLeft: 10, minWidth: 140 }}>
+                  <TodayGlance
+                    layout="grid2x2"
+                    onTapBookings={() => setTab('bookings')}
+                    onTapPending={() => setTab('bookings')}
+                  />
+                </View>
               </View>
-              {/* Mobile: 2×2 grid below user card — smaller footprint than
-                  the previous 4-wide compact row. */}
-              <TodayGlance
-                layout="grid2x2"
-                onTapBookings={() => setTab('bookings')}
-                onTapPending={() => setTab('bookings')}
-              />
             </View>
           </RNAnimated.View>
           )}
 
-          {/* Desktop: render the user card and 4 widgets SIDE-BY-SIDE so
-              the tab bar rises up to where the widgets used to sit.
-              Saves vertical screen space on 1080p+ displays. */}
+          {/* Desktop — same concept: user card left, 2×2 widgets tucked
+              into the empty hero space on the right. No more vertical
+              rail below the card. */}
           {isWebDesktop && (
-            <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 16, marginTop: 6 }}>
-              <View style={[styles.userCard, { flex: 1, marginTop: 0 }]}>
-                <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
-                <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-                  <Text style={styles.heroName} numberOfLines={1}>
-                    {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
-                  </Text>
-                  <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
-                  <View style={styles.heroBadgeRow}>
-                    <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
-                      <Ionicons name="ribbon" size={11} color={roleAccent} />
-                      <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
+            <View style={[styles.userCard, { alignItems: 'flex-start', marginTop: 6 }]}>
+              <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
+              <View style={{ flex: 1.2, marginLeft: 12, minWidth: 0 }}>
+                <Text style={styles.heroName} numberOfLines={1}>
+                  {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
+                </Text>
+                <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
+                <View style={styles.heroBadgeRow}>
+                  <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
+                    <Ionicons name="ribbon" size={11} color={roleAccent} />
+                    <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
+                  </View>
+                  {!isOwner && isFullAccess && (
+                    <View style={styles.fullAccessBadge}>
+                      <Ionicons name="shield-checkmark" size={11} color="#fff" />
+                      <Text style={styles.fullAccessText}>FULL ACCESS</Text>
                     </View>
-                    {!isOwner && isFullAccess && (
-                      <View style={styles.fullAccessBadge}>
-                        <Ionicons name="shield-checkmark" size={11} color="#fff" />
-                        <Text style={styles.fullAccessText}>FULL ACCESS</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
-                    <TenantSwitcher
-                      variant="compact"
-                      primaryColor="#FFFFFF"
-                      textColor="#FFFFFF"
-                      bgColor="rgba(255,255,255,0.16)"
-                      borderColor="rgba(255,255,255,0.32)"
-                    />
-                  </View>
+                  )}
+                </View>
+                <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                  <TenantSwitcher
+                    variant="compact"
+                    primaryColor="#FFFFFF"
+                    textColor="#FFFFFF"
+                    bgColor="rgba(255,255,255,0.16)"
+                    borderColor="rgba(255,255,255,0.32)"
+                  />
                 </View>
               </View>
-              <TodayGlance
-                layout="rail"
-                onTapBookings={() => setTab('bookings')}
-                onTapPending={() => setTab('bookings')}
-              />
+              <View style={{ flex: 1, marginLeft: 16, minWidth: 200, maxWidth: 320 }}>
+                <TodayGlance
+                  layout="grid2x2"
+                  onTapBookings={() => setTab('bookings')}
+                  onTapPending={() => setTab('bookings')}
+                />
+              </View>
             </View>
           )}
         </SafeAreaView>
