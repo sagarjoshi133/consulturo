@@ -12854,3 +12854,51 @@ missed_appt_metadata:
   test_all: false
   test_priority: "high_first"
 
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-04-30  UI polish (mobile-only) — no backend impact
+# ─────────────────────────────────────────────────────────────
+ui_polish_20260430:
+  - task: "Homepage Book CTA — prevent title clipping on small phones"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Reworked the compact CTA layout so the "Book a Consultation"
+          title can no longer be clipped on standard 360–430px widths:
+          - Removed the wide "Book Now" text pill on the right; replaced
+            with a compact 30×30 round arrow-only button → frees up
+            ~55px for the title block.
+          - Title / subtitle now allow numberOfLines=2 with ellipsis
+            instead of forced-one-line + adjustsFontSizeToFit.
+          - Tightened icon bubble (40→36) + card padding/gap so the card
+            height stays essentially the same despite the 2-line wrap.
+          - Added flexShrink:1 + minWidth:0 on the middle column to
+            guarantee proper flex-wrapping behaviour in RN Web.
+  - task: "Dashboard hero badge — shrink 'Primary owner' role chip to 2/3"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/dashboard.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Per design feedback, the role chip in the dashboard hero was
+          scaled down to ~2/3 of its previous footprint. All proportions
+          kept consistent with the sibling Full Access chip:
+          - heroRole  : paddingH 8→5, paddingV 2→1, gap 6→3, radius 8→6
+          - heroRoleText fontSize 11→8, letterSpacing added
+          - heroBadgeRow gap 6→4, marginTop 6→4
+          - fullAccessBadge mirrored same reductions to stay balanced
+          - icons inside both chips size 11→8 (both mobile + desktop
+            render paths updated).

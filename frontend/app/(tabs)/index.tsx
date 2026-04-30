@@ -424,15 +424,14 @@ export default function Home() {
             <View style={styles.ctaIconBubble}>
               <MaterialCommunityIcons name="calendar-heart" size={18} color="#fff" />
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.ctaTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+              <Text style={styles.ctaTitle} numberOfLines={2} ellipsizeMode="tail">
                 {t('home.bookConsultation')}
               </Text>
-              <Text style={styles.ctaSub} numberOfLines={1}>{t('home.bookCtaSub')}</Text>
+              <Text style={styles.ctaSub} numberOfLines={2} ellipsizeMode="tail">{t('home.bookCtaSub')}</Text>
             </View>
             <View style={styles.ctaBtn}>
-              <Text style={[styles.ctaBtnText, { color: themeColors.primary }]}>{t('home.bookNow')}</Text>
-              <Ionicons name="arrow-forward" size={13} color={themeColors.primary} />
+              <Ionicons name="arrow-forward" size={14} color={themeColors.primary} />
             </View>
           </LinearGradient>
         </TouchableOpacity>
@@ -919,11 +918,11 @@ const styles = StyleSheet.create({
   ctaCard: {
     borderRadius: RADIUS.lg,
     paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     // Premium subtle shadow — adds depth without adding height
     shadowColor: '#000',
     shadowOpacity: 0.10,
@@ -932,25 +931,24 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   ctaIconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
   },
-  ctaTitle: { ...FONTS.h3, color: '#fff', fontSize: 15 },
-  ctaSub: { ...FONTS.body, color: '#E0F7FA', marginTop: 1, fontSize: 11, opacity: 0.9 },
+  ctaTitle: { ...FONTS.h3, color: '#fff', fontSize: 15, lineHeight: 18, flexShrink: 1 },
+  ctaSub: { ...FONTS.body, color: '#E0F7FA', marginTop: 2, fontSize: 11, lineHeight: 14, opacity: 0.9, flexShrink: 1 },
   ctaBtn: {
     backgroundColor: '#fff',
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   ctaBtnText: { ...FONTS.bodyMedium, color: COLORS.primary, fontFamily: 'Manrope_700Bold', fontSize: 12 },
   section: { marginTop: 24 },

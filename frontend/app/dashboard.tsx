@@ -614,12 +614,12 @@ export default function Dashboard() {
                   <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
                   <View style={styles.heroBadgeRow}>
                     <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
-                      <Ionicons name="ribbon" size={11} color={roleAccent} />
+                      <Ionicons name="ribbon" size={8} color={roleAccent} />
                       <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
                     </View>
                     {!isOwner && isFullAccess && (
                       <View style={styles.fullAccessBadge}>
-                        <Ionicons name="shield-checkmark" size={11} color="#fff" />
+                        <Ionicons name="shield-checkmark" size={8} color="#fff" />
                         <Text style={styles.fullAccessText}>FULL ACCESS</Text>
                       </View>
                     )}
@@ -664,12 +664,12 @@ export default function Dashboard() {
                 <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
                 <View style={styles.heroBadgeRow}>
                   <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
-                    <Ionicons name="ribbon" size={11} color={roleAccent} />
+                    <Ionicons name="ribbon" size={8} color={roleAccent} />
                     <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
                   </View>
                   {!isOwner && isFullAccess && (
                     <View style={styles.fullAccessBadge}>
-                      <Ionicons name="shield-checkmark" size={11} color="#fff" />
+                      <Ionicons name="shield-checkmark" size={8} color="#fff" />
                       <Text style={styles.fullAccessText}>FULL ACCESS</Text>
                     </View>
                   )}
@@ -2255,29 +2255,32 @@ const styles = StyleSheet.create({
   heroPhoto: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff' },
   heroName: { ...FONTS.h4, color: '#fff', fontSize: 16 },
   heroEmail: { ...FONTS.body, color: '#E0F7FA', fontSize: 12 },
-  heroRole: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: '#fff', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  heroRoleText: { ...FONTS.label, color: COLORS.primary, fontSize: 11 },
+  // Role badge shrunk to ~2/3 of previous size per design feedback —
+  // padding, gap, radius and font size all scaled down proportionally.
+  heroRole: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#fff', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6 },
+  heroRoleText: { ...FONTS.label, color: COLORS.primary, fontSize: 8, letterSpacing: 0.3 },
   // Wraps the primary role badge + the optional Full Access pill so they
   // sit side-by-side rather than stacked. Wraps to a new line gracefully
   // on extra-narrow phones / long role names.
-  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 },
+  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 4 },
   // Distinct gold-tinted treatment for "Full Access" so it pops next to
   // the role chip without competing visually with the primary CTA.
+  // Scaled proportionally to the shrunken heroRole badge.
   fullAccessBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     backgroundColor: '#F5C26B',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.18,
     shadowRadius: 2,
     elevation: 1,
   },
-  fullAccessText: { ...FONTS.label, color: '#5C3D00', fontSize: 10, letterSpacing: 0.4 },
+  fullAccessText: { ...FONTS.label, color: '#5C3D00', fontSize: 7, letterSpacing: 0.3 },
   tabBarContainer: { backgroundColor: COLORS.bg, paddingTop: 4, paddingBottom: 2 },
   tabBarContainerDesktop: { paddingTop: 4, paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   tabBarWrap: { maxHeight: 48 },
