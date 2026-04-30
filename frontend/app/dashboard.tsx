@@ -1856,14 +1856,8 @@ function PrescriptionsPanel() {
 
   return (
     <>
-      <PrimaryButton
-        title="+ New Prescription"
-        onPress={() => router.push('/prescriptions/new')}
-        icon={<Ionicons name="document-text" size={18} color="#fff" />}
-        testID="dashboard-new-rx"
-      />
       {items.length > 0 && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 24, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, height: 40 }}>
             <Ionicons name="search" size={16} color={COLORS.textSecondary} />
             <TextInput
@@ -1875,6 +1869,17 @@ function PrescriptionsPanel() {
               testID="rx-search"
             />
           </View>
+          {/* Compact + button — replaces the full-width "New Prescription"
+              CTA to save vertical space. Same action, smaller footprint. */}
+          <TouchableOpacity
+            onPress={() => router.push('/prescriptions/new')}
+            style={[styles.refreshBtn, { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+            activeOpacity={0.75}
+            testID="dashboard-new-rx"
+            accessibilityLabel="New prescription"
+          >
+            <Ionicons name="add" size={22} color="#fff" />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={manualRxRefresh}
             disabled={rxRefreshing}
@@ -1901,9 +1906,26 @@ function PrescriptionsPanel() {
           ))}
         </View>
       ) : filtered.length === 0 ? (
-        <Text style={{ ...FONTS.body, color: COLORS.textSecondary, textAlign: 'center', marginTop: 24 }}>
-          {items.length === 0 ? 'No prescriptions yet' : 'No matches.'}
-        </Text>
+        <View style={{ alignItems: 'center', marginTop: 24, paddingHorizontal: 16 }}>
+          <Text style={{ ...FONTS.body, color: COLORS.textSecondary, textAlign: 'center' }}>
+            {items.length === 0 ? 'No prescriptions yet' : 'No matches.'}
+          </Text>
+          {items.length === 0 && (
+            <TouchableOpacity
+              onPress={() => router.push('/prescriptions/new')}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                backgroundColor: COLORS.primary,
+                paddingVertical: 10, paddingHorizontal: 18,
+                borderRadius: 22, marginTop: 12,
+              }}
+              testID="dashboard-new-rx-empty"
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={{ ...FONTS.bodyMedium, color: '#fff' }}>New Prescription</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       ) : (
         // Desktop: same card layout, but flex into a 2-up grid
         // wrapper. Mobile keeps the single-column stack.

@@ -417,20 +417,21 @@ export default function Home() {
             end={{ x: 1, y: 1 }}
             style={styles.ctaCard}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.ctaTitle}>{t('home.bookConsultation')}</Text>
-              <Text style={styles.ctaSub}>{t('home.bookCtaSub')}</Text>
-              <View style={styles.ctaBtn}>
-                <Text style={[styles.ctaBtnText, { color: themeColors.primary }]}>{t('home.bookNow')}</Text>
-                <Ionicons name="arrow-forward" size={16} color={themeColors.primary} />
-              </View>
+            {/* Compact single-row CTA: icon bubble on the left, title +
+                small one-line sub in the middle, pill CTA on the right.
+                ~⅓ the vertical space of the previous 120px card while
+                still feeling premium (gradient, glassy icon, tight pill). */}
+            <View style={styles.ctaIconBubble}>
+              <MaterialCommunityIcons name="calendar-heart" size={22} color="#fff" />
             </View>
-            <MaterialCommunityIcons
-              name="calendar-heart"
-              size={64}
-              color="rgba(255,255,255,0.25)"
-              style={{ position: 'absolute', right: 8, bottom: 0 }}
-            />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.ctaTitle} numberOfLines={1}>{t('home.bookConsultation')}</Text>
+              <Text style={styles.ctaSub} numberOfLines={1}>{t('home.bookCtaSub')}</Text>
+            </View>
+            <View style={styles.ctaBtn}>
+              <Text style={[styles.ctaBtnText, { color: themeColors.primary }]}>{t('home.bookNow')}</Text>
+              <Ionicons name="arrow-forward" size={14} color={themeColors.primary} />
+            </View>
           </LinearGradient>
         </TouchableOpacity>
         )}
@@ -915,24 +916,41 @@ const styles = StyleSheet.create({
   },
   ctaCard: {
     borderRadius: RADIUS.lg,
-    padding: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     overflow: 'hidden',
-    minHeight: 120,
-  },
-  ctaTitle: { ...FONTS.h3, color: '#fff', fontSize: 20 },
-  ctaSub: { ...FONTS.body, color: '#E0F7FA', marginTop: 4 },
-  ctaBtn: {
-    backgroundColor: '#fff',
-    alignSelf: 'flex-start',
-    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    gap: 12,
+    // Premium subtle shadow — adds depth without adding height
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  ctaBtnText: { ...FONTS.bodyMedium, color: COLORS.primary, fontFamily: 'Manrope_700Bold' },
+  ctaIconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  ctaTitle: { ...FONTS.h3, color: '#fff', fontSize: 15 },
+  ctaSub: { ...FONTS.body, color: '#E0F7FA', marginTop: 1, fontSize: 11, opacity: 0.9 },
+  ctaBtn: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  ctaBtnText: { ...FONTS.bodyMedium, color: COLORS.primary, fontFamily: 'Manrope_700Bold', fontSize: 12 },
   section: { marginTop: 24 },
   sectionHead: {
     flexDirection: 'row',

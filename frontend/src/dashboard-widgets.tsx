@@ -145,7 +145,7 @@ export function TodayGlance({ onTapBookings, onTapPending, layout, compact }: Gl
             activeOpacity={t.onPress ? 0.75 : 1}
             testID={`glance-${t.key}`}
           >
-            <Ionicons name={t.icon} size={14} color="#fff" style={{ opacity: 0.95 }} />
+            <Ionicons name={t.icon} size={11} color="#fff" style={{ opacity: 0.95 }} />
             <Text style={styles.glanceGridValue}>{t.value}</Text>
             <Text style={styles.glanceGridLabel} numberOfLines={1}>{t.short}</Text>
           </TouchableOpacity>
@@ -335,27 +335,24 @@ const styles = StyleSheet.create({
   glanceCompactLabel: { ...FONTS.body, color: '#fff', fontSize: 10, opacity: 0.9 },
 
   // ── 2×2 grid — sits INSIDE the userCard on its right-side empty
-  //    space (not below). Tight, pill-like tiles with icon + number +
-  //    short label. The hero's free horizontal area is the target;
-  //    keep each tile compact so labels don't wrap.
+  //    space. Compact badge-style tiles (⅔ of v1 size per user request).
   glanceGridWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-    // No top margin — we're inline with the avatar, not stacked below.
+    gap: 4,
   },
   glanceGridTile: {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 3,
     backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 9,
-    paddingVertical: 6,
-    paddingHorizontal: 7,
+    borderRadius: 7,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
   },
-  glanceGridValue: { ...FONTS.h3, color: '#fff', fontSize: 14, marginLeft: 1 },
-  glanceGridLabel: { ...FONTS.body, color: '#fff', fontSize: 10, opacity: 0.9, flex: 1 },
+  glanceGridValue: { ...FONTS.h3, color: '#fff', fontSize: 11, marginLeft: 1 },
+  glanceGridLabel: { ...FONTS.body, color: '#fff', fontSize: 8.5, opacity: 0.9, flex: 1 },
 
   // ── NEW: Vertical rail for desktop hero (appears on the right of
   //        the user card so the tab bar can pull up and save vertical
