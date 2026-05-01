@@ -16,8 +16,14 @@ const extraBlocks = [
   // Avoid following nested node_modules graphs (prevents N^2 watching).
   /node_modules\/.*\/node_modules\/.*/,
   // Native build artefacts — irrelevant for the web bundle.
-  /.*\/android\/.*/,
-  /.*\/ios\/.*/,
+  // IMPORTANT: Only block `android/` / `ios/` when it is a direct child of
+  // the project root or a package root. We must NOT block paths like
+  // `node_modules/<pkg>/build/android/...` because some Expo SDK 55 packages
+  // (e.g. expo-symbols) ship platform JS code under `build/android/`.
+  /^android\/.*/,
+  /^ios\/.*/,
+  /node_modules\/(?:@[^/]+\/)?[^/]+\/android\/.*/,
+  /node_modules\/(?:@[^/]+\/)?[^/]+\/ios\/.*/,
   /.*\/gradle-plugin\/.*/,
   // Test and build outputs that Metro should ignore.
   /.*\/__tests__\/.*/,
