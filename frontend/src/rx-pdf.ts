@@ -119,15 +119,26 @@ function section(title: string, rowsHtml: string[]): string {
 export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Promise<string> {
   const base = (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://www.drsagarjoshi.com').replace(/\/$/, '');
   const verifyUrl = `${base}/api/rx/verify/${rx.prescription_id}`;
-  let qrDataUrl = '';
+  // QR code — use SVG output (pure JS, no Canvas) so it works on
+  // BOTH web and the React Native APK bundler. The previous
+  // implementation used QRCode.toDataURL() which relies on Canvas
+  // and silently threw on native, leaving the QR block blank on
+  // every PDF generated from a phone. We then embed the raw SVG
+  // inline in the HTML — the expo-print WebView renders SVG
+  // natively at any size without any rasterisation step.
+  let qrSvg = '';
   try {
-    qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+    qrSvg = await QRCode.toString(verifyUrl, {
+      type: 'svg',
       margin: 1,
       width: 180,
       color: { dark: '#0A5E6B', light: '#FFFFFF' },
     });
+    // Strip XML prolog / DOCTYPE — keep only the <svg>…</svg>
+    // element so it composes cleanly with the surrounding HTML.
+    qrSvg = qrSvg.replace(/<\?xml[^>]*\?>/g, '').replace(/<!DOCTYPE[^>]*>/g, '').trim();
   } catch {
-    qrDataUrl = '';
+    qrSvg = '';
   }
 
   const visitDisplay =
@@ -603,8 +614,11 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     gap:2px;
   }
 
-  /* QR block — kept readable for scanning */
-  .qrBlock img{width:64px; height:64px;}
+  /* QR block — kept readable for scanning. Targets both <img>
+     (legacy Canvas-based DataURL path) and inline <svg> (current
+     SVG path which works on both web and native). */
+  .qrBlock img,
+  .qrBlock svg{width:64px; height:64px; display:block;}
   .qrCap{font-size:8px; color:#5E7C81; margin-top:2px; line-height:1.25;}
   .qrCap b{color:#0E7C8B;}
 
@@ -835,9 +849,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   <div class="rxSpacer"></div>
 
   <div class="footwrap">
-    ${qrDataUrl ? `
+    ${qrSvg ? `
     <div class="qrBlock footCell">
-      <img src="${qrDataUrl}"/>
+      ${qrSvg}
       <div class="qrCap"><b>Scan to verify</b><br/>Via ConsultUro</div>
     </div>` : `<div class="qrBlock footCell"></div>`}
 
