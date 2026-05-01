@@ -153,6 +153,88 @@ async def force_heal_push_tokens(user=Depends(require_user)):
     report["ok"] = report["after"].get("by_user_id", 0) > 0
     return report
 
+@router.get("/api/push/fcm-errors")
+async def push_fcm_errors(limit: int = 20, user=Depends(require_owner)):
+    """Surface the actual FCM/APNs rejection reasons from push_log.
+
+    When 'sent: X / failed: Y' dashboard metrics show mass failures
+    but the doctor can't see WHY (rows are in MongoDB, not in any
+    log panel), this endpoint pulls the last N push attempts that
+    had errors and de-duplicates them into a frequency map of
+    Expo + FCM error codes:
+      - DeviceNotRegistered : token invalid / app uninstalled
+      - InvalidCredentials  : FCM v1 service account not uploaded
+                              to EAS credentials, OR key rotated
+      - MismatchSenderId    : google-services.json sender_id does
+                              not match the FCM project bound to
+                              this EAS project
+      - MessageTooBig / MessageRateExceeded : Expo-side throttle
+
+    Why this matters: no amount of backend code can fix an
+    InvalidCredentials / MismatchSenderId. The user must upload the
+    FCM service account JSON via `eas credentials` CLI. This
+    endpoint's sole job is to prove that's the problem."""
+    rows = await db.push_log.find(
+        {"errors": {"$ne": []}},
+        {"_id": 0, "id": 1, "title": 1, "data_type": 1,
+         "total": 1, "sent": 1, "purged": 1, "errors": 1,
+         "delivered": 1, "receipts": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(length=max(1, min(limit, 200)))
+
+    # Distil top-level error codes out of the heterogeneous error
+    # shapes Expo / FCM return (string vs nested dict vs receipt).
+    def _extract_codes(err_list: List[Any]) -> List[str]:
+        out: List[str] = []
+        for e in err_list or []:
+            if not isinstance(e, dict):
+                out.append(str(e)[:80])
+                continue
+            det = e.get("details") if isinstance(e.get("details"), dict) else {}
+            code = det.get("error") or e.get("code") or e.get("error")
+            if code:
+                out.append(str(code))
+        return out
+
+    freq: Dict[str, int] = {}
+    for r in rows:
+        for code in _extract_codes(r.get("errors") or []):
+            freq[code] = freq.get(code, 0) + 1
+        rcpts = r.get("receipts") or {}
+        for code in _extract_codes(rcpts.get("receipt_errors") or []):
+            freq[code] = freq.get(code, 0) + 1
+
+    # Plain-English guidance for the most common codes
+    hints: Dict[str, str] = {
+        "InvalidCredentials":
+            "FCM service account is missing or expired on Expo. "
+            "Run `eas credentials --platform android` and upload a "
+            "Google Service Account JSON downloaded from Firebase "
+            "Console > Project > Service Accounts > Generate Key.",
+        "MismatchSenderId":
+            "google-services.json sender_id does not match the FCM "
+            "credentials bound to this EAS project. Re-download "
+            "google-services.json from Firebase Console and rebuild "
+            "the APK.",
+        "DeviceNotRegistered":
+            "Token is invalid — app uninstalled, storage cleared, or "
+            "project mismatch. Re-register on a fresh install.",
+        "MessageRateExceeded":
+            "Slow down: Expo throttled recent sends. Back off for a "
+            "few minutes and retry.",
+        "MessageTooBig":
+            "Push payload exceeds 4 KB (FCM limit). Trim title/body.",
+    }
+
+    return {
+        "count": len(rows),
+        "error_frequencies": freq,
+        "primary_guidance": [
+            {"code": c, "count": freq[c], "fix": hints.get(c, "Check Expo docs for this code.")}
+            for c in sorted(freq, key=lambda k: -freq[k])[:5]
+        ],
+        "recent": rows[:10],
+    }
+
 @router.get("/api/push/diagnostics")
 async def push_diagnostics(user=Depends(require_owner)):
     """Snapshot of the push-notification health for the clinic.
