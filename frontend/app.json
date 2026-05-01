@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "owner": "sagar133",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -27,41 +26,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#549BAF"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR"
       ],
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": false,
-          "data": [
-            {
-              "scheme": "consulturo",
-              "host": "auth-callback"
-            },
-            {
-              "scheme": "consulturo",
-              "host": "magic-link"
-            },
-            {
-              "scheme": "consulturo"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        },
         {
           "action": "VIEW",
           "autoVerify": false,
