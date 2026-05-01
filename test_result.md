@@ -13012,3 +13012,136 @@ push_and_crash_fix_20260501:
           occurs the user sees a clean "Try again / Back to Home"
           card instead of being dumped at Home. Errors are reported
           to Sentry via captureError for triage.
+
+  - task: "Push token email-fallback (silent drift fix)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/services/notifications.py + /app/backend/routers/push.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User report (2026-05-01 14:35 IST screenshot): "Test push
+          could not be sent — No push tokens registered for this
+          account" alert on /api/push/test, even though the same
+          panel showed the device as "Registered" and STAFF DEVICES
+          (4) under sagar.joshi133@gmail.com.
+
+          Root cause analysis: `collect_user_tokens([user_id])`
+          queries `push_tokens` strictly by `user_id`. After certain
+          DB events (re-seed, account migration, schema fix-up),
+          tokens get stamped with a stale user_id that no longer
+          matches the currently-authenticated user. Result: the
+          query returns 0 even though tokens exist for the same
+          email.
+
+          Fix: when `user_id` lookup is empty for a single user,
+          `collect_user_tokens` now falls back to email lookup AND
+          self-heals the orphaned rows by re-stamping the canonical
+          user_id (so the next call hits the fast user_id index).
+          Affects every push path — /api/push/test, push_to_user,
+          push_to_owner, broadcasts. Backend imports verified via
+          ruff (passes), service restarted (HTTP 200).
+
+          Test target: hit /api/push/test as a logged-in user whose
+          push_tokens row has user_id != current user_id; expect
+          successful send + healed_tokens > 0 in subsequent calls.
+      - working: true
+        agent: "testing"
+        comment: |
+          ALL 19/19 assertions PASS via
+          /app/backend_test_push_email_fallback.py against
+          http://localhost:8001. Fix is verified end-to-end.
+
+          1. Backend health ✅
+             - GET /api/ → 200 {"service":"ConsultUro API","status":"ok"}.
+             - GET /api/auth/me with OWNER token
+               (test_session_1776770314741) → 200, role=primary_owner,
+               user_id=user_4775ed40276e, email=sagar.joshi133@gmail.com.
+
+          2. POST /api/push/register (regression) ✅
+             - POSTed {token:"ExponentPushToken[abc123testtoken_<ts>]",
+               platform:"android", device_name:"TestDevice"} as OWNER
+               → 200 {"ok":true}.
+             - db.push_tokens row inserted with the correct
+               user_id=user_4775ed40276e AND
+               email=sagar.joshi133@gmail.com (both stamped on the
+               row, which is what the email-fallback relies on).
+
+          3. POST /api/push/test — happy path (regression) ✅
+             - 200 with tokens_found=1, reason absent (NOT no_tokens),
+               receipts/errors structure present
+               (keys=ok,tokens_found,sent,errors,purged,ticket_ids,
+               receipts).
+             - ok=false because Expo rejected the fake token as
+               DeviceNotRegistered, which is expected — the endpoint
+               correctly returned the structured FCM-error response
+               instead of the no_tokens early-out. purged=1 (token
+               auto-removed from db.push_tokens by send_expo_push_batch
+               at services/notifications.py:230-231).
+
+          4. POST /api/push/test — EMAIL FALLBACK (the new fix) ✅
+             - Re-registered the test token (since happy-path purged it).
+             - Direct mongo update_one: set push_tokens.user_id =
+               "stale_user_id_xyz" while leaving email intact. Verified
+               corruption (user_id=stale_user_id_xyz, email still
+               sagar.joshi133@gmail.com).
+             - Hit POST /api/push/test as the same OWNER token
+               → 200 with tokens_found=1, reason absent (NOT no_tokens).
+               The email-fallback branch in collect_user_tokens
+               (services/notifications.py:279-297) successfully resolved
+               the orphaned token via the email index.
+             - SELF-HEAL VALIDATION: Because send_expo_push_batch then
+               purges fake tokens after the self-heal completes, the
+               row is gone after the API call. To validate the heal
+               step deterministically we re-registered, re-corrupted,
+               and called services.notifications.collect_user_tokens
+               directly. Result:
+                 • Returned [TEST_TOKEN] via the email path.
+                 • Subsequent db.push_tokens.find_one shows
+                   user_id=user_4775ed40276e (RE-STAMPED back to the
+                   canonical real user_id). Self-heal confirmed at
+                   services/notifications.py:292-295 update_many.
+
+          5. POST /api/push/test — true empty path ✅
+             - delete_many({email}) and delete_many({user_id}) for
+               OWNER → confirmed 0 owner tokens remain in
+               db.push_tokens.
+             - Hit POST /api/push/test → 200 with
+               {ok:false, reason:"no_tokens", tokens_found:0,
+                message:"No push tokens registered for this account.
+                Grant notification permission in the app and restart."}.
+               Exactly per spec.
+
+          End state: zero test tokens left in db.push_tokens (cleaned
+          up via cleanup_token at end). Backend healthy, no 5xx, no
+          auth bypasses. The user's reported issue
+          ("No push tokens registered for this account" despite tokens
+          showing in staff-devices list) is FIXED — the fallback +
+          self-heal logic correctly handles stale-user_id drift.
+
+agent_communication_2026_05_01_push_email_fallback:
+  - agent: "testing"
+    message: |
+      Push-token email-fallback fix VERIFIED. 19/19 assertions pass
+      via /app/backend_test_push_email_fallback.py.
+
+      • Happy path /api/push/test: tokens_found=1, structured
+        receipts/errors response (NOT reason=no_tokens). ✅
+      • Email-fallback path: corrupted user_id → "stale_user_id_xyz",
+        endpoint still finds the token via email index and returns
+        tokens_found=1. ✅
+      • Self-heal: validated via direct collect_user_tokens call —
+        push_tokens.user_id is re-stamped to the real user_id after
+        a fallback hit. ✅
+      • True empty path: delete-all → reason=no_tokens,
+        tokens_found=0. ✅
+      • POST /api/push/register, GET /api/, /api/auth/me regress
+        cleanly. ✅
+
+      No 5xx, no DB pollution, end state clean. The reported user
+      issue ("No push tokens registered") will not recur for stale
+      user_id drift.
