@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "postinstall": "node -e \"try{require('child_process').execSync('bash ../scripts/install-git-hooks.sh',{stdio:'inherit'})}catch(e){}\"",
+    "check-lockfile": "bash ../scripts/check-lockfile.sh --check"
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",

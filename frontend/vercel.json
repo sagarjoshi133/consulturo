@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "yarn install && npx expo export -p web --output-dir dist",
+  "installCommand": "yarn install --network-timeout 600000",
+  "buildCommand": "npx expo export -p web --output-dir dist",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
