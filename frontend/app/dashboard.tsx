@@ -296,6 +296,27 @@ const ROLES = [
   { id: 'nursing', label: 'Nursing Staff' },
 ];
 
+// Short, single-line-friendly labels for the role chip in the user
+// card. The raw role keys (primary_owner, super_owner) wrap to two
+// lines and overflow into the right-side widgets on narrow phones —
+// so we render a friendlier label here while keeping the underlying
+// `user.role` value unchanged for permission checks.
+function roleDisplayLabel(role?: string | null): string {
+  if (!role) return '';
+  const map: Record<string, string> = {
+    super_owner: 'SUPER OWNER',
+    primary_owner: 'OWNER',
+    owner: 'OWNER',
+    partner: 'PARTNER',
+    doctor: 'DOCTOR',
+    assistant: 'ASSISTANT',
+    reception: 'RECEPTION',
+    nursing: 'NURSING',
+    patient: 'PATIENT',
+  };
+  return map[role] || role.toUpperCase().replace(/_/g, ' ');
+}
+
 export default function Dashboard() {
   // Wraps the (massive) DashboardImpl component below in a local error
   // boundary. When a widget / panel (branding, broadcasts, team, etc.)
@@ -632,12 +653,18 @@ function DashboardImpl() {
                   <View style={styles.heroBadgeRow}>
                     <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
                       <Ionicons name="ribbon" size={8} color={roleAccent} />
-                      <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
+                      <Text
+                        style={[styles.heroRoleText, { color: roleAccent }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {roleDisplayLabel(user.role)}
+                      </Text>
                     </View>
                     {!isOwner && isFullAccess && (
                       <View style={styles.fullAccessBadge}>
                         <Ionicons name="shield-checkmark" size={8} color="#fff" />
-                        <Text style={styles.fullAccessText}>FULL ACCESS</Text>
+                        <Text style={styles.fullAccessText} numberOfLines={1}>FULL ACCESS</Text>
                       </View>
                     )}
                   </View>
@@ -682,12 +709,18 @@ function DashboardImpl() {
                 <View style={styles.heroBadgeRow}>
                   <View style={[styles.heroRole, { borderColor: roleAccent + '88' }]}>
                     <Ionicons name="ribbon" size={8} color={roleAccent} />
-                    <Text style={[styles.heroRoleText, { color: roleAccent }]}>{user.role.toUpperCase()}</Text>
+                    <Text
+                      style={[styles.heroRoleText, { color: roleAccent }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {roleDisplayLabel(user.role)}
+                    </Text>
                   </View>
                   {!isOwner && isFullAccess && (
                     <View style={styles.fullAccessBadge}>
                       <Ionicons name="shield-checkmark" size={8} color="#fff" />
-                      <Text style={styles.fullAccessText}>FULL ACCESS</Text>
+                      <Text style={styles.fullAccessText} numberOfLines={1}>FULL ACCESS</Text>
                     </View>
                   )}
                 </View>
@@ -2181,7 +2214,13 @@ function TeamPanel() {
                 <Text style={styles.tmEmail}>{m.email}</Text>
                 <View style={styles.tmTagRow}>
                   <View style={[styles.tmRole, m.role === 'owner' && { backgroundColor: COLORS.accent + '22' }]}>
-                    <Text style={[styles.tmRoleText, m.role === 'owner' && { color: COLORS.accent }]}>{m.role.toUpperCase()}</Text>
+                    <Text
+                      style={[styles.tmRoleText, m.role === 'owner' && { color: COLORS.accent }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {roleDisplayLabel(m.role)}
+                    </Text>
                   </View>
                   <View style={[styles.tmStatus, m.status === 'active' ? { backgroundColor: COLORS.success + '22' } : { backgroundColor: COLORS.warning + '22' }]}>
                     <Text style={[styles.tmStatusText, { color: m.status === 'active' ? COLORS.success : COLORS.warning }]}>
@@ -2274,12 +2313,12 @@ const styles = StyleSheet.create({
   heroEmail: { ...FONTS.body, color: '#E0F7FA', fontSize: 12 },
   // Role badge shrunk to ~2/3 of previous size per design feedback —
   // padding, gap, radius and font size all scaled down proportionally.
-  heroRole: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#fff', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6 },
-  heroRoleText: { ...FONTS.label, color: COLORS.primary, fontSize: 8, letterSpacing: 0.3 },
+  heroRole: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#fff', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, maxWidth: '100%' },
+  heroRoleText: { ...FONTS.label, color: COLORS.primary, fontSize: 8, letterSpacing: 0.3, flexShrink: 1 },
   // Wraps the primary role badge + the optional Full Access pill so they
   // sit side-by-side rather than stacked. Wraps to a new line gracefully
   // on extra-narrow phones / long role names.
-  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 4 },
+  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 4, maxWidth: '100%' },
   // Distinct gold-tinted treatment for "Full Access" so it pops next to
   // the role chip without competing visually with the primary CTA.
   // Scaled proportionally to the shrunken heroRole badge.
