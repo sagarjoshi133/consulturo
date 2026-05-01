@@ -80,9 +80,7 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/auth",
-      "@react-native-community/datetimepicker",
-      "expo-sharing"
+      "@react-native-firebase/auth"
     ],
     "experiments": {
       "typedRoutes": false
