@@ -168,12 +168,50 @@ export function NotificationsHealthPanel() {
     haptics.tap();
     setTesting(true);
     try {
-      const { data: r } = await api.post('/push/test', {});
+      let { data: r } = await api.post('/push/test', {});
+
+      // ── Auto-recovery: backend has no token for this account but
+      //    the client DOES have a local Expo token (common after a
+      //    DB purge / account switch / Expo receipt auto-purge). We
+      //    force a fresh /push/register POST then retry the test.
+      //    Prevents the classic "client says Registered, backend says
+      //    no tokens" silent-drift bug Dr. Joshi hit on 2026-05-01.
+      if (r && r.ok === false && r.reason === 'no_tokens') {
+        try {
+          await registerForPushNotifications();
+          setSelfState(getPushState());
+          const regState = getPushState();
+          if (regState.token) {
+            // One retry after a fresh register — buys up to ~25 s
+            // because /push/test now polls receipts in-band.
+            const retry = await api.post('/push/test', {});
+            r = retry.data;
+          }
+        } catch {
+          // fall through to the original "no tokens" alert
+        }
+      }
+
       if (r.ok) {
         haptics.success();
+        // Build a more honest message — `sent` counts Expo ticket
+        // acceptance; `receipts.delivered` counts actual FCM/APNs
+        // delivery which is what the user cares about.
+        const delivered = r?.receipts?.delivered;
+        const pending = r?.receipts?.pending;
+        const deliveredMsg = (typeof delivered === 'number')
+          ? `Delivered to ${delivered} of ${r.tokens_found} device(s).`
+          : `Accepted by Expo for ${r.sent || 0} of ${r.tokens_found} device(s).`;
+        const pendingMsg = (pending && pending > 0)
+          ? ` ${pending} device(s) still pending — check the push log in a minute.`
+          : '';
+        const receiptErrs: any[] = r?.receipts?.receipt_errors || [];
+        const errSummary = receiptErrs.length > 0
+          ? `\n\nFCM errors:\n  • ${receiptErrs.slice(0,3).map((e:any)=>e.error||e.message).join('\n  • ')}`
+          : '';
         Alert.alert(
           'Test push sent',
-          `Delivered to ${r.sent || 0} of ${r.tokens_found} device(s). Check your notification tray.`
+          `${deliveredMsg}${pendingMsg}${errSummary}\n\nCheck your notification tray.`
         );
       } else {
         haptics.warning();

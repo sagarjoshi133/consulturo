@@ -38,6 +38,7 @@ import MessageComposer from '../src/message-composer';
 import { resolvePatientRecipient } from '../src/message-recipient';
 import { ConsultationsPanel } from '../src/consultations-panel';
 import { NotificationsHealthPanel } from '../src/notifications-health-panel';
+import { AppErrorBoundary } from '../src/error-boundary';
 import { BackupHealthPanel } from '../src/backup-health-panel';
 import { EmptyState } from '../src/empty-state';
 import { useToast } from '../src/toast';
@@ -296,6 +297,22 @@ const ROLES = [
 ];
 
 export default function Dashboard() {
+  // Wraps the (massive) DashboardImpl component below in a local error
+  // boundary. When a widget / panel (branding, broadcasts, team, etc.)
+  // throws at render time the user sees a clean "Try again / Back to
+  // Home" card INSTEAD of the entire nav Stack being unmounted — which
+  // on Android manifests as "the app falls back to the Home tab".
+  // 2026-05-01 — added after Dr. Joshi reported recurring dashboard
+  // crashes that silently dropped him to the (tabs)/index Home.
+  const router = useRouter();
+  return (
+    <AppErrorBoundary onEscape={() => { try { router.replace('/' as any); } catch {} }}>
+      <DashboardImpl />
+    </AppErrorBoundary>
+  );
+}
+
+function DashboardImpl() {
   const router = useRouter();
   const { user } = useAuth();
   const tier = useTier();

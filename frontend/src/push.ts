@@ -236,15 +236,20 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     // ---- short-circuit if already registered with the same token ----
-    if (token === lastRegisteredToken) {
-      setState({
-        token,
-        reason: 'already_registered',
-        projectId,
-        at: Date.now(),
-      });
-      return token;
-    }
+    // DISABLED (2026-05-01) — previously we'd skip the POST when the
+    // token hadn't changed since last register, but this caused a silent
+    // drift whenever the backend's push_tokens row got deleted for any
+    // reason (manual cleanup, Expo receipt auto-purge of a stale token
+    // that later revived, DB reset, clinic-switch, re-seed). The client
+    // would keep saying "already_registered" while the backend had no
+    // row → no pushes. The backend upsert is idempotent and cheap, so
+    // always POST. The bookkeeping of `lastRegisteredToken` is retained
+    // only as a status-chip hint (NOT as an early-exit guard).
+    //
+    // if (token === lastRegisteredToken) {
+    //   setState({ token, reason: 'already_registered', ... });
+    //   return token;
+    // }
 
     // ---- POST to backend (with retry) ----
     let postErr: any = null;

@@ -29,6 +29,7 @@ import { COLORS } from '../src/theme';
 import OfflineBanner from '../src/offline-banner';
 import { WebShell } from '../src/web-shell';
 import { DemoBanner } from '../src/demo-banner';
+import { AppErrorBoundary } from '../src/error-boundary';
 
 // Initialise error monitoring once on cold start.
 initSentry();
@@ -104,7 +105,14 @@ function RootNav() {
     <>
       <DemoBanner />
       <WebShell>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.bg } }}>
+        {/* AppErrorBoundary catches render errors in ANY screen below
+            (dashboard widgets, branding, broadcasts, etc.) so a single
+            bug in a deep subtree no longer unmounts the whole Stack and
+            dumps the user back at the Home tab. Reported by Dr. Joshi
+            on 2026-05-01 as "app repeatedly falls back to homepage,
+            especially when using dashboard." */}
+        <AppErrorBoundary onEscape={() => { try { router.replace('/' as any); } catch {} }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.bg } }}>
           <Stack.Screen name="login" />
           <Stack.Screen name="auth-callback" />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
@@ -139,6 +147,7 @@ function RootNav() {
           <Stack.Screen name="branding" />
           <Stack.Screen name="about-app" />
         </Stack>
+        </AppErrorBoundary>
       </WebShell>
       <PhoneGate />
       <ConsentGate />
