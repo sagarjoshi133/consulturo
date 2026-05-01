@@ -31,10 +31,37 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "READ_CALENDAR",
-        "WRITE_CALENDAR"
+        "WRITE_CALENDAR",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ],
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "consulturo",
+              "host": "auth-callback"
+            },
+            {
+              "scheme": "consulturo",
+              "host": "magic-link"
+            },
+            {
+              "scheme": "consulturo"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
         {
           "action": "VIEW",
           "autoVerify": false,
@@ -91,6 +118,12 @@
       "eas": {
         "projectId": "1e1764aa-2d2c-48c5-be82-1427eae229ea"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1e1764aa-2d2c-48c5-be82-1427eae229ea"
     }
   }
 }
