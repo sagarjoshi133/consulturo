@@ -312,10 +312,53 @@ async def push_self_test(user=Depends(require_user)):
     errors (MismatchSenderId, InvalidCredentials, DeviceNotRegistered,
     …) in the response body.
 
-    NOTE: collect_user_tokens auto-heals orphaned-by-stale-user_id
-    tokens via an email fallback, so /push/test "just works" even
-    if a DB migration drifted the user_id."""
+    NOTE: ALWAYS runs an inline self-heal BEFORE looking for tokens so
+    that legacy APKs (v1.0.17 / v1.0.18) which lack the explicit
+    /push/heal client call still benefit from the sibling-user-id
+    consolidation. This makes /push/test fully self-repairing —
+    pressing the button in the app once is enough."""
     import asyncio as _asyncio
+    import re as _re
+
+    # ── INLINE SELF-HEAL (runs on every /push/test call) ────────────
+    # Finds every push_tokens row whose user_id is a sibling of the
+    # caller (sharing email, case-insensitive) OR whose email column
+    # matches the caller's email, and re-stamps them onto the caller's
+    # canonical user_id + email. Idempotent, fast (uses indexes when
+    # available), safe to invoke repeatedly.
+    try:
+        canonical_uid = user["user_id"]
+        canonical_email = (user.get("email") or "").strip()
+        sibling_ids: List[str] = [canonical_uid]
+        if canonical_email:
+            async for u in db.users.find(
+                {"email": {"$regex": f"^{_re.escape(canonical_email)}$", "$options": "i"}},
+                {"_id": 0, "user_id": 1},
+            ):
+                if u["user_id"] not in sibling_ids:
+                    sibling_ids.append(u["user_id"])
+        or_clauses: List[Dict[str, Any]] = [{"user_id": {"$in": sibling_ids}}]
+        if canonical_email:
+            or_clauses.append({
+                "email": {"$regex": f"^{_re.escape(canonical_email)}$", "$options": "i"}
+            })
+        set_patch: Dict[str, Any] = {
+            "user_id": canonical_uid,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if canonical_email:
+            set_patch["email"] = canonical_email
+        await db.push_tokens.update_many(
+            {"$and": [
+                {"$or": or_clauses},
+                {"user_id": {"$ne": canonical_uid}},
+            ]},
+            {"$set": set_patch},
+        )
+    except Exception:
+        # Never fail the test because the pre-heal had a hiccup; the
+        # downstream collect_user_tokens() has its own heal layer.
+        pass
 
     tokens = await collect_user_tokens([user["user_id"]])
     if not tokens:
