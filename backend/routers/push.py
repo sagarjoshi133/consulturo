@@ -37,6 +37,27 @@ async def register_push_token(body: PushRegisterBody, user=Depends(require_user)
         },
         upsert=True,
     )
+
+    # ── Proactive heal: re-stamp ANY orphaned tokens for this email ──
+    # Some accounts have rows where user_id drifted (DB migration,
+    # OAuth re-link, clinic switch) but the email is correct. Every
+    # time the live app calls /push/register, we use the canonical
+    # email of the authenticated user to repair stale rows in one
+    # idempotent UPDATE. This guarantees that the very next call to
+    # /push/test will find tokens via the fast user_id index path
+    # without depending on the email-fallback in collect_user_tokens.
+    try:
+        email = user.get("email")
+        if email:
+            await db.push_tokens.update_many(
+                {"email": email, "user_id": {"$ne": user["user_id"]}},
+                {"$set": {"user_id": user["user_id"], "updated_at": now}},
+            )
+    except Exception:
+        # Never fail a registration because of self-heal. The classic
+        # fallback in collect_user_tokens still has us covered.
+        pass
+
     return {"ok": True}
 
 @router.delete("/api/push/register")
