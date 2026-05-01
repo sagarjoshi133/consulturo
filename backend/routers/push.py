@@ -121,7 +121,11 @@ async def push_self_test(user=Depends(require_user)):
     This is the fastest way to diagnose why pushes aren't reaching a
     device — it bypasses Mongo inspection entirely and surfaces FCM
     errors (MismatchSenderId, InvalidCredentials, DeviceNotRegistered,
-    …) in the response body."""
+    …) in the response body.
+
+    NOTE: collect_user_tokens auto-heals orphaned-by-stale-user_id
+    tokens via an email fallback, so /push/test "just works" even
+    if a DB migration drifted the user_id."""
     import asyncio as _asyncio
 
     tokens = await collect_user_tokens([user["user_id"]])

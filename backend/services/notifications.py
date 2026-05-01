@@ -269,7 +269,34 @@ async def collect_user_tokens(user_ids: Optional[List[str]] = None) -> List[str]
     if user_ids is not None:
         q["user_id"] = {"$in": user_ids}
     rows = await db.push_tokens.find(q, {"_id": 0, "token": 1}).to_list(length=5000)
-    return [r["token"] for r in rows if r.get("token")]
+    tokens = [r["token"] for r in rows if r.get("token")]
+
+    # ── Email fallback for orphaned tokens (2026-05-01) ────────────────
+    # Some accounts have tokens stamped with a stale user_id (DB
+    # migration / re-seed / clinic-switch leftovers). If the user_id
+    # query came up empty for a single user, try the canonical email
+    # and self-heal the rows by re-stamping the current user_id.
+    if not tokens and user_ids and len(user_ids) == 1:
+        try:
+            user_doc = await db.users.find_one(
+                {"user_id": user_ids[0]}, {"_id": 0, "email": 1}
+            )
+            email = (user_doc or {}).get("email")
+            if email:
+                rows2 = await db.push_tokens.find(
+                    {"email": email}, {"_id": 0, "token": 1}
+                ).to_list(length=200)
+                tokens = [r["token"] for r in rows2 if r.get("token")]
+                if tokens:
+                    # Self-heal so future calls hit the fast user_id path
+                    await db.push_tokens.update_many(
+                        {"email": email, "user_id": {"$ne": user_ids[0]}},
+                        {"$set": {"user_id": user_ids[0]}},
+                    )
+        except Exception:
+            pass  # never fail a push because of self-heal
+
+    return tokens
 
 async def collect_role_tokens(roles: List[str]) -> List[str]:
     uids = [u["user_id"] async for u in db.users.find({"role": {"$in": roles}}, {"user_id": 1})]
