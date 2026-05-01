@@ -67,6 +67,92 @@ async def unregister_push_token(token: str = "", user=Depends(require_user)):
     await db.push_tokens.delete_one({"token": token, "user_id": user["user_id"]})
     return {"ok": True}
 
+@router.post("/api/push/heal")
+async def force_heal_push_tokens(user=Depends(require_user)):
+    """Aggressively re-bind every push_tokens row that relates to the
+    caller's email (via any sibling user_id or via the email field
+    itself, case-insensitive) onto the caller's canonical user_id.
+
+    Use this when /push/test keeps returning `no_tokens` even though
+    diagnostics show rows exist — typically after OAuth re-link or
+    legacy seeds created duplicate user docs sharing the same email.
+
+    Returns a JSON diagnostic report showing: total rows before,
+    rows touched, total rows after matching canonical user_id."""
+    import re as _re
+    now = datetime.now(timezone.utc)
+    canonical_uid = user["user_id"]
+    email = (user.get("email") or "").strip()
+
+    report: Dict[str, Any] = {
+        "user_id": canonical_uid,
+        "email": email,
+        "before": {},
+        "after": {},
+        "healed_rows": 0,
+    }
+
+    # Find sibling user_ids sharing this email (case-insensitive)
+    sibling_ids: List[str] = []
+    if email:
+        try:
+            async for u in db.users.find(
+                {"email": {"$regex": f"^{_re.escape(email)}$", "$options": "i"}},
+                {"_id": 0, "user_id": 1},
+            ):
+                sibling_ids.append(u["user_id"])
+        except Exception:
+            pass
+    if canonical_uid not in sibling_ids:
+        sibling_ids.append(canonical_uid)
+    report["sibling_user_ids"] = sibling_ids
+
+    # Before snapshot
+    try:
+        report["before"]["by_user_id"] = await db.push_tokens.count_documents(
+            {"user_id": canonical_uid}
+        )
+        report["before"]["by_sibling_ids"] = await db.push_tokens.count_documents(
+            {"user_id": {"$in": sibling_ids}}
+        )
+        if email:
+            report["before"]["by_email"] = await db.push_tokens.count_documents(
+                {"email": {"$regex": f"^{_re.escape(email)}$", "$options": "i"}}
+            )
+    except Exception as e:
+        report["before_error"] = str(e)
+
+    # Aggressive heal: union of (sibling user_ids) ∪ (matching email)
+    try:
+        or_clauses: List[Dict[str, Any]] = [{"user_id": {"$in": sibling_ids}}]
+        if email:
+            or_clauses.append({
+                "email": {"$regex": f"^{_re.escape(email)}$", "$options": "i"}
+            })
+        set_patch: Dict[str, Any] = {
+            "user_id": canonical_uid,
+            "updated_at": now,
+        }
+        if email:
+            set_patch["email"] = email
+        res = await db.push_tokens.update_many(
+            {"$or": or_clauses}, {"$set": set_patch}
+        )
+        report["healed_rows"] = res.modified_count
+    except Exception as e:
+        report["heal_error"] = str(e)
+
+    # After snapshot
+    try:
+        report["after"]["by_user_id"] = await db.push_tokens.count_documents(
+            {"user_id": canonical_uid}
+        )
+    except Exception as e:
+        report["after_error"] = str(e)
+
+    report["ok"] = report["after"].get("by_user_id", 0) > 0
+    return report
+
 @router.get("/api/push/diagnostics")
 async def push_diagnostics(user=Depends(require_owner)):
     """Snapshot of the push-notification health for the clinic.
@@ -151,11 +237,46 @@ async def push_self_test(user=Depends(require_user)):
 
     tokens = await collect_user_tokens([user["user_id"]])
     if not tokens:
+        # ── Rich diagnostics when no tokens resolved ─────────────────
+        # Surface the raw DB state so the admin can understand WHY.
+        # Shows: total rows in push_tokens, rows matching current
+        # user_id, rows matching current email, all sibling user_ids
+        # that share this email, and a sample of orphaned rows.
+        diag: Dict[str, Any] = {}
+        try:
+            email = user.get("email")
+            diag["user_id"] = user["user_id"]
+            diag["email"] = email
+            diag["by_user_id"] = await db.push_tokens.count_documents(
+                {"user_id": user["user_id"]}
+            )
+            if email:
+                diag["by_email"] = await db.push_tokens.count_documents(
+                    {"email": {"$regex": f"^{email}$", "$options": "i"}}
+                )
+                sibling_ids = [
+                    u["user_id"] async for u in db.users.find(
+                        {"email": {"$regex": f"^{email}$", "$options": "i"}},
+                        {"_id": 0, "user_id": 1},
+                    )
+                ]
+                diag["sibling_user_ids"] = sibling_ids
+                diag["by_sibling_user_ids"] = await db.push_tokens.count_documents(
+                    {"user_id": {"$in": sibling_ids}}
+                ) if sibling_ids else 0
+            diag["total_rows"] = await db.push_tokens.count_documents({})
+            sample = await db.push_tokens.find(
+                {}, {"_id": 0, "user_id": 1, "email": 1, "platform": 1}
+            ).to_list(length=5)
+            diag["sample_rows"] = sample
+        except Exception as e:
+            diag["diag_error"] = str(e)
         return {
             "ok": False,
             "reason": "no_tokens",
             "message": "No push tokens registered for this account. Grant notification permission in the app and restart.",
             "tokens_found": 0,
+            "diagnostics": diag,
         }
     result = await send_expo_push_batch(
         tokens,

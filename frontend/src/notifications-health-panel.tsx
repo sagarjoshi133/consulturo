@@ -178,15 +178,26 @@ export function NotificationsHealthPanel() {
       //    no tokens" silent-drift bug Dr. Joshi hit on 2026-05-01.
       if (r && r.ok === false && r.reason === 'no_tokens') {
         try {
+          // 1) Re-register this device's push token (handles the
+          //    classic "DB lost the row" case).
           await registerForPushNotifications();
           setSelfState(getPushState());
-          const regState = getPushState();
-          if (regState.token) {
-            // One retry after a fresh register — buys up to ~25 s
-            // because /push/test now polls receipts in-band.
-            const retry = await api.post('/push/test', {});
-            r = retry.data;
+
+          // 2) Force a server-side heal that rebinds ANY orphaned
+          //    push_tokens rows (matching email or sibling user_id)
+          //    under the canonical user_id. Handles the dup-user
+          //    case where OAuth re-link created two user docs
+          //    sharing the same email.
+          try {
+            await api.post('/push/heal', {});
+          } catch {
+            // non-fatal — we still retry /push/test below
           }
+
+          // 3) Retry the test — by now either the fresh register
+          //    OR the heal should have surfaced tokens.
+          const retry = await api.post('/push/test', {});
+          r = retry.data;
         } catch {
           // fall through to the original "no tokens" alert
         }
@@ -215,10 +226,25 @@ export function NotificationsHealthPanel() {
         );
       } else {
         haptics.warning();
+        // Surface backend diagnostics in the error so the admin can
+        // see EXACTLY why no tokens were found (by_user_id,
+        // by_email, sibling_user_ids). Without this the doctor
+        // is blind to silent data-drift bugs.
+        const d = r?.diagnostics || {};
+        const diagLines: string[] = [];
+        if (typeof d.by_user_id === 'number') diagLines.push(`• by user_id: ${d.by_user_id}`);
+        if (typeof d.by_email === 'number') diagLines.push(`• by email: ${d.by_email}`);
+        if (typeof d.by_sibling_user_ids === 'number') diagLines.push(`• by sibling ids: ${d.by_sibling_user_ids}`);
+        if (Array.isArray(d.sibling_user_ids) && d.sibling_user_ids.length) {
+          diagLines.push(`• dup accounts: ${d.sibling_user_ids.length}`);
+        }
+        if (typeof d.total_rows === 'number') diagLines.push(`• total rows: ${d.total_rows}`);
+        const diagBlock = diagLines.length > 0 ? `\n\nDB state:\n${diagLines.join('\n')}` : '';
         Alert.alert(
           'Test push could not be sent',
-          r?.message ||
-            'No push tokens registered for this account. Grant notification permission in the mobile app and reopen it.',
+          (r?.message ||
+            'No push tokens registered for this account. Grant notification permission in the mobile app and reopen it.')
+          + diagBlock,
         );
       }
       await load();

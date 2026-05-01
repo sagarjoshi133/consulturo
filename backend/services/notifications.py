@@ -265,36 +265,97 @@ async def send_expo_push_batch(
     }
 
 async def collect_user_tokens(user_ids: Optional[List[str]] = None) -> List[str]:
-    q: Dict[str, Any] = {}
-    if user_ids is not None:
-        q["user_id"] = {"$in": user_ids}
-    rows = await db.push_tokens.find(q, {"_id": 0, "token": 1}).to_list(length=5000)
-    tokens = [r["token"] for r in rows if r.get("token")]
+    """Resolve push tokens for the given user_ids, healing orphaned rows.
 
-    # ── Email fallback for orphaned tokens (2026-05-01) ────────────────
-    # Some accounts have tokens stamped with a stale user_id (DB
-    # migration / re-seed / clinic-switch leftovers). If the user_id
-    # query came up empty for a single user, try the canonical email
-    # and self-heal the rows by re-stamping the current user_id.
-    if not tokens and user_ids and len(user_ids) == 1:
+    Robust to THREE classes of data drift commonly seen in production:
+      1. user_id drift after DB migration / re-seed / clinic-switch —
+         tokens stamped with a stale user_id (email field is present).
+      2. duplicate user records sharing the same email (OAuth re-link,
+         case-sensitive vs normalised emails). Tokens may be stamped to
+         EITHER user_id, and the email field may point to either copy.
+      3. legacy tokens registered BEFORE the email field was introduced
+         on push_tokens — they have no email, only a stale user_id.
+
+    Strategy:
+      • Start with the requested user_ids.
+      • Expand to include ALL sibling user_ids that share any email
+        address of the requested users (catches dup-user case).
+      • Query tokens by (user_id IN expanded_ids) OR (email IN emails).
+      • Opportunistically re-stamp all found rows under the canonical
+        requested user_id + email so future calls hit the fast path.
+    """
+    if user_ids is None:
+        rows = await db.push_tokens.find({}, {"_id": 0, "token": 1}).to_list(length=5000)
+        return [r["token"] for r in rows if r.get("token")]
+
+    # ── Expand requested user_ids by email-sibling relationship ─────
+    expanded_ids: set[str] = set(user_ids)
+    emails: set[str] = set()
+    try:
+        async for u in db.users.find(
+            {"user_id": {"$in": list(user_ids)}},
+            {"_id": 0, "user_id": 1, "email": 1},
+        ):
+            e = (u.get("email") or "").strip().lower()
+            if e:
+                emails.add(e)
+        if emails:
+            async for u in db.users.find(
+                # Case-insensitive match so "User@X" and "user@x" unify.
+                {"email": {"$regex": "^(" + "|".join(
+                    [re.escape(e) for e in emails]
+                ) + ")$", "$options": "i"}},
+                {"_id": 0, "user_id": 1},
+            ):
+                expanded_ids.add(u["user_id"])
+    except Exception:
+        # Bail silently — worst case we fall back to the original
+        # user_ids without the sibling expansion.
+        pass
+
+    # ── Build a union query: user_id IN expanded OR email IN emails ──
+    or_clauses: List[Dict[str, Any]] = [{"user_id": {"$in": list(expanded_ids)}}]
+    if emails:
+        or_clauses.append({
+            "email": {"$regex": "^(" + "|".join(
+                [re.escape(e) for e in emails]
+            ) + ")$", "$options": "i"}
+        })
+
+    rows = await db.push_tokens.find(
+        {"$or": or_clauses}, {"_id": 0, "token": 1}
+    ).to_list(length=5000)
+    tokens = list({r["token"] for r in rows if r.get("token")})
+
+    # ── Opportunistic heal: re-stamp found rows under the canonical
+    #    requested user_id + email so subsequent calls use the fast
+    #    single-key index path. Only runs when a single user_id was
+    #    requested (i.e. /push/test, push_to_user) — for bulk role
+    #    pushes we skip the re-stamp to avoid pointing everyone's
+    #    tokens at whichever user_id happened to come first.
+    if tokens and len(user_ids) == 1:
+        canonical_uid = user_ids[0]
+        canonical_email: Optional[str] = None
         try:
-            user_doc = await db.users.find_one(
-                {"user_id": user_ids[0]}, {"_id": 0, "email": 1}
+            u = await db.users.find_one(
+                {"user_id": canonical_uid}, {"_id": 0, "email": 1}
             )
-            email = (user_doc or {}).get("email")
-            if email:
-                rows2 = await db.push_tokens.find(
-                    {"email": email}, {"_id": 0, "token": 1}
-                ).to_list(length=200)
-                tokens = [r["token"] for r in rows2 if r.get("token")]
-                if tokens:
-                    # Self-heal so future calls hit the fast user_id path
-                    await db.push_tokens.update_many(
-                        {"email": email, "user_id": {"$ne": user_ids[0]}},
-                        {"$set": {"user_id": user_ids[0]}},
-                    )
+            canonical_email = (u or {}).get("email")
         except Exception:
-            pass  # never fail a push because of self-heal
+            canonical_email = None
+        try:
+            set_patch: Dict[str, Any] = {"user_id": canonical_uid}
+            if canonical_email:
+                set_patch["email"] = canonical_email
+            await db.push_tokens.update_many(
+                {"$and": [
+                    {"$or": or_clauses},
+                    {"user_id": {"$ne": canonical_uid}},
+                ]},
+                {"$set": set_patch},
+            )
+        except Exception:
+            pass
 
     return tokens
 
