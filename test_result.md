@@ -12946,3 +12946,69 @@ web_pdf_speed_20260430:
 
           No backend changes. Native (iOS/Android) path is unchanged —
           it was already client-side via expo-print.
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-05-01  Push notifications & crash fixes (v1.0.15)
+# ─────────────────────────────────────────────────────────────
+push_and_crash_fix_20260501:
+  - task: "Remove in-memory short-circuit in registerForPushNotifications"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/push.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Root cause: once the client POSTed its Expo push token to the
+          backend once, `lastRegisteredToken` was set in module memory
+          and all subsequent calls returned early without re-POSTing.
+          When the backend's push_tokens row got deleted for any reason
+          (manual cleanup, Expo-receipt auto-purge, DB reset, clinic
+          switch, re-seed) the client silently drifted — screen showed
+          "Registered" while backend had zero tokens → test push failed
+          with "No push tokens registered".
+          Fix: removed the short-circuit entirely. Backend upsert is
+          idempotent and cheap, so every app resume / login now re-POSTs.
+  - task: "Health panel auto-recovery on 'no tokens' test result"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/notifications-health-panel.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          When /push/test returns reason=no_tokens but the client has a
+          local Expo token, we now force a fresh registerForPush and
+          retry /push/test automatically before showing the error alert.
+          Also improved the success/failure alert to show `delivered`
+          (receipts) vs `sent` (ticket acceptance) separately and
+          surface receipt-level FCM errors in-band.
+  - task: "Global AppErrorBoundary — stops dashboard crashes from falling back to Home"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/error-boundary.tsx + _layout.tsx + dashboard.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User report: "Sudden app crashes. App repeatedly falls back
+          to homepage, especially when using dashboard." Root cause —
+          any render error anywhere in the Stack tree (deep in a
+          widget/panel) unmounted the entire navigator, which on
+          Android looked like the app "falling back" to the Home tab.
+          Fix: added a new AppErrorBoundary component and wrapped
+          BOTH the root Stack (in _layout.tsx) AND the DashboardImpl
+          subtree (in dashboard.tsx) with it. When a render error now
+          occurs the user sees a clean "Try again / Back to Home"
+          card instead of being dumped at Home. Errors are reported
+          to Sentry via captureError for triage.
