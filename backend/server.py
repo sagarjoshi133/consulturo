@@ -2759,6 +2759,7 @@ from routers.ipss import router as _ipss_router
 from routers.referrers import router as _referrers_router
 from routers.patients import router as _patients_router
 from routers.tools import router as _tools_router
+from routers.admin_users import router as _admin_users_router
 app.include_router(_health_router)
 app.include_router(_calculators_router)
 app.include_router(_education_router)
@@ -2770,6 +2771,7 @@ app.include_router(_ipss_router)
 app.include_router(_referrers_router)
 app.include_router(_patients_router)
 app.include_router(_tools_router)
+app.include_router(_admin_users_router)
 
 # ─── Phase-3 router registrations ───
 from routers.me_tier import router as _me_tier_router
