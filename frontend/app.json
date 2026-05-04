@@ -29,6 +29,8 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR"
       ],
       "googleServicesFile": "./google-services.json",
@@ -54,7 +56,10 @@
             "DEFAULT"
           ]
         }
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -89,6 +94,9 @@
       "eas": {
         "projectId": "1e1764aa-2d2c-48c5-be82-1427eae229ea"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1e1764aa-2d2c-48c5-be82-1427eae229ea"
     }
   }
 }

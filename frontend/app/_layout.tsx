@@ -25,6 +25,7 @@ import { ToastProvider } from '../src/toast';
 import { NotificationProvider } from '../src/notifications';
 import { attachNotificationListeners } from '../src/push';
 import { initSentry } from '../src/sentry';
+import { initOtaUpdates } from '../src/ota-updates';
 import { COLORS } from '../src/theme';
 import OfflineBanner from '../src/offline-banner';
 import { WebShell } from '../src/web-shell';
@@ -37,6 +38,15 @@ initSentry();
 function RootNav() {
   const { loading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    // Kick off EAS Update in the background. On cold start it checks
+    // once; a listener re-checks every time the app returns to the
+    // foreground. Dev / Expo Go / web all no-op. Silent on failure
+    // so a flaky network never interrupts the clinic flow.
+    const stopOta = initOtaUpdates();
+    return () => { stopOta(); };
+  }, []);
 
   useEffect(() => {
     // Route user on tap of a push notification
