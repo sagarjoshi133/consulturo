@@ -26,23 +26,48 @@ class TestAuth:
         print("✓ Auth /me correctly requires authentication")
 
     def test_auth_logout(self, api_client):
-        """POST /api/auth/logout deletes session."""
-        # Create a temporary session for logout test
-        import subprocess
-        result = subprocess.run([
-            "mongosh", "--quiet", "--eval",
-            """
-            db = db.getSiblingDB('consulturo');
-            var uid = 'test-logout-' + Date.now();
-            var token = 'logout_token_' + Date.now();
-            db.users.insertOne({user_id: uid, email:'logout@test.app', name:'Logout Test', role:'patient', created_at:new Date()});
-            db.user_sessions.insertOne({user_id: uid, session_token: token, expires_at: new Date(Date.now()+7*24*60*60*1000), created_at: new Date()});
-            print(token);
-            """
-        ], capture_output=True, text=True)
-        
-        logout_token = result.stdout.strip()
-        assert logout_token, "Failed to create logout test token"
+        """POST /api/auth/logout deletes the session.
+
+        Creates an ad-hoc session row directly via motor/asyncio. If
+        the MongoDB connection is unreachable (offline dev), skips
+        with a clear message rather than flaking."""
+        import asyncio
+        import os
+        import time
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+        except Exception:
+            pytest.skip("motor not installed in this env")
+
+        mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+        db_name = os.environ.get("DB_NAME", "consulturo")
+
+        async def _seed():
+            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=2000)
+            try:
+                await client.admin.command("ping")
+            except Exception as e:
+                return None, str(e)
+            db = client[db_name]
+            uid = f"test-logout-{int(time.time()*1000)}"
+            token = f"logout_token_{int(time.time()*1000)}"
+            email = f"logout-{uid}@test.app"
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone.utc)
+            await db.users.insert_one({
+                "user_id": uid, "email": email,
+                "name": "Logout Test", "role": "patient", "created_at": now,
+            })
+            await db.user_sessions.insert_one({
+                "user_id": uid, "session_token": token,
+                "expires_at": now + timedelta(days=7), "created_at": now,
+            })
+            client.close()
+            return token, None
+
+        logout_token, err = asyncio.get_event_loop().run_until_complete(_seed())
+        if not logout_token:
+            pytest.skip(f"MongoDB unreachable ({err})")
         
         # Verify token works
         response = api_client.get(
