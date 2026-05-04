@@ -286,7 +286,7 @@ function ContentPager({
     </PanelRefreshContext.Provider>
   );
 }
-import { displayDate, displayDateLong, display12h, parseUIDate, UI_DATE_PLACEHOLDER } from '../src/date';
+import { displayDate, displayDateLong, display12h, parseUIDate, UI_DATE_PLACEHOLDER, parseBackendDate, formatISTDate } from '../src/date';
 
 const STAFF = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
 const ROLES = [
@@ -1996,7 +1996,7 @@ function PrescriptionsPanel() {
                     </Text>
                   ) : null}
                 </View>
-                <Text style={styles.bkMeta}>{format(new Date(rx.created_at), 'dd-MM-yyyy')}</Text>
+                <Text style={styles.bkMeta}>{formatISTDate(parseBackendDate(rx.created_at))}</Text>
               </View>
               {rx.chief_complaints ? (
                 <Text style={styles.bkReason} numberOfLines={2}>{rx.chief_complaints}</Text>

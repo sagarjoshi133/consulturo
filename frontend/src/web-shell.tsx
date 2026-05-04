@@ -28,6 +28,7 @@ import { useResponsive, DESKTOP, getForcedView, setForcedView, type ForceView } 
 import { useAuth } from './auth';
 import { useNotifications } from './notifications';
 import { useI18n } from './i18n';
+import { parseBackendDate, formatISTDate } from './date';
 import { useTenant } from './tenant-context';
 import * as Clipboard from 'expo-clipboard';
 
@@ -650,7 +651,12 @@ function NotificationPopover({
 
   const fmt = (iso?: string) => {
     if (!iso) return '';
-    const d = new Date(iso);
+    // Always parse backend timestamps as UTC (parseBackendDate compensates
+    // for FastAPI's tz-naive serialisation) and render the fallback date
+    // in IST so Indian clinic staff see consistent timezones regardless
+    // of where the browser is geolocated.
+    const d = parseBackendDate(iso);
+    if (isNaN(d.getTime())) return '';
     const diffMin = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
     if (diffMin < 1) return 'Just now';
     if (diffMin < 60) return `${diffMin}m ago`;
@@ -658,7 +664,7 @@ function NotificationPopover({
     if (diffH < 24) return `${diffH}h ago`;
     const diffD = Math.floor(diffH / 24);
     if (diffD < 7) return `${diffD}d ago`;
-    return d.toLocaleDateString();
+    return formatISTDate(d);
   };
 
   return (

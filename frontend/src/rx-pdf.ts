@@ -22,7 +22,7 @@ import { Platform, Alert } from 'react-native';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
 import { LOGO_URL } from './theme';
-import { displayDate, parseUIDate } from './date';
+import { displayDate, parseUIDate, parseBackendDate, formatIST, formatISTDate, formatISTTime } from './date';
 import api from './api';
 
 export type RxMed = {
@@ -141,12 +141,20 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     qrSvg = '';
   }
 
+  // All prescription timestamps MUST display in IST regardless of the
+  // device's local timezone. The backend stores `created_at` in UTC
+  // (datetime.now(timezone.utc)); parseBackendDate tolerates both
+  // tz-aware and tz-naive serialisations. formatIST* then renders in
+  // Asia/Kolkata using Intl.
+  const createdDate = rx.created_at ? parseBackendDate(rx.created_at) : null;
   const visitDisplay =
     displayDate(parseUIDate(rx.visit_date || '') || rx.visit_date || '') ||
     rx.visit_date ||
-    (rx.created_at ? format(new Date(rx.created_at), 'dd-MM-yyyy') : '');
-  const timeStr = rx.created_at ? format(new Date(rx.created_at), 'hh:mm a') : format(new Date(), 'hh:mm a');
-  const nowStamp = rx.created_at ? format(new Date(rx.created_at), 'dd-MM-yyyy h:mm a') : format(new Date(), 'dd-MM-yyyy h:mm a');
+    (createdDate ? formatISTDate(createdDate) : '');
+  const timeStr = createdDate ? formatISTTime(createdDate) : formatISTTime(new Date());
+  const nowStamp = createdDate
+    ? `${formatISTDate(createdDate)} ${formatISTTime(createdDate)} IST`
+    : `${formatISTDate(new Date())} ${formatISTTime(new Date())} IST`;
 
   const clinicName = (settings.clinic_name || 'Sterling Hospitals').trim();
   const clinicAddr = (settings.clinic_address || 'Sterling Hospitals, Race Course Road, Vadodara – 390007').trim();

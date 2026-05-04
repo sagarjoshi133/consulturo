@@ -131,7 +131,9 @@ async def export_surgeries_csv(user=Depends(require_can_manage_surgeries)):
     csv_text = buf.getvalue()
     buf.close()
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # CSV filename uses the clinic's IST date (not UTC) so that a 1 AM
+    # IST export still says "today". IST = UTC + 5:30.
+    today = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d")
     filename = f"consulturo-surgeries-{today}.csv"
     return StreamingResponse(
         iter([csv_text]),

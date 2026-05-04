@@ -21,7 +21,7 @@ import api from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { useToast } from '../../src/toast';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
-import { displayDate, displayDateLong, display12h } from '../../src/date';
+import { displayDate, displayDateLong, display12h, parseBackendDate, formatIST } from '../../src/date';
 import MessageComposer from '../../src/message-composer';
 import { resolvePatientRecipient } from '../../src/message-recipient';
 type Booking = {
@@ -288,7 +288,10 @@ export default function BookingDetail() {
           ) : null}
           <Row label="Booking ID" value={rx.booking_id} mono />
           {rx.created_at ? (
-            <Row label="Requested on" value={format(new Date(rx.created_at), 'dd-MM-yyyy, hh:mm a')} />
+            <Row label="Requested on" value={formatIST(parseBackendDate(rx.created_at), {
+              day: '2-digit', month: '2-digit', year: 'numeric',
+              hour: 'numeric', minute: '2-digit', hour12: true,
+            })} />
           ) : null}
         </View>
 
@@ -306,7 +309,10 @@ export default function BookingDetail() {
                 ) : null}
                 {rx.confirmed_at ? (
                   <Text style={styles.approverMeta}>
-                    {format(new Date(rx.confirmed_at), 'dd-MM-yyyy, hh:mm a')}
+                    {formatIST(parseBackendDate(rx.confirmed_at), {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: 'numeric', minute: '2-digit', hour12: true,
+                    })}
                   </Text>
                 ) : null}
               </View>

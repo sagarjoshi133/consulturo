@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { parseBackendDate, formatISTDate } from '../../src/date';
 import api from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { useTier } from '../../src/tier';
@@ -299,7 +300,7 @@ export default function AdminBlog() {
                     {p.author_name && p.author_user_id !== user?.user_id ? (
                       <Text style={styles.authorLine}>By {p.author_name}</Text>
                     ) : null}
-                    <Text style={styles.postDate}>{format(new Date(p.created_at), 'dd-MM-yyyy')}</Text>
+                    <Text style={styles.postDate}>{formatISTDate(parseBackendDate(p.created_at))}</Text>
                     {p.review_note ? <Text style={styles.reviewNote}>Review note: {p.review_note}</Text> : null}
                     <View style={styles.postActions}>
                       {canEditPost && (

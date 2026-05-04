@@ -41,7 +41,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../src/api';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { PrimaryButton, SecondaryButton } from '../../src/components';
-import { displayDate, todayUI, parseUIDate } from '../../src/date';
+import { displayDate, todayUI, parseUIDate, parseBackendDate, formatIST } from '../../src/date';
 import { goBackSafe } from '../../src/nav';
 import { DateField } from '../../src/date-picker';
 import {
@@ -531,7 +531,7 @@ export default function NewPrescription() {
         <View style={[styles.draftBanner, { borderColor: '#10B981', backgroundColor: '#10B98115' }]}>
           <Ionicons name="cloud-offline-outline" size={16} color="#10B981" />
           <Text style={[styles.draftBannerText, { color: '#0A7E5A' }]}>
-            Offline draft restored (auto-saved {new Date(draftRestoredAt).toLocaleString()}). Save to finalize.
+            Offline draft restored (auto-saved {formatIST(parseBackendDate(draftRestoredAt))}). Save to finalize.
           </Text>
           <TouchableOpacity
             onPress={() => { if (bookingId) clearRxDraft(bookingId); setDraftRestoredAt(null); }}

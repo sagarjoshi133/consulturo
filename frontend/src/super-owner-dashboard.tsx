@@ -33,6 +33,7 @@ import { useAuth } from './auth';
 import { COLORS, RADIUS } from './theme';
 import OwnersPanel from './owners-panel';
 import { roleLabel } from './tier';
+import { parseBackendDate, formatIST } from './date';
 
 type Stats = {
   primary_owners?: number;
@@ -65,9 +66,12 @@ const KIND_LABELS: Record<string, string> = {
 function fmtTs(iso?: string): string {
   if (!iso) return '';
   try {
-    const d = new Date(iso);
+    // Always render in IST (Asia/Kolkata) regardless of the browser's
+    // local timezone — clinic admins travelling abroad still see the
+    // same wall-clock as the team at the hospital.
+    const d = parseBackendDate(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString();
+    return formatIST(d);
   } catch {
     return iso;
   }

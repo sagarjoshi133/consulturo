@@ -31,6 +31,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { parseBackendDate, formatIST } from '../src/date';
 import api from '../src/api';
 import { useAuth } from '../src/auth';
 import { useI18n } from '../src/i18n';
@@ -318,7 +319,10 @@ export default function IPSS() {
             {history.map((h) => (
               <View key={h.record_id} style={styles.histRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.histDate}>{format(new Date(h.created_at), 'dd-MM-yyyy, h:mm a')}</Text>
+                  <Text style={styles.histDate}>{formatIST(parseBackendDate(h.created_at), {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: 'numeric', minute: '2-digit', hour12: true,
+                  })}</Text>
                   <Text style={styles.histScore}>
                     {h.total_score}/35 · <Text style={{ color: COLORS.primary }}>{h.severity}</Text>
                   </Text>

@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { parseBackendDate, formatIST } from '../../src/date';
 import api from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
@@ -180,7 +181,10 @@ export default function PrescriptionsList() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rxPatient} numberOfLines={1}>{rx.patient_name}</Text>
                     <Text style={styles.rxDate}>
-                      {format(new Date(rx.created_at), 'dd-MM-yyyy, h:mm a')}
+                      {formatIST(parseBackendDate(rx.created_at), {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: 'numeric', minute: '2-digit', hour12: true,
+                      })}
                       {rx.registration_no ? `  ·  Reg. ${rx.registration_no}` : ''}
                     </Text>
                   </View>

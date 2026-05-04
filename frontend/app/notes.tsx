@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
-import { parseBackendDate } from '../src/date';
+import { parseBackendDate, formatIST } from '../src/date';
 import api from '../src/api';
 import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
@@ -435,7 +435,10 @@ export default function NotesScreen() {
                     />
                     <Text style={[styles.reminderChipText, reminderPast && { color: COLORS.textDisabled }]}>
                       {reminderPast ? 'Reminded ' : 'Reminds '}
-                      {format(new Date(n.reminder_at!), 'dd-MM-yyyy, h:mm a')}
+                      {formatIST(parseBackendDate(n.reminder_at!), {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: 'numeric', minute: '2-digit', hour12: true,
+                      })}
                     </Text>
                   </View>
                 ) : null}

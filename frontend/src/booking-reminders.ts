@@ -109,13 +109,17 @@ export async function scheduleBookingReminders(
 
   const isOnline = ev.mode === 'online';
   const title = 'Upcoming consultation';
-  const humanTime = apt.toLocaleString(undefined, {
+  // Always show reminder text in IST so patients/clinic staff abroad
+  // still see the correct clinic wall-clock.
+  const humanTime = new Intl.DateTimeFormat('en-IN', {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
     hour: 'numeric',
     minute: '2-digit',
-  });
+    hour12: true,
+    timeZone: 'Asia/Kolkata',
+  }).format(apt);
 
   const bodyFor = (leadLabel: string) =>
     `${leadLabel} — ${ev.patient_name ? ev.patient_name + "'s " : ''}appointment with Dr. Sagar Joshi on ${humanTime}${isOnline ? ' (Online)' : ''}.`;

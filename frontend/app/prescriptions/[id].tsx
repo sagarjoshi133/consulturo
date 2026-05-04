@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { parseBackendDate, formatISTDate } from '../../src/date';
 import api from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
@@ -164,7 +165,7 @@ export default function PrescriptionDetail() {
           </View>
           <View style={styles.divider} />
           <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
-            <Info k="Visit" v={rx.visit_date || (rx.created_at ? format(new Date(rx.created_at), 'dd-MM-yyyy') : '')} />
+            <Info k="Visit" v={rx.visit_date || (rx.created_at ? formatISTDate(parseBackendDate(rx.created_at)) : '')} />
             {rx.ref_doctor ? <Info k="Referred by" v={rx.ref_doctor} /> : null}
             <Info k="Rx ID" v={rx.prescription_id} mono />
           </View>

@@ -13,7 +13,7 @@ endpoints (called by the patient booking page) and read X-Clinic-Id
 from the request — when set (e.g. via /c/<slug> landing page), only
 that clinic's prescribers + their schedules are returned.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -278,7 +278,10 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
 @router.get("/api/unavailabilities")
 async def list_unavailabilities(request: Request, user=Depends(require_can_manage_availability)):
     """List all currently-effective unavailability rules for the active clinic."""
-    today = datetime.now(timezone.utc).date().isoformat()
+    # IST "today" — clinic operates in Asia/Kolkata. Without the offset,
+    # any query between 18:30 and 00:00 IST (which is the NEXT day in UTC)
+    # would wrongly treat tomorrow-IST as today, hiding unavailability rules.
+    today = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
     clinic_id = await resolve_clinic_id(request, user)
     q: Dict[str, Any] = {
         "$or": [
