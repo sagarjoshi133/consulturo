@@ -1,50 +1,140 @@
 /**
- * Thin Sentry wrapper for the frontend.
+ * Sentry integration for ConsultUro.
  *
- * Today this is a no-op stub that only logs to console — because @sentry/
- * react-native requires a native module that isn't available in Expo Go.
- * When you ship via EAS Build, install @sentry/react-native and wire it
- * here — the rest of the app already calls reportError() / setUser()
- * through this module so no other changes will be needed.
+ * Uses @sentry/react-native. Safe to call from web and Expo Go —
+ * the native module is loaded lazily so missing-native-binding
+ * errors never crash the app during development.
  *
- * Setup for production (do at EAS time):
- *   1. npx expo install @sentry/react-native
- *   2. Add `@sentry/react-native/expo` to app.json plugins array.
- *   3. Set EXPO_PUBLIC_SENTRY_DSN in .env.
- *   4. Replace the body of initSentry() below with:
- *        import * as Sentry from '@sentry/react-native';
- *        Sentry.init({ dsn: DSN, tracesSampleRate: 0.1 });
+ * Activation checklist (one-time, user action):
+ *   1. Create a free account at https://sentry.io
+ *   2. Create a new project: platform "React Native", name "ConsultUro"
+ *   3. Copy the DSN from Project Settings → Client Keys (DSN)
+ *   4. Set EXPO_PUBLIC_SENTRY_DSN=<that DSN> in frontend/.env
+ *   5. Rebuild or ship via `eas update` — Sentry auto-initialises
+ *      on next cold start and captures all unhandled errors +
+ *      promise rejections + React-Native JS crashes.
+ *
+ * Without a DSN, every function here is a cheap no-op. The
+ * reportError() call sites are already everywhere in the codebase.
  */
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+// Lazy-require @sentry/react-native. On web this is still fine — the
+// library provides a web build. On Expo Go the native module may be
+// missing; wrapping in try/catch guarantees we never throw at import
+// time.
+let SentryModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  SentryModule = require('@sentry/react-native');
+} catch {
+  SentryModule = null;
+}
 
 const DSN = (process.env.EXPO_PUBLIC_SENTRY_DSN || '').trim();
 
 let ready = false;
+let enabled = false;
+
+function safeRelease(): string {
+  const cfg: any = Constants.expoConfig || {};
+  const version = cfg.version || '0.0.0';
+  return `consulturo@${version}`;
+}
 
 export function initSentry() {
   if (ready) return;
   ready = true;
+
   if (!DSN) {
     // eslint-disable-next-line no-console
     console.log('[sentry] disabled — set EXPO_PUBLIC_SENTRY_DSN to enable');
     return;
   }
-  // eslint-disable-next-line no-console
-  console.log('[sentry] configured (native SDK stub — wire @sentry/react-native when building via EAS).');
+  if (!SentryModule || typeof SentryModule.init !== 'function') {
+    // eslint-disable-next-line no-console
+    console.log('[sentry] native module unavailable — skipping init');
+    return;
+  }
+
+  try {
+    SentryModule.init({
+      dsn: DSN,
+      // 10 % traces is a pragmatic default — enough to catch perf
+      // regressions without blowing the free-tier quota.
+      tracesSampleRate: 0.1,
+      // Attach stack traces to `console.error` entries automatically
+      attachStacktrace: true,
+      // Drop events raised before initSentry() completes to avoid
+      // noise from the React-Native launch sequence.
+      enableAutoSessionTracking: true,
+      // Useful release + environment tags.
+      release: safeRelease(),
+      environment: __DEV__ ? 'dev' : 'production',
+      // Filter out completely expected / benign errors that would
+      // otherwise pollute the dashboard.
+      ignoreErrors: [
+        // Network offline — handled by OfflineBanner
+        'Network request failed',
+        'AbortError',
+      ],
+    });
+    enabled = true;
+    // eslint-disable-next-line no-console
+    console.log(`[sentry] active — release=${safeRelease()} platform=${Platform.OS}`);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[sentry] init failed:', e);
+  }
 }
 
 export function reportError(err: unknown, ctx?: Record<string, any>) {
   try {
     // eslint-disable-next-line no-console
     console.error('[error]', err, ctx || '');
+    if (enabled && SentryModule?.captureException) {
+      if (ctx) {
+        SentryModule.withScope((scope: any) => {
+          try {
+            Object.entries(ctx).forEach(([k, v]) => scope.setExtra(k, v));
+          } catch { /* noop */ }
+          SentryModule.captureException(err);
+        });
+      } else {
+        SentryModule.captureException(err);
+      }
+    }
   } catch {
-    /* noop */
+    /* never crash the caller because of Sentry */
   }
 }
 
-// Alias kept for callsites that prefer the `capture*` naming convention.
 export const captureError = reportError;
 
-export function setSentryUser(user: { id?: string; email?: string } | null) {
-  void user;
-  // no-op in stub
+export function setSentryUser(user: { id?: string; email?: string; user_id?: string; role?: string } | null) {
+  if (!enabled || !SentryModule?.setUser) return;
+  try {
+    if (!user) {
+      SentryModule.setUser(null);
+      return;
+    }
+    SentryModule.setUser({
+      id: user.user_id || user.id,
+      email: user.email,
+      segment: user.role,
+    });
+  } catch { /* noop */ }
+}
+
+export function addBreadcrumb(message: string, data?: Record<string, any>) {
+  if (!enabled || !SentryModule?.addBreadcrumb) return;
+  try {
+    SentryModule.addBreadcrumb({
+      message,
+      level: 'info',
+      data,
+      timestamp: Date.now() / 1000,
+    });
+  } catch { /* noop */ }
 }

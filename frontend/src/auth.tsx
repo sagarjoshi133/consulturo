@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import { registerForPushNotifications } from './push';
+import { setSentryUser } from './sentry';
 
 export interface User {
   user_id: string;
@@ -94,6 +95,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Keep Sentry's user context in sync with the authenticated user
+  // so every exception includes who was signed in + their role. When
+  // user logs out (null), clears the Sentry scope.
+  useEffect(() => {
+    setSentryUser(user as any);
+  }, [user]);
 
   // Global deep-link safety net for native (Android/iOS).
   //
