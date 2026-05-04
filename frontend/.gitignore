@@ -45,4 +45,7 @@ yarn-error.*
 # tracked so EAS cloud builders can embed it in the Android APK.
 # google-services.json   <-- intentionally NOT ignored
 GoogleService-Info.plist
-fcm-service-account*.json
+fcm-service-account*
+# Any stale/backup/renamed service-account JSON keys
+*service-account*.json*
+*firebase-adminsdk*.json*
