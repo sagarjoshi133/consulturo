@@ -1,0 +1,58 @@
+{
+  "summary": "Phase 6.3 AI per-field discharge summary endpoint (POST /api/ai/ipd/{admission_id}/discharge-field) tested with 9 cases — ALL 9/9 PASSED after fixing 2 router bugs. Verified Claude Sonnet 4.5 drafts for all 6 valid fields (course_in_hospital, operative_notes, discharge_meds, condition_at_discharge, diet_advice, follow_up_plan) on active admission c972c9c9-8771-495b-a76c-faed56be80f1 (IPD260609001 — Sagar P, Right Upper Ureteric Calculus). Drafts are clinically coherent, reflect admission context (vitals, planned procedure RIRS+DJ stenting, diagnosis), use 'not documented' for missing fields, and the extra_hint passes through (diabetes hint produced diabetic diet content). Operative-notes output contains all required labels (DATE/SURGEON/ANAESTHESIA/POSITION/PROCEDURE/CLOSURE/POST-OP ORDERS). Error paths verified: invalid field → 400 'Unknown field', non-existent admission → 404 'Admission not found'. Model field correctly returns 'claude-sonnet-4-5'.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/ai/ipd/{admission_id}/discharge-field",
+        "issue": "FIXED — wrong collection name `db.ipd_admissions` (line 425). Rest of codebase (routers/ipd.py and 30+ call sites) uses `db.admissions`. Every call returned 404 'Admission not found' before fix.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "POST /api/ai/ipd/{admission_id}/discharge-field",
+        "issue": "FIXED — `_fmt_date` referenced `datetime` (line 409) but module never imported it (only a local `from datetime import datetime as _dt` inside `_gather_admission_context`). Any truthy datetime value passed in would have raised NameError. Added module-level `from datetime import datetime`.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/ai/ipd/{admission_id}/discharge-field",
+        "issue": "No clinic_id / tenancy filter on admission lookup (`db.admissions.find_one({'id': admission_id})`). Other ipd.py endpoints filter by clinic_id (e.g. `{'id': admission_id, 'clinic_id': clinic_id}`). A clinician from clinic A could theoretically generate a draft for an admission belonging to clinic B if they know the id. Recommend adding clinic_id scoping consistent with the rest of ipd.py."
+      },
+      {
+        "endpoint": "POST /api/ai/ipd/{admission_id}/discharge-field",
+        "issue": "Surgeries lookup uses `$or` with admission_id/booking_id but doesn't filter by patient phone — if `admission_id` and `booking_id` are both unset on a surgery row, the `$or` falls through and the query becomes `{deleted_at: None}` (line 461-462) returning up to 10 random surgeries. Not exploitable here because adm.booking_id was present, but worth a defensive guard (`if not surg_query['$or']: surgeries = []` instead of dropping the filter)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_discharge_field.py",
+    "/app/test_reports/pytest/ai_discharge_field_results.xml"
+  ],
+  "action_items": [
+    "Consider adding clinic_id scoping in _gather_admission_context to match the rest of ipd.py — pass current_user's active clinic and filter `db.admissions.find_one({'id': admission_id, 'clinic_id': clinic_id})`.",
+    "Surgeries query — when `adm.booking_id` is falsy AND the surgery row has no admission_id link, the resulting query collapses to `{deleted_at: None}`. Guard with explicit empty-list fallback so we don't pull unrelated surgeries.",
+    "Re-test now that the two router bugs are fixed — the integration is fully working and can be wired to the frontend."
+  ],
+  "critical_code_review_comments": [
+    "ai_clinical.py:425 — `db.ipd_admissions` did not match the actual collection name `admissions` (used everywhere else in routers/ipd.py). Fixed.",
+    "ai_clinical.py:409 — `isinstance(v, datetime)` referenced an unimported `datetime` symbol; the `# noqa: F821` comment masked the bug. Fixed by adding module-level import.",
+    "ai_clinical.py:606 — Hard 18k char context cap is a blunt slice; if context_block has multi-byte chars mid-utf8 it could truncate mid-character. Low priority.",
+    "ai_clinical.py:556-558 — `(s or {}).get('name', {}).get('en')` assumes name is always a dict; consent rows where name is a plain string would raise AttributeError. Defensive coercion recommended."
+  ],
+  "updated_files": [
+    "/app/backend/routers/ai_clinical.py (added datetime import; renamed db.ipd_admissions -> db.admissions)",
+    "/app/backend/tests/test_ai_discharge_field.py (new pytest file, 9 tests)"
+  ],
+  "success_rate": {"backend": "100% (9/9 after fixes)", "frontend": "n/a (skipped per request)"},
+  "seed_data_creation": "No new seed data created — used existing active admission c972c9c9-8771-495b-a76c-faed56be80f1 (IPD260609001 — Sagar P) and its already-seeded ipd_rounds(2), ipd_vitals(1), ipd_drug_chart(1), surgical_consents(5), surgeries(402).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Token test_session_1781009714553 (Dr. Sagar Joshi, primary_owner) works against https://urology-pro.preview.emergentagent.com. Test file /app/backend/tests/test_ai_discharge_field.py is reusable regression for the AI per-field endpoint — runs in ~33s (Claude calls are slow). LLM_TIMEOUT is 120s. Active admission ID and IPD collection names (`admissions`, NOT `ipd_admissions`; `ipd_rounds`, `ipd_vitals`, `ipd_drug_chart`, `surgical_consents`, `surgeries`) documented at top of file.",
+  "rca_of_issue": "Root cause: when porting the existing IPD draft pattern into the new per-field endpoint, the author used `db.ipd_admissions` (plausible-looking name based on the other `ipd_*` collections), but the admissions collection has historically lived under just `db.admissions`. All 6 fields returned 404 because the find_one returned None and raised HTTPException(404, 'Admission not found'). Reproduction: any POST to /api/ai/ipd/<real-admission-id>/discharge-field with a valid clinician token returned 404. Mitigation: changed to `db.admissions` (matches routers/ipd.py). Secondary bug: `_fmt_date` referenced `datetime` without a module-level import — would have NameError'd as soon as a truthy datetime value was formatted; the noqa F821 silenced the linter. Added `from datetime import datetime` at module top."
+}

@@ -1,0 +1,9 @@
+{
+  "ts": "2026-06-01T02:47:37Z",
+  "mode": "none",
+  "ok": false,
+  "message": "BACKUP_MIRROR_MODE not configured",
+  "detail": "Set the env var to s3, rclone or rsync to enable off-host mirroring.",
+  "local_archive_count": 4,
+  "local_total_size": "1.2M"
+}

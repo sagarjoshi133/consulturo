@@ -1,0 +1,139 @@
+{
+  "expo": {
+    "name": "ConsultUro",
+    "slug": "consulturo",
+    "scheme": "consulturo",
+    "version": "1.0.21",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "owner": "drsagarjoshi",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E7C8B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drsagarjoshi.consulturo",
+      "buildNumber": "21",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "Save appointment reminders to your calendar",
+        "NSCameraUsageDescription": "Capture documents and join video consultations",
+        "NSMicrophoneUsageDescription": "Speak during video consultations",
+        "NSPhotoLibraryUsageDescription": "Attach reports and images to consultations",
+        "NSPhotoLibraryAddUsageDescription": "Save generated prescriptions to your photos",
+        "NSLocalNetworkUsageDescription": "Discover local clinic devices on the same network",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.consulturo.urologypro99a12263",
+      "versionCode": 21,
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-bg.png",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png",
+        "backgroundColor": "#44849F"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE"
+      ],
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "consulturo",
+              "host": "auth-callback"
+            },
+            {
+              "scheme": "consulturo",
+              "host": "magic-link"
+            },
+            {
+              "scheme": "consulturo"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0E7C8B"
+        }
+      ],
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Save appointment reminders to your calendar"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0E7C8B",
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach reports and images to consultations"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "expo-audio"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "1e1764aa-2d2c-48c5-be82-1427eae229ea"
+      }
+    }
+  }
+}

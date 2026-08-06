@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only testing of new Rx Print Mode clinic-settings fields (rx_print_mode, rx_print_top_mm). All 5 pytest tests pass (5/5 = 100%). Verified: GET returns defaults (false/40) on unconfigured clinic; owner PATCH with {rx_print_mode:true, rx_print_top_mm:50} returns ok:true updated:>=2 and subsequent GET reflects saved values; anonymous PATCH rejected with 401; patient-tier PATCH rejected with 403. Cleanup test restores defaults on the owner clinic so subsequent runs and live app state remain clean.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_rx_print_mode.py",
+    "/app/test_reports/pytest/rx_print_mode_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "clinic_settings.py: ClinicSettingsPatch correctly exposes rx_print_mode (Optional[bool]) and rx_print_top_mm (Optional[int]). Defaults in _DEFAULT_CLINIC_SETTINGS (False/40) are correctly merged into GET responses for both unconfigured and partially-configured clinics. No issues found in the new fields.",
+    "Partner-permission gating in PATCH does NOT gate rx_print_mode / rx_print_top_mm — partners can write them today. This may be intentional (it's a print-alignment toggle, not a branding asset), but if the product spec requires it to be primary-owner-only, add a gate similar to partner_can_edit_branding."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rx_print_mode.py (new file)"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "N/A (frontend testing not requested)"
+  },
+  "seed_data_creation": "Seeded one patient-tier session via mongosh (user_id=test-patient-1781495818621, session_token=test_patient_session_1781495818622, email=pytest.patient@example.com, role=patient, expires in 7 days) so the 403 test could exercise a real patient-role principal. Owner seed token from test_credentials.md was valid and used as-is.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Patient seed token in test_credentials.md (test_patient_1780260633308) is STALE — returns 401. A fresh one (test_patient_session_1781495818622, user pytest.patient@example.com) was seeded in this run. Owner token test_session_1781009714553 is still live. Test suite at /app/backend/tests/test_rx_print_mode.py auto-skips with a clear message if either token goes stale. Tests use X-Clinic-Id header where appropriate (clinic_a97b903f2fb2 for owner writes, an unconfigured id for the defaults probe) and cleanup restores defaults so live state is preserved."
+}

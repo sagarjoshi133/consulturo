@@ -1,0 +1,35 @@
+{
+  "summary": "Wave 1 patch — role-aware /api/search tested end-to-end. STAFF tokens correctly return scope='staff' with only clinical result types (patient/booking/prescription/surgery/ipd). PATIENT tokens return scope='patient' with only content + own-record types (disease/education/guide/blog/calculator/my_booking/my_prescription). Critical security check: patient search NEVER leaks other patients' records — verified by seeding a honeypot patient (OtherSecret PatientZZZ, +917777777777) and confirming searches for their name, full phone, and partial phone return zero 'patient'/'booking'/'prescription'/'surgery'/'ipd' rows. Full Wave 1 regression (test_wave1.py) all green. 13/13 new + 29/29 regression = 42/42 passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wave1_search_roles.py",
+    "/app/backend/tests/test_wave1.py",
+    "/app/test_reports/pytest/wave1_search_roles.xml",
+    "/app/test_reports/pytest/wave1_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "wave1.py is 795 lines — already large; future waves should extract /api/search into a dedicated search.py to keep modules <700 LOC.",
+    "Patient search's own-records query uses suffix regex on patient_phone — correct, but ensure index on patients/bookings/prescriptions.patient_phone exists for production scale.",
+    "Unknown-role fallback (line 485) routes to _patient_search — safe default; consider 403 instead so misconfigured roles surface loudly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wave1_search_roles.py (new)",
+    "/app/memory/test_credentials.md (appended Wave 1 patch seed)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (backend-only test pass)"},
+  "seed_data_creation": "Seeded via mongosh: (1) patient user wave2.patient@example.com with phone +918888888888 + 7-day session token test_pat_w2_1781793521021 + own booking (reason='BPH followup') + own Rx (diagnosis='BPH'). (2) Honeypot patient OtherSecret PatientZZZ (+917777777777) + matching booking + Rx, used to confirm patient search never leaks other patients' data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PATIENT_TOKEN=test_pat_w2_1781793521021 (7-day TTL from 2026-01) — patient with phone +918888888888, has 1 seeded booking + 1 Rx. OWNER_TOKEN=test_session_1781792149794. Honeypot patient phone +917777777777 / name 'OtherSecret PatientZZZ' is intentionally present to assert patient-scope search does NOT leak. Run all role-aware checks via: cd /app/backend && pytest tests/test_wave1_search_roles.py tests/test_wave1.py -v",
+  "rca_of_issue": "N/A — feature works as designed. _patient_search() correctly excludes the 'patient' collection entirely and scopes booking/Rx lookups by the JWT user's own phone via suffix regex (line 600-603). _staff_search() retains the full clinical index. Role branching on line 480-485 correctly partitions by user.role and falls back to patient (safer default) for unknown roles."
+}

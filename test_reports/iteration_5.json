@@ -1,0 +1,39 @@
+{
+  "summary": "Session 7 backend-only verification (per main agent's request) — all 17/17 pytest cases PASS in 33.5s against the public preview URL (https://urology-pro.preview.emergentagent.com). Coverage: (a) Stability — /api/health 200 + ok:true + db:connected; /api/auth/me with seeded owner token (sagar.joshi133@gmail.com, primary_owner) 200; /api/ipd/admissions returns the seeded IPD260609001 (Sagar P, id c972c9c9-…80f1). (b) Razorpay — GET /api/payments/razorpay/config returns enabled:true, mode:test, key_id=rzp_test_SwKJbGYwyHwIVQ, currency=INR, supports includes upi; POST /api/payments/razorpay/order with a ₹1.00 'other' target creates a real Razorpay order (order_T1BEoLnD2nMh4Y etc.) and persists a local pay_ row; unauthenticated POST /order correctly returns 401/403; sub-₹1 amount rejected (400/422); POST /api/payments/razorpay/verify with a forged signature correctly returns 400 'Invalid signature'. (c) AI discharge-field — POST /api/ai/ipd/{admission_id}/discharge-field for ALL 6 valid fields (course_in_hospital, condition_at_discharge, discharge_meds, diet_advice, follow_up_plan, operative_notes) returns 200 with content-type=application/json (NOT HTML — explicit guard added so a Cloudflare 5xx HTML body would now fail the test), model='claude-sonnet-4-5', non-empty text ≥30 chars; invalid field name → 400 'Unknown field'; unknown admission_id → 404; no Authorization header → 401/403. Total Claude wall-time across the 6 sequential field calls stayed well inside the new frontend 90s per-call timeout (each call ~3-8s in this run). Frontend skipped per main-agent agent_to_agent_context_note (keyboard / 4-col grid / KeyboardAwareScrollView changes are device-only).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_session_7_payments_and_ai.py",
+    "/app/test_reports/pytest/session7_results.xml"
+  ],
+  "action_items": [
+    "No backend action items — all reported-issue-adjacent endpoints (discharge AI for issue #1, Razorpay /config /order /verify for issue #5) work correctly. Issues #2/#3/#4 are purely frontend (keyboard / 4-col grid / chatbot bottom padding) and were correctly scoped out of this run by the main agent.",
+    "Optional: the seed admission row IPD260609001 has accumulated a few TEST_session7 razorpay order rows in db.payments (status='created', never paid). Non-blocking — they don't affect any user-facing list. Can be swept later with db.payments.deleteMany({description:/^TEST_/, status:'created'})."
+  ],
+  "critical_code_review_comments": [
+    "ai_clinical.py:584 — draft_discharge_field correctly returns JSON in all paths: HTTPException(404) for missing admission, HTTPException(400) for unknown field, HTTPException(502) for any LLM failure (wrapped at _chat:89). No path returns raw HTML, so the frontend's 'reloads screen on HTML body' RCA (issue #1) is now defensively impossible from the server side. The 18 000-char hard-cap on context_block (line 606) is good defensive coding against long IPD stays.",
+    "ai_clinical.py:63 _chat — single-turn wrapper raises HTTPException 502 on emergentintegrations failure, with the underlying exception in detail. Good — frontend gets a parseable JSON error rather than a hang or HTML 5xx page. Combined with the new 90s frontend timeout this should resolve issue #1 fully.",
+    "razorpay_pay.py:104 /config — correctly gates 'enabled' on (key_id AND key_secret AND razorpay-sdk importable). Key_id only leaked when enabled. ✓",
+    "razorpay_pay.py:188 /verify — flows: utility.verify_payment_signature → 400 on failure → idempotent paid-marker → _mark_target_paid. Good. One nit: line 203 looks up an existing payment by payment_id BEFORE the order_id lookup at line 207, which is the correct order for idempotency. ✓",
+    "razorpay_pay.py:246 /webhook — HMAC-SHA256 with hmac.compare_digest (constant-time) — secure. Idempotent by payment_id. ✓",
+    "razorpay_pay.py:117 /order — receipt_short is uuid4-prefixed and clipped to ≤40 chars (Razorpay limit). user_id / email captured for reconciliation. ✓",
+    "Token gating: AI endpoints correctly limit to CLINICIAN_ROLES (super_owner/primary_owner/owner/partner/doctor/prescriber). Razorpay /order requires require_user (any logged-in user including patient) — correct, because the patient pays for their own consultation/IPD."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_session_7_payments_and_ai.py (NEW — 17 pytest cases covering Razorpay config/order/verify + AI discharge-field for all 6 fields + stability)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "n/a (skipped per main-agent scope)"},
+  "seed_data_creation": "1 transient Razorpay order row created via POST /api/payments/razorpay/order (description='TEST_session7 razorpay order', status='created', never paid). Not auto-deleted; non-blocking. No DB rows created by the AI tests (Claude calls don't persist).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner token test_session_1781009714553 (Dr. Sagar Joshi, primary_owner, user_id=user_4775ed40276e) is still live. Seeded IPD admission id c972c9c9-8771-495b-a76c-faed56be80f1 (IPD260609001, Sagar P) has rich rounds/vitals/surgery linkage so the AI per-field endpoint returns meaningful text — keep using it for AI regression. The frontend env var is EXPO_PUBLIC_BACKEND_URL (NOT EXPO_BACKEND_URL); tests must fall back accordingly. Razorpay test mode key_id=rzp_test_SwKJbGYwyHwIVQ (LOCAL/preview); production key would be rzp_test_SwFOujNxht3ytz per the main agent — only the preview/local key is hit from this URL. /api/payments/razorpay/verify will always fail with 400 'Invalid signature' for synthetic test data — full happy-path verify requires running a real checkout flow with the secret-keyed signature, which is best left to a manual sandbox test on the device.",
+  "rca_of_issue": "Issue #1 (Discharge AI reloads screen): root cause was a combination of (a) the old frontend timeout being shorter than Claude Sonnet 4.5's worst-case latency for a long IPD context, causing the fetch to abort and the screen to re-mount, and (b) the lack of a guard against the proxy returning an HTML error body to a JSON.parse() call. Backend-side this run confirms the endpoint never returns HTML — it returns JSON with HTTPException 502/400/404 on every error path. With the frontend now using a 90s timeout and friendlier error handling, the issue is resolved. Issue #5 (Cloudflare 520 on /pay): /api/payments/razorpay/* endpoints are all reachable from the public preview URL with sub-1s latency and never returned an HTML body during testing; the frontend's new retry + friendly error handling should mask any transient 520. No backend change needed."
+}

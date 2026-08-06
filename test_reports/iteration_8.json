@@ -1,0 +1,32 @@
+{
+  "summary": "Backend-only verification of soft-delete on /api/surgical-consents wired to IPD admissions. 5/5 pytest cases passed against the public preview URL (https://urology-pro.preview.emergentagent.com) using the seeded owner token. Verified: POST creates consent linked to admission_id; GET ?admission_id filters and includes the new row; DELETE returns 200 + ok:true and the consent disappears from list and 404s on GET by id (soft-delete, audit-preserving); second DELETE returns 404; DELETE without Authorization header returns 401. Frontend testing skipped per request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_surgical_consents_soft_delete.py",
+    "/app/test_reports/pytest/surgical_consents_soft_delete.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/surgical_consents.py:227-235 — DELETE handler correctly uses a single atomic update_one with `deleted_at: None` guard, so the second-delete returns 404 deterministically without a race. _serialise() drops _id everywhere. Clean.",
+    "routers/surgical_consents.py:189 — list filter hard-codes deleted_at: None which means GET will never leak soft-deleted rows. Good.",
+    "routers/surgical_consents.py:151 — POST accepts admission_id straight from the body without verifying the admission exists or belongs to the same clinic_id. Low risk (only used as a foreign string) but worth a follow-up for tenant isolation in case patients ever query this endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_surgical_consents_soft_delete.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (per request)"},
+  "seed_data_creation": "Each test run inserts one TEST_ surgical_consent doc tied to a unique admission_id (adm_test_<uuid>) and soft-deletes it within the same run. No cleanup required — soft-deleted rows are inert and filtered out of every list endpoint.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use owner token test_session_1781009714553 against the public EXPO URL. Use a real procedure_key (e.g. 'turp', 'turbt', 'rirs') — 'urs' is NOT in the catalogue and returns 400. Auth dep require_user returns 401 (not 403) for missing/empty Authorization header on this router.",
+  "rca_of_issue": "N/A — feature verified working end-to-end at the API layer."
+}

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0E7C8B" />
+    <title>ConsultUro — Offline</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: linear-gradient(160deg, #44849F 0%, #0E7C8B 60%, #0a5d68 100%);
+        color: #fff;
+      }
+      .wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+      }
+      .card {
+        max-width: 420px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 20px;
+        padding: 32px 24px;
+        backdrop-filter: blur(8px);
+      }
+      .icon {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 16px;
+        border-radius: 36px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+        letter-spacing: -0.2px;
+      }
+      p {
+        margin: 0 0 22px;
+        opacity: 0.9;
+        line-height: 1.5;
+        font-size: 15px;
+      }
+      button {
+        background: #fff;
+        color: #0E7C8B;
+        border: 0;
+        padding: 12px 26px;
+        font-size: 15px;
+        font-weight: 700;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      button:active { transform: scale(0.97); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="icon">📡</div>
+        <h1>You're offline</h1>
+        <p>
+          ConsultUro needs a network connection to load fresh content.
+          Reconnect to Wi-Fi or mobile data and try again.
+        </p>
+        <button onclick="location.reload()">Try again</button>
+      </div>
+    </div>
+  </body>
+</html>

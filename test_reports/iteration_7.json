@@ -1,0 +1,34 @@
+{
+  "summary": "Backend-only regression of POST /api/ai/ipd/{admission_id}/discharge-field after the context-builder enrichment + tightened system prompt. All 11 pytest tests pass (11/11 = 100%) in 43.6s against the public EXPO_BACKEND_URL. Verified: 200 + {field,text:non-empty,model:'claude-sonnet-4-5'} for each of the 6 valid field keys (course_in_hospital, condition_at_discharge, discharge_meds, diet_advice, follow_up_plan, operative_notes) on real admission c972c9c9-8771-495b-a76c-faed56be80f1; operative_notes draft contains all required section labels (DATE/SURGEON/ANAESTHESIA/POSITION/PROCEDURE/CLOSURE/POST-OP ORDERS); diet_advice respects extra_hint (diabetes keywords surfaced); invalid field key returns 400 with 'Unknown field' detail; non-existent admission_id returns 404; unauthenticated requests (missing header AND bogus token) return 401. Response shape {field,text,model} unchanged. New context-builder additions (consent procedure descriptions, anaesthesia, doctor's consent notes, surgery operative_findings/blood_loss/complications/post_op_investigations/surgeon/anaesthesia, admission chief_complaints/examination/allergies/comorbidities) did not break the AI flow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_discharge_field.py",
+    "/app/test_reports/pytest/ai_discharge_field_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ai_clinical.py _build_context_block: All newly-surfaced fields (consent procedure description/anaesthesia/doctor_notes, surgery operative_findings/blood_loss/complications/post_op_investigations/surgeon/anaesthesia, admission chief_complaints/examination/allergies/comorbidities) are guarded with truthy checks and length-capped (e.g. 600/400/320/240 chars) — safe for token budget. Hard cap of 18000 chars on the final context_block is preserved.",
+    "Endpoint correctly returns 401 (via require_user) before role-gating, 400 for unknown field BEFORE running _gather_admission_context, and 404 from _gather_admission_context when the admission is absent — error ordering is correct.",
+    "Minor: _gather_admission_context resolves clinic_id then queries with it; the seed admission is found because clinic scoping resolves to its own clinic for the owner token. If a clinician's resolved clinic_id mismatches the admission's clinic_id, the user sees 404 (not 403) — acceptable for safety but worth noting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_discharge_field.py (added test_9_unauthorized_no_token and test_10_unauthorized_bad_token)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "N/A (frontend testing not requested)"
+  },
+  "seed_data_creation": "None. Re-used the existing IPD admission c972c9c9-8771-495b-a76c-faed56be80f1 (IPD260609001, Sagar P) and the live primary_owner token test_session_1781009714553 from /app/memory/test_credentials.md.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI discharge-field endpoint is stable. test_ai_discharge_field.py now has 11 tests including 401 negative paths. Each LLM call takes ~3-6s; full suite runs in ~44s. Admission c972c9c9-8771-495b-a76c-faed56be80f1 is the canonical IPD test record — keep it alive in mongo. EXPO_BACKEND_URL env var is preferred; the test falls back to EXPO_PUBLIC_BACKEND_URL automatically. Owner token test_session_1781009714553 still live."
+}

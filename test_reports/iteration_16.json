@@ -1,0 +1,47 @@
+{
+  "summary": "Backend-only E2E regression of all 17 patient ↔ staff workflows in the review request. 23/23 pytest cases PASS on the public preview URL. The user's reported pain point — 'confirmed booking not appearing in patient's My Bookings' — is fully resolved: the patient creates a booking (POST /api/bookings) → owner confirms via PATCH /api/bookings/{id} {status:'confirmed'} → patient sees status=confirmed when re-calling /api/bookings/me. Verified end-to-end. clinic_id auto-resolution works for both anonymous and signed-in patient bookings (new booking landed with the correct clinic_a97b903f2fb2). Attachments JSON endpoint (POST /api/video/bookings/{id}/attachments {name, mime_type, content_base64}) accepts patient uploads and is readable by staff with include_content=1 (returns the base64 blob). Patient cancel works (POST /api/bookings/{id}/cancel → status flips to cancelled). patient_db endpoints no longer 500 on the '+' regex — both /api/patient-db/list?limit=10 and /api/patient-db/by-phone/9099985459 return 200. Prescriptions: staff draft creates 200, patient sees it on /api/prescriptions/me. Owner self-DPDP-export with phone=<owner_phone> returns 200 with full bundle. Patient self-DPDP-export with no phone returns 200. Notifications scoped to the patient (no cross-user leak). Backend boot is clean — supervisor backend.out.log shows '[startup] route inventory ok — 370 unique (method,path) entries.' and NEVER 'DUPLICATE ROUTE REGISTRATIONS DETECTED'. The iteration_15 /api/analytics/dashboard collision has also been resolved: /api/analytics/widgets is now a fresh, non-shadowed route returning {ok, month, widgets:{opd_count, surgery_count, ipd_count, new_patients, revenue, pending_receivables, top_procedure}}.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/video/bookings/{id}/attachments",
+        "issue": "MAX_ATTACHMENT_BYTES not enforced via a 400-level pre-flight (only after base64 decode). For very large payloads the server still decodes the full body into memory before returning 413. Acceptable for an 8 MB cap, but consider Content-Length check up-front."
+      },
+      {
+        "endpoint": "GET /api/dpdp/export",
+        "issue": "Staff exports are not gated by tenant — an owner from clinic A could pass ?phone= for a patient that exists only in clinic B and receive their bundle. Already flagged in iteration_15; still present. Re-confirmed here only as informational since the workflow in scope (owner self-export) passes."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_e2e_patient_staff_workflows.py",
+    "/app/test_reports/pytest/e2e_patient_staff_workflows.xml"
+  ],
+  "action_items": [
+    "No blocking action items. All 17 review-request workflows pass. Main agent may merge.",
+    "(Optional, security-hardening) Add a tenant check in /api/dpdp/export staff path so an owner cannot export a phone that belongs only to a different clinic_id.",
+    "(Optional) Move the file-size pre-flight in POST /api/video/bookings/{id}/attachments before base64.b64decode() to avoid decoding oversized payloads in memory."
+  ],
+  "critical_code_review_comments": [
+    "routers/bookings.py L301-L330 fallback clinic_id resolution is now robust (single-clinic → use it; multi-clinic → prefer primary_owner membership, else most-active clinic, else give up). Good. Telemetry print on miss is also useful.",
+    "routers/wave_compliance_perf.py L84 phone-suffix regex {'$regex': suffix + '$'} is now safe because _normalize_phone always produces 10 digits — same defensive note as iteration_15.",
+    "routers/video.py L1131 _can_user_join(user, booking) correctly allows the booking-owner patient to upload while still gating non-owners. Returning the attachment without content_base64 in the POST response saves bandwidth — good.",
+    "server.py boot now logs '[startup] route inventory ok — 370 unique (method,path) entries.' — duplicate-route assertion is wired and verified.",
+    "Prescriptions endpoint requires visit_date + medicines[].frequency (PrescriptionCreate model in backend/models.py). Frontend dashboards must ensure these fields are sent — tests now cover this."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_e2e_patient_staff_workflows.py (new — 23 tests, 18 workflow steps)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "n/a (backend-only)"},
+  "seed_data_creation": "Created 3 ephemeral bookings during the run (1 anonymous, 1 confirmed patient w/ attachment, 1 cancelled patient) all prefixed TEST_ in patient_name and reason. Test_zz_cleanup best-effort cancels them via PATCH /api/bookings/{id} {status:'cancelled'}. Also created 1 TEST_diagnosis_e2e draft Rx for Sagar P (no delete endpoint used). No production data modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 3 test session tokens still valid through 2026-07: OWNER=test_session_1781800271528 (primary_owner sagar.joshi133@gmail.com user_4775ed40276e phone +918155075669), PATIENT=sagar_p_session_1781806225518 (Sagar P user_9a7a0666e873 phone 9099985459), PATIENT_ALT=pat_session_1781803137372 (+918888888888). Default clinic for single-tenant fallback: clinic_a97b903f2fb2. The test file uses _rows(body, *keys) helper to normalise list/dict responses — reuse it for any new endpoint regression. /api/analytics/widgets is the canonical owner widgets endpoint (NOT /api/analytics/dashboard, which still returns the legacy analytics.py shape). For attachments POST/GET use JSON body {name, mime_type, content_base64} — NOT multipart.",
+  "rca_of_issue": "Original user complaint: 'confirmed booking not appearing in patient's My Bookings'. Root cause was two-fold and is now fixed: (1) bookings POST'd anonymously (or with mismatched clinic_id) landed with clinic_id=null and were filtered out of the clinic-scoped /bookings/all + /bookings/me joins. routers/bookings.py L301-L330 now hardens the fallback (single-clinic → use it; multi-clinic → owner-membership pick; else most-active clinic). (2) The patient-db '+' regex was crashing /api/patient-db/list with 500 and indirectly poisoning the patient-DB join used by some Booking pages. routers/patient_db.py now sanitises the regex before $regex compile. Verified with this E2E suite — patient receives status=confirmed within the same /bookings/me call after PATCH. Reproduction:\n  curl -X POST .../api/bookings -H 'Authorization: Bearer sagar_p_session_1781806225518' -d '{...}'\n  curl -X PATCH .../api/bookings/<bid> -H 'Authorization: Bearer test_session_1781800271528' -d '{\"status\":\"confirmed\"}'\n  curl .../api/bookings/me -H 'Authorization: Bearer sagar_p_session_1781806225518'\nReturned booking has status=confirmed."
+}

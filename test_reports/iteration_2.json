@@ -1,0 +1,31 @@
+{
+  "summary": "Phase 6.2 multi-procedure consent + surgery backend tests — ALL 6/6 PASSED. Verified POST /api/surgical-consents with procedure_keys[] returns correct procedure_key (first), procedure_keys (full list), procedure_snapshots (list of templates each with name.en, procedure.en, specific_risks, alternatives), and procedure_snapshot (back-compat = first snapshot). Legacy single procedure_key path still works (procedure_keys auto-derived as [key], 1 snapshot). Invalid key returns 400 'Unknown procedure key'. Surgeries POST stores procedure_keys correctly; legacy single-key flow auto-defaults procedure_keys to [procedure_key]. GET /api/surgical-consents/{cid} returns both list fields intact.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_multi_procedure.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "surgical_consents.py:134 — when body.procedure_keys is empty list AND body.procedure_key is also empty/None, code will append None to keys then 400 on lookup. Acceptable since procedure_key is required in ConsentCreate (Field(...)), but worth a note.",
+    "surgeries.py:97 — procedure_keys defaults to None when both body.procedure_keys is None AND body.procedure_key is None. Behaviour ok for fully-legacy logbook rows that don't supply either, but worth confirming downstream consumers (PDF/UI) handle None."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_multi_procedure.py (new file)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (skipped per request)"},
+  "seed_data_creation": "Created 2 surgical_consents (TEST_Multi Procedure Patient, TEST_Legacy Single Patient) — not cleaned up (no soft-delete in scope for this test). Surgeries created in Tests 4 & 5 were deleted after assertion.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend multi-procedure flow verified. Token test_session_1781009714553 (Dr. Sagar Joshi, primary_owner) works against https://urology-pro.preview.emergentagent.com. Test file at /app/backend/tests/test_multi_procedure.py is reusable for regression.",
+  "rca_of_issue": "N/A — no issues found"
+}

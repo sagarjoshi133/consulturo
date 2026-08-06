@@ -1,0 +1,37 @@
+{
+  "summary": "Platform Reset endpoint (super_owner-only, cross-tenant nuclear option) tested end-to-end with a new pytest suite. All 20 tests passed in 3.77s on the public preview URL. Coverage: request-otp authorization (super_owner 200 or 502; primary_owner/partner/doctor/patient/unauth all 403), execute authorization (same 403 matrix), confirm_phrase exact-match (case-sensitive, no trim — wrong case, leading/trailing space, title-case, truncated, empty all rejected with 400/422), OTP validation (no pending → 400, wrong code → 400 + attempts++, expired → 400), and the multi-tenant happy path. Happy path: seeded 2 test clinics each with 3 patients + 3 prescriptions + 3 bookings; ran the real request-otp flow (502 acceptable per agent context), pulled the OTP from db.auth_otp_codes, executed with confirm_phrase='RESET ENTIRE PLATFORM'. Verified BOTH clinics had operational rows wiped (patients/prescriptions/bookings all 0), preserved tenant skeleton (clinics, clinic_settings, users, user_sessions) survived in BOTH clinics, deleted_total >= 18, clinics_preserved >= 2, and the OTP row was consumed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_platform_reset.py",
+    "/app/test_reports/pytest/platform_reset_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/platform_reset.py:175 — `attempts >= 5` returns 429 BEFORE the wrong-code branch increments. Good UX, but note that the threshold is 5 (matches factory_reset). Not a bug.",
+    "routers/platform_reset.py:173 — expiry-comparison fallback uses `replace(tzinfo=timezone.utc) if expires_at.tzinfo is None`, which is a no-op when tzinfo is already set (correctly compares tz-aware values). OK.",
+    "routers/platform_reset.py:232 — `total_deleted` sums only counts > 0, so collections that errored (-1) are silently excluded from the headline total but are still visible in the per-collection `deleted` map. Acceptable.",
+    "platform_reset.py wipes audit_log (in _COLLECTIONS_TO_WIPE) and then re-inserts a 'platform_reset.completed' marker AFTER the wipe — the surviving marker is the only audit trail. This is by design but worth flagging: the pre-wipe 'platform_reset.execute' insert (line 186) is immediately destroyed by the very wipe loop, so it serves no purpose. Consider either removing it or moving it to a non-wiped sink (e.g. a platform_audit_log collection).",
+    "routers/platform_reset.py:142 — returns 502 if _send_email fails, but the OTP row has ALREADY been written (line 112). Means a super_owner can still complete execute even when email delivery is broken (and any caller who watches db can race the OTP). For a Super-Owner-only nuclear endpoint this is acceptable, but worth a small note in the docstring."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_platform_reset.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20)",
+    "frontend": "N/A (backend-only review)"
+  },
+  "seed_data_creation": "Per-suite seeded inside backend_tests/test_platform_reset.py: 1 super_owner + 1 primary_owner + 1 partner + 1 doctor + 1 patient (with sessions); 2 test clinics (clinic_test_platreset_a_* / clinic_test_platreset_b_*) with unique slugs (clinics.slug has a unique index — null slug caused the first run to fail; fixed by passing a unique slug); 3 patients + 3 prescriptions + 3 bookings per clinic. All data tagged with _test_marker='platform_reset_suite' and cleaned up in the module-scoped teardown. NOTE: because platform-reset wipes EVERY tenant's operational rows, the happy-path test also wipes any other clinic's seeded patients/prescriptions/bookings/etc. in the consulturo DB — re-run /app/backend/migrations or re-seed if needed for other suites.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_platform_reset.py is module-scoped; the happy-path test runs LAST and wipes platform-wide operational data (patients/prescriptions/bookings/audit_log etc. across ALL tenants). If you run it alongside other suites that rely on pre-seeded clinical data (e.g. the default clinic_a97b903f2fb2 with 17 prescriptions / 78 bookings noted in test_credentials.md), re-seed those first. Preserved collections (users, user_sessions, clinics, clinic_settings, availability, schedules, fee templates, drug lib, blog) are untouched, so auth tokens survive. To selectively skip the destructive test: `pytest backend/tests/test_platform_reset.py -k 'not happy_path'`.",
+  "rca_of_issue": "N/A — no bug. Initial run failed with E11000 duplicate-key on clinics.slug (null) because the clinics collection has a unique index on slug. Fixed by inserting unique slugs in the test seed; the production router is not affected."
+}

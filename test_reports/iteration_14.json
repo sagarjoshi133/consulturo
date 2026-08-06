@@ -1,0 +1,40 @@
+{
+  "summary": "Wave 3 AI features (voice-to-rx, patient-gist, lab-ocr) + Wave 1 /api/search link regression — all 18/18 tests PASS. Auth gating verified (401 without token, 403 for demo accounts, 403 for non-prescriber on voice-to-rx). Empty/oversized/bad-MIME inputs return 400 as designed. Response shapes match contract (ok, model='claude-sonnet-4-5', stt_model='whisper-1', parsed.medicines[] etc.). Patient-gist cache layer works: first call cached=false, second within an hour cached=true with identical gist, refresh=true bypasses. Lab-ocr graceful-degrades on synthetic 1×1 PNG (empty results, saved_count=0). Search regression confirmed: disease links use singular /disease/{id}, blog links use /blog/{post_id} (verified via seeded TEST_ blog), calculators are nested under /calculators/{key} except /ipss and /prostate-volume which stay top-level. Found and fixed ONE real bug in wave3.py patient_gist cache read (offset-naive vs offset-aware datetime comparison crashed second-call lookup with 500).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/ai/patient-gist", "issue": "FIXED in this iteration — cached read raised TypeError comparing offset-naive (Mongo-returned) vs offset-aware (now) datetimes. Re-attached UTC tzinfo on read. See updated_files."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wave3_ai.py",
+    "/app/test_reports/pytest/wave3_ai.xml"
+  ],
+  "action_items": [
+    "Optional: in /app/backend/routers/wave3.py also normalise generated_at tzinfo when persisting — currently cached docs are written with tz-aware datetimes but Mongo strips tz, so any other consumer (frontend, audit) reading patient_gist_cache directly will need the same .replace(tzinfo=utc) treatment. Consider a helper _to_aware_utc() shared across wave routers.",
+    "Consider extracting /api/search into its own router — wave1.py is now 818 lines and search logic spans ~340 lines.",
+    "Consider adding an explicit ref_range field validator in lab-ocr response — currently a free-form string from Claude."
+  ],
+  "critical_code_review_comments": [
+    "wave3.py patient_gist had a latent crash on every second (cached) call due to datetime tz mismatch — only surfaced under back-to-back same-phone calls within the 1h window. Fixed.",
+    "voice-to-rx writes the upload to /tmp/v2rx_*.{ext} and unlinks in finally — good. But there's no size cap *before* read() — the 25 MB check happens only after the bytes are already in memory. Consider Content-Length pre-check for robustness.",
+    "lab-ocr accepts WebP per MIME sniff (RIFF header) but the request must still be ≤8 MB — that limit is also post-read; same pre-check suggestion.",
+    "patient_gist context query for bookings/prescriptions uses suffix-regex on patient_phone (unanchored start) — this works because _normalize_phone returns the last 10 digits, but a malicious phone like '8888888888' could collide with another patient sharing the same trailing 10. In practice fine since _normalize_phone enforces 10-digit canonicalisation everywhere."
+  ],
+  "updated_files": [
+    "/app/backend/routers/wave3.py (patient_gist cache read — datetime tzinfo fix)",
+    "/app/backend/tests/test_wave3_ai.py (new, 18 tests covering M/N/Q + search regression)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "n/a (backend-only)"},
+  "seed_data_creation": "Created demo primary_owner: email=demo.primary@example.com, user_id=demo-prim-1781794755284, session_token=test_demo_session_1781794755284, is_demo=true (used for demo-block 403 assertions). Also briefly seeded a TEST_ blog post (post_id=blog_test_w3_001) to verify /blog/{post_id} link shape and removed it after the run. Existing seeds reused: OWNER token test_session_1781792149794, PATIENT token test_pat_w2_1781793521021, patient phone +918888888888.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Demo token for demo-blocked path tests: test_demo_session_1781794755284 (primary_owner, is_demo=true). All Wave 3 endpoints expect Whisper/Claude to be reachable via EMERGENT_LLM_KEY — synthesised 0.6s 440Hz sine WAV is accepted by Whisper-1 and produces a non-empty transcript (verified). 1×1 PNG is accepted by lab-ocr and Claude returns empty results gracefully (test relies on this behaviour). Patient-gist 1h cache is per phone — re-running tests within an hour will keep cached=true; use refresh=true to force fresh. If blog regression test_blog_link_uses_post_id is skipped on future runs, seed a published blog_posts row first (the helper test in test_wave3_ai.py tries 4 common queries before skipping).",
+  "rca_of_issue": "patient_gist 500 RCA: motor/pymongo deserialises BSON datetimes as Python `datetime` instances WITHOUT tzinfo (default behaviour). The handler stored `expires_at = datetime.now(timezone.utc) + 1h` (aware) but compared the *read-back* naive value against `now = datetime.now(timezone.utc)` (aware) → `TypeError: can't compare offset-naive and offset-aware datetimes`. Fix: on read, if `expires_at.tzinfo is None`, re-attach `tzinfo=timezone.utc` before the comparison; same treatment applied to `generated_at` in the response payload. Alternative durable fix would be configuring motor with `tz_aware=True` at client creation, which would benefit every consumer of this DB. Reproduction: call /api/ai/patient-gist twice in succession with the same phone — first 200 (writes cache), second 500. Mitigation deployed in this iteration."
+}

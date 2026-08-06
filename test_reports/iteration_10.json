@@ -1,0 +1,37 @@
+{
+  "summary": "Factory Reset router (POST /api/admin/factory-reset/request-otp + /execute) tested via /app/backend/tests/test_factory_reset.py. 8/8 tests passed against the public EXPO_BACKEND_URL. Authorization gate (super_owner/primary_owner only), clinic-name match, missing/wrong OTP with attempts increment, and happy-path wipe with strict per-clinic scoping (Clinic A wiped; second Clinic B untouched) all behave per spec. Preserved collections (users, user_sessions, clinic_settings, availability) survive the reset, and the OTP row is burned after a successful execute. In this preview env, request-otp returns 502 (Resend has no API key) — but per the agent-context note this is acceptable and the OTP row is correctly written to db.auth_otp_codes BEFORE the email send is attempted, so the execute flow remains testable. No issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/factory-reset/request-otp",
+        "issue": "When _send_email fails the router returns 502 but the freshly inserted auth_otp_codes row is NOT rolled back. Not a correctness bug (the next request-otp call deletes-then-reinserts), but worth noting in case a caller treats 502 as 'nothing changed'. routers/factory_reset.py:166-201."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_factory_reset.py",
+    "/app/test_reports/pytest/factory_reset_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/factory_reset.py — `audit_log` is included in _COLLECTIONS_TO_WIPE, so the pre-wipe 'factory_reset.execute' audit row is erased moments later by the same call (line 253 insert → line 269-273 delete_many on audit_log). The post-wipe 'factory_reset.completed' marker is then re-seeded, which is the intended behaviour. Verified correct; the pre-wipe row is only useful for an external backup snapshot. Worth a one-line code comment to make this explicit at line 253.",
+    "routers/factory_reset.py — clinic-name comparison is case-insensitive and trimmed (line 222-229). This is friendly but slightly weakens the 'type it EXACTLY as shown' guarantee in the email body. Consider documenting in UX copy or making the match case-sensitive for the destructive step.",
+    "routers/factory_reset.py — `total_deleted` excludes any collection that errored (value -1) but does NOT report which ones failed. Failures are only printed to stdout (line 277). Consider adding a `failed_collections: List[str]` to the response so the UI can surface partial failures."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_factory_reset.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "seed_data_creation": "Per-test-module seeded: 2 TEST_ users (primary_owner + doctor), 2 sessions, 2 clinic_settings (CLINIC_A / CLINIC_B), 3 patients + 3 prescriptions + 3 bookings per clinic, 1 availability row in CLINIC_A. Teardown wipes everything by _test_marker / TEST_ uids / TEST_ tokens. No production data touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-run: `pytest /app/backend/tests/test_factory_reset.py -v`. Tests are self-contained (seed + teardown via pymongo). The request-otp test gracefully accepts either 200 (live email) or 502 (Resend key missing in preview) but ALWAYS asserts the auth_otp_codes row is written. The happy-path test injects a known OTP code directly into Mongo and then calls /execute, so it is independent of email delivery.",
+  "rca_of_issue": "n/a — no bugs found."
+}

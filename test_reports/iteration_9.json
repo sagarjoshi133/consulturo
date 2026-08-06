@@ -1,0 +1,34 @@
+{
+  "summary": "Backend-only verification of GET /api/receipts (list + deep-link) that powers the new 'All Receipts' tab on /billing. 13/13 pytest cases passed against the public preview URL using the seeded owner token. Verified: (1) default list returns ≤100 rows sorted by receipt_date DESC then created_at DESC and never leaks Mongo _id; (2) ?limit=500 honoured, limit=501 rejected with 422, limit=500 row count ≥ default; (3) every returned row carries the owner's clinic_id (clinic_a97b903f2fb2) and passing a foreign clinic via X-Clinic-Id correctly 403s — no cross-tenant leak; (4) GET /api/receipts/{receipt_id} returns the same row by id, missing id → 404, unauthenticated → 401. Frontend testing out of scope per request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_all_receipts_endpoint.py",
+    "/app/test_reports/pytest/all_receipts_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/receipts.py:201 — sort is correctly applied at the DB layer with the compound key [('receipt_date', -1), ('created_at', -1)] BEFORE .limit(), so paging by limit=100 vs 500 returns the same top-N prefix. Good.",
+    "routers/receipts.py:183 — limit is bounded server-side via Query(ge=1, le=500); attempting limit=501 returns 422 from FastAPI. Frontend's 500 cap is in line with the API.",
+    "routers/receipts.py:187 — tenant_filter is applied with allow_global=True, which means a super_owner with no X-Clinic-Id can see all clinics' receipts. Owner-tier users still get their default clinic via resolve_clinic_id, so the new All Receipts tab is correctly scoped for the typical primary_owner user.",
+    "routers/receipts.py:201 — projection {'_id': 0} strips Mongo ObjectId on the wire; verified in tests. No serialisation hazards.",
+    "Frontend (app/billing/index.tsx) was not exercised per the review request — manual verification on web preview & APK is owner's responsibility."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_all_receipts_endpoint.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "not tested (per request)"},
+  "seed_data_creation": "No seed data created. Tests rely on existing receipts in the owner's clinic (clinic_a97b903f2fb2) — currently 3+ rows present in preview DB. All assertions degrade gracefully (pytest.skip) when the dataset is too small to verify (e.g. <2 rows for sort-order check).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner token test_session_1781009714553 is live against https://urology-pro.preview.emergentagent.com. Default clinic for that token is clinic_a97b903f2fb2. Passing a clinic_id the owner isn't a member of via X-Clinic-Id header → 403 (from services/tenancy.py:resolve_clinic_id). To exercise the cross-tenant 'cannot see clinic B's receipts' guard end-to-end (i.e. with a real second clinic), a second owner token bound to a different clinic_id would be required — current preview only has one seeded owner, so we asserted the 403 guard instead.",
+  "rca_of_issue": "N/A — feature verified working end-to-end at the API layer."
+}

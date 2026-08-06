@@ -1,0 +1,37 @@
+{
+  "summary": "Backend regression for the multi-channel push notification implementation. 40/40 pytest cases PASS. Verified: (1) services/push_relay.py and services/notifications.py import cleanly with _channel_for_kind exposed. (2) _channel_for_kind correctly maps all required kinds: personal/inbox/message → messages, broadcast/broadcast_review/broadcast_sent/broadcast_rejected → broadcasts, new_booking/booking_confirmed/booking_reminder/booking_cancelled/booking_completed → appointments, video_room_ready → video_calls, note_reminder/review_request → reminders; None/''/unknown → default; case-insensitive ('BROADCAST' → broadcasts) AND prefix heuristics (booking_followup_custom → appointments, broadcast_custom_x → broadcasts, daily_med_reminder → reminders) work. (3) send_push() with EMERGENT_PUSH_KEY='placeholder' returns the exact documented contract {'sent':0,'ok':False,'reason':'no_emergent_key'} without raising; missing title/message short-circuits to 'missing_title_or_message'; empty recipients short-circuits to 'no_recipients'. (4) Core endpoints still work end-to-end: POST /api/register-push returns 200 with {registered:True, user_id, relay:{registered:False, reason:'no_emergent_key'}} confirming the DB upsert succeeds AND the relay no-ops cleanly; POST /api/messages/send happy + validation paths return non-500 (channel injection on the legacy path doesn't blow up); POST /api/broadcasts creates pending/approved row; PATCH /api/broadcasts/{id} action=approve executes the _relay_send path without throwing even with placeholder key (returns 200 or 400 'Already sent', never 500); GET /api/notifications returns 200 for both owner and patient. (5) Route count unchanged — 303 paths in openapi spec, push-related endpoints still the same 7 (/api/push/register, /api/push/heal, /api/push/fcm-errors, /api/push/diagnostics, /api/push/test, /api/register-push, /api/push/test-self). No new endpoints introduced by the channel-mapping work. EMERGENT_PUSH_KEY=placeholder is the expected dev state (not a bug — actual FCM delivery can only be validated on a real device build).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_push_channels_multichannel.py",
+    "/app/test_reports/pytest/push_channels_multichannel.xml"
+  ],
+  "action_items": [
+    "No blocking action items. Push multi-channel backend wiring is correct. Main agent may merge.",
+    "(Optional) When EMERGENT_PUSH_KEY is finally injected in production, run this same test file to confirm the contract flips to {'sent':>0, 'ok':True} for live recipients."
+  ],
+  "critical_code_review_comments": [
+    "services/push_relay.py:72 — _channel_for_kind is robust: dict lookup + lowercase + startswith heuristics + 'reminder' substring fallback. Handles None and unknown kinds gracefully. Excellent defensive design.",
+    "services/push_relay.py:232-242 — Channel resolution inside send_push uses the kind arg first, then payload data.type/kind, then falls back to data-dict kind. setdefault() means caller-supplied channel_id is preserved if explicitly set (idempotent injection). Good.",
+    "services/notifications.py:176-181 — Legacy Expo-direct path now imports _channel_for_kind from services.push_relay and stamps channelId on the message envelope AND channel_id/category on data. Try/except around the import keeps the fallback safe even if push_relay later gets renamed.",
+    "services/push_relay.py:208-214 — When is_configured() is False, send_push() still writes a push_log row with note='no_emergent_key' BEFORE returning the no-op response. This preserves observability (Notifications Health panel will still show the attempt) which is correct behavior.",
+    "routers/broadcasts.py:78-89 — Routes broadcast_review and broadcast pushes through _relay_send with the right `kind=` so _channel_for_kind picks 'broadcasts'. No regression. The dev-fallback to send_expo_push_batch also gets the channel correctly (data['type']='broadcast_review' is read by the legacy path's _kind_hint logic)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_push_channels_multichannel.py (new — 40 tests covering unit + contract + endpoint smoke)"
+  ],
+  "success_rate": {"backend": "100% (40/40)", "frontend": "n/a (backend-only per review_request)"},
+  "seed_data_creation": "Created 0–1 broadcast row per test run (TEST_bc_<uuid8>) with best-effort DELETE cleanup in the fixture teardown. Also created 1 push_tokens row per run (TEST_native_fcm_<uuid12>) — upserted, not deleted, but each run uses a fresh token so no accumulation. No production data modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Re-run with: cd /app/backend && python -m pytest tests/test_push_channels_multichannel.py -v. Test pre-seeded tokens used: OWNER=test_session_1781800271528 (primary_owner), PATIENT=sagar_p_session_1781806225518 (Sagar P patient). If those become stale, the auth-gated tests will pytest.skip() instead of failing red. BASE_URL is resolved from EXPO_BACKEND_URL / EXPO_PUBLIC_BACKEND_URL env, falling back to https://urology-pro.preview.emergentagent.com. /openapi.json is hit on localhost:8001 (ingress doesn't forward non-/api paths). EMERGENT_PUSH_KEY=placeholder in /app/backend/.env is INTENTIONAL — real FCM delivery is only verifiable on a native device build (production deploy injects the key).",
+  "rca_of_issue": "N/A — review_request was a forward-looking regression of a feature add, not a bug fix. No issues surfaced. Both new helpers (_channel_for_kind, send_push payload injection) and the legacy notifications.py channel propagation are working as designed under EMERGENT_PUSH_KEY=placeholder. Push delivery on a real device requires a deploy that injects the real key — out of scope for backend regression."
+}

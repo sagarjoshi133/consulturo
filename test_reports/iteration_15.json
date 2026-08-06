@@ -1,0 +1,58 @@
+{
+  "summary": "Backend-only testing of Wave 3 (AI Rx suggest + Smart inbox triage), Wave 4 (analytics), Wave 5 (TOTP 2FA, DPDP export, audit log) and Wave 6 (perf info). 12/14 tests PASS. CRITICAL: /api/analytics/dashboard and /api/analytics/outcomes from /app/backend/routers/wave_more.py are SHADOWED by pre-existing routes in /app/backend/routers/analytics.py — that router is registered first in server.py (line 3407 vs wave_more at 3463), so FastAPI's first-match wins and the new 'widgets' shape ({opd_count, surgery_count, top_procedure, …}) is never reachable. Only /api/analytics/referrers (unique to wave_more) is live. 2FA full lifecycle (setup → status pending → verify with computed RFC 6238 TOTP → status enabled → disable → status off) works end-to-end. Wrong-code rejection and 'verify before setup' 400 confirmed. AI Rx-suggest returns {ok, medicines[], warnings[], model=claude-sonnet-4-5} with proper 400 for empty diagnosis and 401/403 unauthenticated. Triage returned 3/3 results with tags in {urgent, question, admin, routine} for the mixed-tone batch. DPDP export (staff path with phone=+918888888888) streams a JSON bundle with all 9 expected top-level keys; missing-phone returns 400. Audit-log search returns {ok, rows[], actions[], window_days}. Perf info returns the expected 4 budget keys.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/analytics/dashboard",
+        "issue": "ROUTE SHADOWING. Existing routers/analytics.py defines /api/analytics/dashboard and is include_router'd FIRST in server.py (~line 3407). The new wave_more.py /api/analytics/dashboard handler (line 272) is therefore never matched, so the documented 'widgets' shape (opd_count, surgery_count, ipd_count, new_patients, revenue, pending_receivables, top_procedure) is unreachable. Response actually returned: {clinic_id, daily_bookings[], mode_breakdown, generated_at, …} — from analytics.py. Fix: either (a) delete the duplicate handler in wave_more.py and merge needed widgets into analytics.py, or (b) include wave_more router BEFORE analytics router in server.py, or (c) namespace the new route under e.g. /api/analytics/dashboard-widgets.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "GET /api/analytics/outcomes",
+        "issue": "ROUTE SHADOWING (same root cause). routers/analytics.py L237 already owns /api/analytics/outcomes. New wave_more.py L409 outcomes endpoint never fires. Response returned the analytics.py shape ({avg_length_of_stay_days, follow_up_adherence_percent, follow_up_total, generated_at, …}) instead of the documented {procedures[], total_surgeries, window_months} shape. Fix as above.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/security/2fa/verify",
+        "issue": "Code allows ±1 30s step drift (window=1) — fine for production, but flaky test runs that span >30s between _totp_now() and verify could fail. Not observed in this run."
+      },
+      {
+        "endpoint": "GET /api/dpdp/export",
+        "issue": "Returned as application/json streaming download (Content-Disposition: attachment). Body parses fine, but the OpenAPI contract isn't reflected — consider a `?format=json` toggle vs always-attachment for SPA consumers."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wave_more_compliance_perf.py",
+    "/app/test_reports/pytest/wave_more_compliance_perf.xml"
+  ],
+  "action_items": [
+    "Resolve the /api/analytics/dashboard and /api/analytics/outcomes route collision between routers/analytics.py and routers/wave_more.py. Recommended path: extend analytics.py to also return the new 'widgets' block (the analytics-dashboard.tsx frontend is expecting opd_count/surgery_count/top_procedure per the review request, but it'll currently receive the legacy analytics.py shape and likely render empty cards). Remove the duplicate handlers from wave_more.py once analytics.py covers the widget keys, or rename them.",
+    "Add a smoke test for /api/analytics/dashboard that asserts BOTH the legacy keys AND the new widgets — if you keep both shapes, return them as a union to keep frontend backward-compatible.",
+    "Optional: tighten DPDP export to accept Accept: application/json without the attachment Content-Disposition header (helps frontend SPA fetching)."
+  ],
+  "critical_code_review_comments": [
+    "server.py register order matters: routers/analytics.py is included before routers/wave_more.py — any duplicated paths in wave_more will be dead code. Recommend a startup assertion that iterates app.routes and warns on duplicate (method, path) pairs.",
+    "wave_more.py L272 _month_window uses datetime.now(timezone.utc) for the 'now' bound, but db.bookings.created_at returned from Mongo are typically TZ-NAIVE — the $gte/$lte filter will work because Mongo compares as UTC-naive, but mixing aware/naive datetimes in pipelines is brittle. Same comment as iteration_14.",
+    "wave_compliance_perf.py L83 phone suffix-regex {'$regex': suffix + '$'} is unanchored at the start — fine for normalised 10-digit suffixes (low collision), but a 6-digit suffix could match unrelated patients. Acceptable given _normalize_phone produces 10 digits, but worth a defensive check.",
+    "wave_compliance_perf.py L196 otpauth_url URL-encodes the label by .replace(' ', '%20') only — colons or '/' in label (allowed by some authenticator apps) would break the URL. Use urllib.parse.quote for the label.",
+    "wave_compliance_perf.py L43 dpdp_export uses require_user — patients can self-export, staff can export by phone. Good. But staff exports are NOT gated by tenant; an owner from clinic A could export a patient that belongs only to clinic B. Add tenant_filter check before returning the bundle, OR confirm patient.clinic_id matches the requester's clinic."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wave_more_compliance_perf.py (new — 14 tests)"
+  ],
+  "success_rate": {"backend": "85.7% (12/14)", "frontend": "n/a (backend-only)"},
+  "seed_data_creation": "No new seeds. Used existing OWNER token test_session_1781792149794 (sagar.joshi133@gmail.com, role=primary_owner) and existing PATIENT phone +918888888888 for DPDP export. 2FA test toggles state on the OWNER user — the test cleans up by calling /api/security/2fa/disable in both the happy path and a fixture-style fallback (test_2fa_verify_without_setup calls disable before asserting 400).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "OWNER session token still valid: test_session_1781792149794 (primary_owner). When re-running 2FA tests, both happy & sad paths call /api/security/2fa/disable at start/end so the state should be 'off' between runs. Route collision: /api/analytics/dashboard and /api/analytics/outcomes are currently served by routers/analytics.py NOT routers/wave_more.py. If the main agent re-orders include_router calls in server.py to put wave_more first, expect the analytics.py shape to disappear from the responses — verify that no frontend screen depends on the legacy analytics.py keys (daily_bookings, mode_breakdown, avg_length_of_stay_days, follow_up_adherence_percent) before flipping the order. Pytest XML: /app/test_reports/pytest/wave_more_compliance_perf.xml.",
+  "rca_of_issue": "FastAPI registers routes in the order include_router() is called. server.py L3407 includes routers/analytics.py BEFORE L3464 wave_more.py. When two handlers share the same (METHOD, PATH), the first registered wins. Reproduction: curl -H 'Authorization: Bearer test_session_1781792149794' https://urology-pro.preview.emergentagent.com/api/analytics/dashboard — returns the analytics.py payload (no 'widgets' key, no 'ok' key). The wave_more.py logic (count_documents on bookings/surgeries/ipd_admissions, receipts aggregate, top_procedure Counter) is dead code from the moment the router is registered. Mitigation: either (a) move the include_router for wave_more BEFORE analytics in server.py (~swap lines 3407 and 3464), (b) delete the duplicate handlers in wave_more.py and add the widget logic into analytics.py's analytics_dashboard handler, or (c) rename the new endpoints to e.g. /api/analytics/widgets and /api/analytics/outcomes-rollup so they coexist. Option (b) is cleanest because the frontend code in /app/frontend/app/admin/analytics-dashboard.tsx will see one shape across the board."
+}
