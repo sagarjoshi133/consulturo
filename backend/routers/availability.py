@@ -35,6 +35,50 @@ def _clinic_filter_or_empty(user: Optional[Dict[str, Any]], clinic_id: Optional[
     return {}
 
 
+async def _find_availability_doc(
+    user_id: str, clinic_id: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Resolve a doctor's availability doc using a 3-tier fallback so
+    the *actual* schedule the doctor saved is always respected — even
+    if the doc lives under a different clinic_id, or has no clinic_id
+    at all (legacy pre-multi-tenant docs).
+
+    Priority:
+      1. Per-clinic doc matching the requested `clinic_id` (if any).
+      2. "Global" doc — one where clinic_id is null / missing.
+      3. Any doc saved by this doctor (last resort — better than
+         falling through to the hardcoded default_availability
+         which would show 10-13 / 17-20 slots the doctor never set).
+
+    Returns None only when the doctor has never persisted any
+    availability at all; callers should then use `_default_availability()`.
+    """
+    # 1. Per-clinic override.
+    if clinic_id:
+        d = await db.availability.find_one(
+            {"user_id": user_id, "clinic_id": clinic_id}, {"_id": 0}
+        )
+        if d:
+            return d
+    # 2. Global doc (explicitly null or field missing).
+    d = await db.availability.find_one(
+        {
+            "user_id": user_id,
+            "$or": [
+                {"clinic_id": None},
+                {"clinic_id": {"$exists": False}},
+            ],
+        },
+        {"_id": 0},
+    )
+    if d:
+        return d
+    # 3. Any doc — last resort so a legacy doc under some other
+    # clinic_id is still preferred over hardcoded defaults.
+    d = await db.availability.find_one({"user_id": user_id}, {"_id": 0})
+    return d
+
+
 @router.get("/api/availability/me")
 async def get_my_availability(request: Request, user=Depends(require_can_manage_availability)):
     clinic_id = await resolve_clinic_id(request, user)
@@ -103,10 +147,7 @@ async def list_doctor_availability(request: Request):
         ).to_list(length=50)
     out = []
     for p in prescribers:
-        avq: Dict[str, Any] = {"user_id": p["user_id"]}
-        if clinic_id:
-            avq["clinic_id"] = clinic_id
-        avail = await db.availability.find_one(avq, {"_id": 0}) or _default_availability()
+        avail = await _find_availability_doc(p["user_id"], clinic_id) or _default_availability()
         out.append({
             "user_id": p["user_id"],
             "name": p.get("name"),
@@ -151,13 +192,16 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
 
     doctors = await db.users.find(doctors_q, {"_id": 0}).to_list(length=50)
 
-    # Split doctors by whether they have a saved availability doc (per-clinic).
+    # Split doctors by whether they have a saved availability doc.
+    # We use a 3-tier fallback so a doctor's ACTUAL schedule is honoured
+    # even when the availability doc was saved without a clinic_id
+    # (legacy pre-multi-tenant docs, or edits made from the "no clinic
+    # selected" state). Without this fallback the endpoint would drop
+    # to `_default_availability()` and show hardcoded 10-13 / 17-20
+    # slots the doctor never set — exactly the reported bug.
     doctors_with_avail: List[Dict[str, Any]] = []
     for doc in doctors:
-        avq: Dict[str, Any] = {"user_id": doc["user_id"]}
-        if clinic_id:
-            avq["clinic_id"] = clinic_id
-        avail_doc = await db.availability.find_one(avq, {"_id": 0})
+        avail_doc = await _find_availability_doc(doc["user_id"], clinic_id)
         if avail_doc:
             doctors_with_avail.append({"user": doc, "avail": avail_doc})
 

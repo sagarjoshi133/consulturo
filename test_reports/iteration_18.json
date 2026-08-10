@@ -1,0 +1,39 @@
+{
+  "summary": "Backend regression tests for availability slot bugfix — 14/14 passed. The 3-tier fallback (`_find_availability_doc`) correctly resolves per-clinic → global → any-doc, preventing the reported symptom of hardcoded 10-13 / 17-20 defaults leaking through when a doctor's availability doc lives under a mismatched clinic_id. `/api/availability/slots` and `/api/availability/doctors` both use the helper. Off-days, unavailability rules, and the response schema (booked_counts / full_slots / past_slots / unavailable_reason) all remain intact.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/availability/me",
+        "issue": "Write-path ordering coupling: when a per-clinic doc exists and the user then PUTs without X-Clinic-Id, the filter `{user_id}` matches the existing per-clinic doc and overwrites it (converts clinic_id → None) instead of creating a separate global doc. The read-side fix compensates via tier-3 fallback, but the write path is order-dependent (save global first, then per-clinic, to get two docs). Not the focus of this fix — flagging for future consideration."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_availability_bugfix_regression.py",
+    "/app/test_reports/pytest/availability_bugfix_regression.xml"
+  ],
+  "action_items": [
+    "None for the reported bug — fix is verified. Optionally: consider making PUT /api/availability/me use `{user_id, clinic_id: None}` as the filter when no clinic header is provided, so a global doc doesn't cannibalise an existing per-clinic doc."
+  ],
+  "critical_code_review_comments": [
+    "_find_availability_doc is well-scoped, uses projection to strip `_id`, and correctly short-circuits when clinic_id is missing.",
+    "Both call sites (get_available_slots + list_doctor_availability) now use the helper consistently.",
+    "PUT write path does NOT use the helper (intentional — write goes to a specific slot per the spec). Documented above as a minor ordering caveat."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_availability_bugfix_regression.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (not tested per request)"},
+  "seed_data_creation": "Each test class seeds fresh doctor users + 7-day session tokens directly into Mongo (users, user_sessions, availability, clinic_memberships). All test data is prefixed `test_avail_*` / `TEST_clinic_*` and torn down in each class's teardown_class. Verified no leftover rows in Mongo after run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Regression test file at /app/backend/tests/test_availability_bugfix_regression.py covers 6 scenarios (14 tests) around the availability 3-tier fallback. Uses direct Mongo seeding via `pymongo` and hits public endpoints via `EXPO_BACKEND_URL`. Note: the correct Mongo collection for memberships is `clinic_memberships` (NOT `memberships`); and the /api/availability/me PUT is order-sensitive (save global before per-clinic to have both docs coexist).",
+  "rca_of_issue": "RCA (from main agent): /api/availability/slots and /api/availability/doctors queried db.availability with {user_id, clinic_id} where clinic_id came from X-Clinic-Id. Legacy docs saved without clinic_id (null / missing field) or under a different clinic_id were skipped, causing the code to fall through to _default_availability() which returns hardcoded Mon-Sat 10-13 in-person / 17-20 online — hence the reported 'slots outside my availability are shown' bug. Mitigation applied: new helper `_find_availability_doc(user_id, clinic_id)` with 3-tier fallback (per-clinic → global → any-doc). Validation: 14 pytest cases confirm (a) global-only doc is honoured, (b) per-clinic override still wins when its X-Clinic-Id is passed, (c) legacy doc under mismatched clinic is used via tier-3 rather than falling through to defaults, (d) true absence still uses hardcoded defaults, (e) /api/availability/doctors honours the same fallback, (f) unavailability rules / off_days / response shape unchanged."
+}
