@@ -1,0 +1,44 @@
+{
+  "summary": "Backend regression tests for the follow-up availability slots fix (collapse-to-primary-prescriber). 21/21 pytest cases pass. 7 new scenarios (S7–S12) exercise the new collapse logic in get_available_slots; 14 pre-existing scenarios (S1–S6) that verify the earlier 3-tier `_find_availability_doc` fix all remain green. The reported production symptom (stray 14:30 / 15:00 / 15:30 / 20:00 slots leaking in from a legacy `doctor` role user) is now impossible: when the caller passes no `?user_id`, only the highest-priority prescriber (primary_owner → owner → partner → doctor) with a saved availability doc contributes windows. Explicit `?user_id` still bypasses the collapse (multi-doctor filtering preserved). `/api/availability/doctors` remains uncollapsed and lists every prescriber.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/availability/me",
+        "issue": "Non-owner prescribers (role=doctor/assistant) need the `can_manage_availability` flag set on their user record to save availability via PUT. Not caused by this fix — pre-existing gate in require_can_manage_availability. Flagged only because I had to add this flag to test seeds; production onboarding should confirm the invitation flow sets it for team-member prescribers who need to edit their own schedule."
+      },
+      {
+        "endpoint": "PUT /api/availability/me",
+        "issue": "Carry-over from iteration 18: PUT without X-Clinic-Id filters by {user_id} only, which overwrites an existing per-clinic doc if one already exists (instead of creating a distinct global doc). Read-side collapse + 3-tier fallback compensate, so no user-visible impact today."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_availability_bugfix_regression.py",
+    "/app/test_reports/pytest/availability_bugfix_regression.xml"
+  ],
+  "action_items": [
+    "None for the reported bug — fix is verified end-to-end. Optional cleanup: purge or hide the legacy `doctor` / demo / test prescriber accounts that carry stray availability windows so /api/availability/doctors (which correctly lists every prescriber) doesn't confuse operators."
+  ],
+  "critical_code_review_comments": [
+    "Collapse block in get_available_slots is well-scoped, correctly runs only when `user_id` is None, and its final fallback (`if not picked: picked = doctors[0]`) preserves the pre-existing `_default_availability()` behaviour for brand-new practices.",
+    "Priority order (primary_owner > owner > partner > doctor) matches the org chart in test_credentials.md.",
+    "Collapse is deliberately NOT applied to /api/availability/doctors — that endpoint is a directory view and must still expose every prescriber. Verified in Scenario 11.",
+    "Selection is deterministic per Mongo iteration order within a role tier; that is acceptable for single-practice deployments (one primary_owner in prod). If the platform ever hosts multiple independent practices under a single deployment WITHOUT clinic scoping, ties could pick the wrong owner — but in that case the caller should be passing X-Clinic-Id anyway (which membership-gates the doctors list first)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_availability_bugfix_regression.py (appended 7 new tests across scenarios 7-12; also added can_manage_availability:True to _seed_doctor so role=doctor users can PUT their own availability)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "N/A (not tested per request)"},
+  "seed_data_creation": "Each new class seeds fresh doctor users + 7-day session tokens with prefix `test_avail_s{7..12}_*`. Module-scoped `_isolate_prescribers` fixture backs up any pre-existing production prescriber availability doc (only Dr. Sagar Joshi in current DB) and temp-deletes it so the collapse-selection tests are deterministic; docs are replace_one-upserted back at module teardown even on failure (`try/finally`). Post-run Mongo audit confirms zero test residue and Dr. Sagar Joshi's original availability doc restored intact.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The regression file now has 6 pre-fix scenarios (S1-S6, 14 tests) + 6 post-fix scenarios (S7-S12, 7 tests). Run with `pytest /app/backend/tests/test_availability_bugfix_regression.py -v`. The `_isolate_prescribers` module fixture MUST have `try/finally` restore or a crash mid-run will leave production Dr. Sagar Joshi with no availability. `_seed_doctor` now sets `can_manage_availability:True`; if you seed additional doctors via a different helper, add this flag when their role != OWNER_TIER_ROLES or the PUT /api/availability/me call will 403.",
+  "rca_of_issue": "RCA: /api/availability/slots (no user_id, no X-Clinic-Id) queries db.users for every user with role in PRESCRIBER_AVAILABILITY_ROLES OR can_prescribe=True. Over time the DB accumulated demo/test/legacy `doctor` records whose saved availability windows unioned into the merged slot set (loop over `sources` at lines 260-275). This caused stray 14:30/15:00/15:30/20:00 slots that the practicing primary_owner never set. Fix: introduce a 'collapse to primary prescriber' step (lines 213-234 in availability.py) that, when no explicit user_id is passed, reduces the doctors list to the single highest-tier prescriber who has a real availability doc (primary_owner → owner → partner → doctor → any can_prescribe). Explicit ?user_id skips the collapse. Validation: Scenario 7 seeds the exact bug-report configuration (primary_owner 08-13+16-20 vs legacy doctor 14:30-15:30+16:00-20:30) and asserts the response has exactly 18 slots with none of the stray times. Scenarios 8-12 cover priority ordering, tier fallback, explicit-user_id bypass, doctors-endpoint invariance, and the 'nobody has availability' default-schedule fallback."
+}

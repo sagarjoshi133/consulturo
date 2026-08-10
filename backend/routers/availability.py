@@ -192,6 +192,47 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
 
     doctors = await db.users.find(doctors_q, {"_id": 0}).to_list(length=50)
 
+    # ── Prefer the practice's PRIMARY prescriber ─────────────────────
+    # In a single-practice deployment (like ConsultUro's own), stray
+    # test / demo / legacy prescriber accounts that were never cleaned
+    # up will silently union their schedules into the public booking
+    # page — leading to slots showing OUTSIDE the actual doctor's
+    # windows (e.g. 14:30–15:30 or 20:00 slots the doctor never set).
+    #
+    # Rule: unless the caller explicitly asks for a specific `user_id`,
+    # collapse the doctors list to the single most-authoritative one
+    # who has a saved availability doc. Priority order:
+    #   1. primary_owner
+    #   2. owner
+    #   3. partner (co-doctor)
+    #   4. doctor
+    #   5. any (can_prescribe fallback)
+    # Within a tier, pick the first user who has a real availability
+    # doc — never let a role-holder with NO availability drag the
+    # response down to hardcoded defaults if a real schedule exists.
+    if not user_id and doctors:
+        ROLE_PRIORITY = ["primary_owner", "owner", "partner", "doctor"]
+        # Bucket doctors by role for deterministic selection.
+        picked = None
+        for role in ROLE_PRIORITY:
+            for doc in doctors:
+                if doc.get("role") == role:
+                    if await _find_availability_doc(doc["user_id"], clinic_id):
+                        picked = doc
+                        break
+            if picked:
+                break
+        # Fallback: any doctor with an availability doc.
+        if not picked:
+            for doc in doctors:
+                if await _find_availability_doc(doc["user_id"], clinic_id):
+                    picked = doc
+                    break
+        # Final fallback: keep the first doctor (will use _default_availability()).
+        if not picked:
+            picked = doctors[0]
+        doctors = [picked]
+
     # Split doctors by whether they have a saved availability doc.
     # We use a 3-tier fallback so a doctor's ACTUAL schedule is honoured
     # even when the availability doc was saved without a clinic_id

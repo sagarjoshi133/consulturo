@@ -82,6 +82,10 @@ def _seed_doctor(mongo, tag: str, role: str = "owner"):
         "name": f"TEST Dr {tag}",
         "role": role,
         "can_prescribe": True,
+        # Ensure PUT /api/availability/me is authorized for non-owner
+        # roles too (require_can_manage_availability passes on this flag
+        # even when role is "doctor").
+        "can_manage_availability": True,
         "created_at": datetime.now(timezone.utc),
     })
     mongo.user_sessions.insert_one({
@@ -565,4 +569,399 @@ class TestScenario6_NoRegressionOnAncillaryFeatures:
         for rid in cls.unav_ids:
             db.unavailabilities.delete_many({"id": rid})
         _cleanup(db, cls.doctor_ids)
+        client.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Follow-up fix (Iteration 19): "Collapse to primary prescriber"
+# ─────────────────────────────────────────────────────────────────────
+# The multi-tenant DB accumulated legacy `doctor` / `owner` accounts
+# whose availability docs unioned their windows into the public
+# /api/availability/slots response, causing stray slots (e.g. 14:30,
+# 15:00, 15:30, 20:00) that the real practicing doctor never set.
+#
+# Fix (in get_available_slots): when the caller does NOT pass
+# `?user_id=`, collapse the `doctors` list to the SINGLE most
+# authoritative prescriber that has a saved availability doc, in
+# priority order: primary_owner → owner → partner → doctor → any
+# with can_prescribe. If the caller explicitly passes ?user_id, the
+# collapse is skipped so multi-doctor per-user targeting still works.
+#
+# The tests below assert:
+#   (a) the reported production symptom no longer recurs;
+#   (b) primary_owner wins over partner + doctor;
+#   (c) tier fallback to partner when no primary_owner has availability;
+#   (d) explicit user_id disables the collapse;
+#   (e) /api/availability/doctors is UNCHANGED (still returns every
+#       prescriber, un-collapsed).
+#
+# Determinism note: /api/availability/slots without user_id queries
+# ALL prescribers platform-wide. Production DB already has one real
+# primary_owner ("Dr. Sagar Joshi") with an availability doc, which
+# would compete with our seeded primary_owner for the collapse "pick".
+# The `_isolate_prescribers` fixture backs up + temporarily deletes
+# every existing (non test_avail_*) prescriber's availability docs so
+# only our seeded users are candidates. All state is restored in
+# teardown, even on failure.
+
+
+@pytest.fixture(scope="module")
+def _isolate_prescribers(mongo):
+    """Snapshot + clear existing prescribers' availability docs so
+    the collapse-selection tests below are deterministic."""
+    prescribers = list(mongo.users.find({
+        "$or": [
+            {"role": {"$in": ["super_owner", "primary_owner", "owner", "partner"]}},
+            {"can_prescribe": True},
+        ]
+    }, {"_id": 0, "user_id": 1}))
+    backup_avail = []
+    for p in prescribers:
+        uid = p["user_id"]
+        if uid.startswith("test_avail_"):
+            continue  # will be cleaned by class teardown
+        docs = list(mongo.availability.find({"user_id": uid}))
+        if docs:
+            backup_avail.extend(docs)
+            mongo.availability.delete_many({"user_id": uid})
+    try:
+        yield
+    finally:
+        # Restore every backed-up doc verbatim (including _id so we
+        # do not accidentally duplicate on repeated runs).
+        for d in backup_avail:
+            mongo.availability.replace_one(
+                {"_id": d["_id"]}, d, upsert=True
+            )
+
+
+def _empty_week():
+    return {
+        "tue_in": [], "wed_in": [], "thu_in": [], "fri_in": [],
+        "sat_in": [], "sun_in": [],
+        "mon_on": [], "tue_on": [], "wed_on": [], "thu_on": [],
+        "fri_on": [], "sat_on": [], "sun_on": [],
+        "off_days": ["sun"],
+    }
+
+
+# ── Scenario 7: The reported production symptom.
+class TestScenario7_ReportedSymptomNoStraySlots:
+    doctor_ids: list = []
+
+    def test_stray_slots_from_legacy_doctor_are_excluded(
+        self, mongo, http, _isolate_prescribers
+    ):
+        # Seed the primary_owner "Dr. Sagar Joshi" with the exact
+        # schedule from the bug report.
+        po = _seed_doctor(mongo, "s7po", role="primary_owner")
+        self.__class__.doctor_ids.append(po["user_id"])
+        mongo.users.update_one(
+            {"user_id": po["user_id"]},
+            {"$set": {"name": "TEST Dr. Sagar Joshi"}},
+        )
+        auth_po = {"Authorization": f"Bearer {po['token']}"}
+        po_body = {
+            "mon_in": [
+                {"start": "08:00", "end": "13:00"},
+                {"start": "16:00", "end": "20:00"},
+            ],
+            **_empty_week(),
+            "note": "primary owner true schedule",
+        }
+        r = http.put(f"{BASE_URL}/api/availability/me", json=po_body, headers=auth_po)
+        assert r.status_code == 200, r.text
+
+        # Seed the polluting legacy doctor with stray windows.
+        legacy = _seed_doctor(mongo, "s7legacy", role="doctor")
+        self.__class__.doctor_ids.append(legacy["user_id"])
+        auth_l = {"Authorization": f"Bearer {legacy['token']}"}
+        legacy_body = {
+            "mon_in": [
+                {"start": "14:30", "end": "15:30"},
+                {"start": "16:00", "end": "20:30"},
+            ],
+            **_empty_week(),
+            "note": "legacy stray doctor",
+        }
+        r = http.put(f"{BASE_URL}/api/availability/me", json=legacy_body, headers=auth_l)
+        assert r.status_code == 200, r.text
+
+        # GET slots — no user_id, no X-Clinic-Id — the reported flow.
+        date = _next_weekday(0)  # Monday
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person"},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+
+        expected = [
+            "08:00", "08:30", "09:00", "09:30",
+            "10:00", "10:30", "11:00", "11:30",
+            "12:00", "12:30",
+            "16:00", "16:30", "17:00", "17:30",
+            "18:00", "18:30", "19:00", "19:30",
+        ]
+        assert data["slots"] == expected, (
+            f"Expected exactly 18 slots from primary_owner schedule, "
+            f"got {len(data['slots'])}: {data['slots']}"
+        )
+        # Stray slots from legacy doctor must not leak.
+        for bad in ["14:30", "15:00", "15:30", "20:00"]:
+            assert bad not in data["slots"], (
+                f"Stray legacy-doctor slot {bad} leaked in — "
+                f"collapse-to-primary-prescriber failed."
+            )
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
+        client.close()
+
+
+# ── Scenario 8: primary_owner beats partner + doctor tiers.
+class TestScenario8_PrimaryOwnerBeatsOtherRoles:
+    doctor_ids: list = []
+
+    def test_primary_owner_wins_over_partner_and_doctor(
+        self, mongo, http, _isolate_prescribers
+    ):
+        po = _seed_doctor(mongo, "s8po", role="primary_owner")
+        pt = _seed_doctor(mongo, "s8pt", role="partner")
+        dr = _seed_doctor(mongo, "s8dr", role="doctor")
+        self.__class__.doctor_ids.extend([po["user_id"], pt["user_id"], dr["user_id"]])
+
+        # Give each a distinct, non-overlapping mon schedule.
+        def _save(tok, mon_in):
+            body = {"mon_in": mon_in, **_empty_week(), "note": "s8"}
+            r = http.put(
+                f"{BASE_URL}/api/availability/me", json=body,
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r.status_code == 200, r.text
+
+        _save(po["token"], [{"start": "09:00", "end": "10:00"}])   # primary_owner
+        _save(pt["token"], [{"start": "13:00", "end": "14:00"}])   # partner
+        _save(dr["token"], [{"start": "16:00", "end": "17:00"}])   # doctor
+
+        date = _next_weekday(0)
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["slots"] == ["09:00", "09:30"], (
+            f"Expected primary_owner-only slots ['09:00','09:30'], got {data['slots']}"
+        )
+        # Partner + doctor schedules must not leak.
+        for bad in ["13:00", "13:30", "16:00", "16:30"]:
+            assert bad not in data["slots"], (
+                f"Non-primary role's slot {bad} leaked in — collapse broken."
+            )
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
+        client.close()
+
+
+# ── Scenario 9: Tier fallback — no primary_owner → partner picked.
+class TestScenario9_TierFallbackToPartner:
+    doctor_ids: list = []
+
+    def test_no_primary_owner_falls_to_partner(
+        self, mongo, http, _isolate_prescribers
+    ):
+        pt = _seed_doctor(mongo, "s9pt", role="partner")
+        dr = _seed_doctor(mongo, "s9dr", role="doctor")
+        self.__class__.doctor_ids.extend([pt["user_id"], dr["user_id"]])
+
+        def _save(tok, mon_in):
+            body = {"mon_in": mon_in, **_empty_week(), "note": "s9"}
+            r = http.put(
+                f"{BASE_URL}/api/availability/me", json=body,
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r.status_code == 200, r.text
+
+        _save(pt["token"], [{"start": "11:00", "end": "12:00"}])
+        _save(dr["token"], [{"start": "18:00", "end": "19:00"}])
+
+        date = _next_weekday(0)
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["slots"] == ["11:00", "11:30"], (
+            f"Partner-tier fallback broken; expected ['11:00','11:30'], "
+            f"got {data['slots']}"
+        )
+        for bad in ["18:00", "18:30"]:
+            assert bad not in data["slots"], (
+                f"Doctor-tier slot {bad} leaked while partner should have won."
+            )
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
+        client.close()
+
+
+# ── Scenario 10: Explicit user_id DISABLES the collapse.
+class TestScenario10_ExplicitUserIdSkipsCollapse:
+    doctor_ids: list = []
+
+    def test_user_id_param_targets_specified_doctor(
+        self, mongo, http, _isolate_prescribers
+    ):
+        po = _seed_doctor(mongo, "s10po", role="primary_owner")
+        pt = _seed_doctor(mongo, "s10pt", role="partner")
+        self.__class__.doctor_ids.extend([po["user_id"], pt["user_id"]])
+
+        def _save(tok, mon_in):
+            body = {"mon_in": mon_in, **_empty_week(), "note": "s10"}
+            r = http.put(
+                f"{BASE_URL}/api/availability/me", json=body,
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r.status_code == 200, r.text
+
+        _save(po["token"], [{"start": "09:00", "end": "10:00"}])
+        _save(pt["token"], [{"start": "13:00", "end": "14:00"}])
+
+        # Explicit user_id=partner → collapse skipped, partner slots.
+        date = _next_weekday(0)
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person", "user_id": pt["user_id"]},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["slots"] == ["13:00", "13:30"], (
+            f"Explicit user_id did NOT target partner; got {data['slots']}"
+        )
+        # Primary owner's slots must NOT appear.
+        for bad in ["09:00", "09:30"]:
+            assert bad not in data["slots"], (
+                f"primary_owner slot {bad} leaked in — collapse should have "
+                f"been skipped by explicit ?user_id but wasn't."
+            )
+
+    def test_user_id_targeting_primary_owner_returns_only_its_slots(
+        self, mongo, http, _isolate_prescribers
+    ):
+        # Uses the same seeded users from the prior test.
+        assert self.__class__.doctor_ids
+        po_uid = self.__class__.doctor_ids[0]
+        date = _next_weekday(0)
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person", "user_id": po_uid},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["slots"] == ["09:00", "09:30"]
+        for bad in ["13:00", "13:30"]:
+            assert bad not in data["slots"]
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
+        client.close()
+
+
+# ── Scenario 11: /api/availability/doctors UNCHANGED (no collapse).
+class TestScenario11_DoctorsEndpointNotCollapsed:
+    doctor_ids: list = []
+
+    def test_doctors_endpoint_still_lists_every_prescriber(
+        self, mongo, http, _isolate_prescribers
+    ):
+        po = _seed_doctor(mongo, "s11po", role="primary_owner")
+        pt = _seed_doctor(mongo, "s11pt", role="partner")
+        dr = _seed_doctor(mongo, "s11dr", role="doctor")
+        self.__class__.doctor_ids.extend([po["user_id"], pt["user_id"], dr["user_id"]])
+
+        def _save(tok, mon_in, note):
+            body = {"mon_in": mon_in, **_empty_week(), "note": note}
+            r = http.put(
+                f"{BASE_URL}/api/availability/me", json=body,
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r.status_code == 200, r.text
+
+        _save(po["token"], [{"start": "09:00", "end": "10:00"}], "s11 primary")
+        _save(pt["token"], [{"start": "13:00", "end": "14:00"}], "s11 partner")
+        _save(dr["token"], [{"start": "16:00", "end": "17:00"}], "s11 doctor")
+
+        r = http.get(f"{BASE_URL}/api/availability/doctors")
+        assert r.status_code == 200
+        listing = r.json()
+        by_uid = {d["user_id"]: d for d in listing}
+
+        # Every seeded prescriber must appear with its OWN saved schedule.
+        for seeded_uid, expected_mon_in, expected_note in [
+            (po["user_id"], [{"start": "09:00", "end": "10:00"}], "s11 primary"),
+            (pt["user_id"], [{"start": "13:00", "end": "14:00"}], "s11 partner"),
+            (dr["user_id"], [{"start": "16:00", "end": "17:00"}], "s11 doctor"),
+        ]:
+            assert seeded_uid in by_uid, (
+                f"/doctors dropped prescriber {seeded_uid} — collapse must NOT "
+                f"apply to the doctor-directory endpoint."
+            )
+            avail = by_uid[seeded_uid]["availability"]
+            assert avail["mon_in"] == expected_mon_in, (
+                f"Doctor {seeded_uid} listed with wrong schedule: {avail['mon_in']}"
+            )
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
+        client.close()
+
+
+# ── Scenario 12: Final-fallback keeps first doctor when nobody has avail doc.
+class TestScenario12_NoAvailabilityFinalFallback:
+    """When multiple prescribers exist but NONE have an availability
+    doc, the collapse's final fallback keeps the first doctor (which
+    then falls through to `_default_availability()` in the slot
+    building step). Verifies no regression on the earlier "true
+    absence uses hardcoded default" behaviour."""
+    doctor_ids: list = []
+
+    def test_no_availability_docs_uses_default(
+        self, mongo, http, _isolate_prescribers
+    ):
+        po = _seed_doctor(mongo, "s12po", role="primary_owner")
+        dr = _seed_doctor(mongo, "s12dr", role="doctor")
+        self.__class__.doctor_ids.extend([po["user_id"], dr["user_id"]])
+        # DO NOT save any availability docs.
+
+        date = _next_weekday(0)
+        r = http.get(
+            f"{BASE_URL}/api/availability/slots",
+            params={"date": date, "mode": "in-person"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        # Default mon_in is 10:00-13:00 → 6 half-hour slots.
+        expected = ["10:00", "10:30", "11:00", "11:30", "12:00", "12:30"]
+        assert data["slots"] == expected, (
+            f"Final-fallback path broken; expected default schedule "
+            f"{expected}, got {data['slots']}"
+        )
+
+    @classmethod
+    def teardown_class(cls):
+        client = MongoClient(MONGO_URL)
+        _cleanup(client[DB_NAME], cls.doctor_ids)
         client.close()
