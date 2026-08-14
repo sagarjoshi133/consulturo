@@ -129,6 +129,18 @@ const REASON_COPY: Record<PushDiagnosticReason, { icon: any; color: string; labe
     label: 'Backend registration failed',
     hint: 'Token was fetched but /push/register returned an error.',
   },
+  relay_not_configured: {
+    icon: 'cloud-upload-outline',
+    color: COLORS.warning,
+    label: 'Deploy required',
+    hint: 'Token saved. Device push activates after Publish → Deploy injects the push key — saved tokens auto-resync.',
+  },
+  relay_upstream_error: {
+    icon: 'cloud-offline',
+    color: COLORS.accent,
+    label: 'Push relay error',
+    hint: 'The push relay rejected this device registration. Retry; if it persists, redeploy the backend.',
+  },
 };
 
 function formatTime(iso?: string) {

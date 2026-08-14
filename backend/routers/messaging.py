@@ -29,8 +29,16 @@ async def inbox_all(user=Depends(require_user), limit: int = 100):
     limit = max(1, min(limit, 300))
     user_id = user["user_id"]
 
-    # 1) User-specific notifications.
-    notif_cursor = db.notifications.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    # 1) User-specific notifications. Mirror the super_owner kind filter
+    #    from /api/notifications — platform admins must not see clinical /
+    #    operational pings in the unified feed either.
+    notif_q: Dict[str, Any] = {"user_id": user_id}
+    if user.get("role") == "super_owner":
+        notif_q["kind"] = {"$in": [
+            "personal", "personal_message", "broadcast_request",
+            "system", "admin", "billing", "suspension",
+        ]}
+    notif_cursor = db.notifications.find(notif_q, {"_id": 0}).sort("created_at", -1).limit(limit)
     notifs = await notif_cursor.to_list(length=limit)
 
     # Stamp `delivered_at` on any personal message that doesn't have it

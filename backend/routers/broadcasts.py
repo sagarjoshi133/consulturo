@@ -15,12 +15,22 @@ from typing import Any, Dict, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db
-from auth_deps import STAFF_ROLES, VALID_ROLES, require_staff, require_user
+from auth_deps import OWNER_TIER_ROLES, STAFF_ROLES, VALID_ROLES, require_staff, require_user
 from models import BroadcastCreate, BroadcastReview
 from server import collect_role_tokens, collect_user_tokens, create_notification, htmllib, notify_telegram, push_to_user, send_expo_push_batch
 from services.tenancy import resolve_clinic_id, tenant_filter
 
 router = APIRouter()
+
+
+def _is_broadcast_approver(user: Dict[str, Any]) -> bool:
+    """Phase A — capability-based approval check. Any owner-tier role
+    (primary_owner / partner / super_owner / legacy `owner`) OR an
+    explicitly granted `can_approve_broadcasts` capability. Replaces the
+    legacy `role == "owner"` string check that silently locked out
+    primary_owner accounts after the 4-tier role migration."""
+    u = user or {}
+    return u.get("role") in OWNER_TIER_ROLES or bool(u.get("can_approve_broadcasts"))
 
 
 @router.post("/api/broadcasts")
@@ -33,8 +43,7 @@ async def create_broadcast(request: Request, payload: BroadcastCreate, user=Depe
         raise HTTPException(status_code=400, detail="Title max 240 chars, body max 2000 chars")
     target = payload.target if payload.target in ("all", "patients", "staff") else "all"
     bid = f"bc_{uuid.uuid4().hex[:10]}"
-    is_owner = user.get("role") == "owner"
-    is_approver = is_owner or bool(user.get("can_approve_broadcasts"))
+    is_approver = _is_broadcast_approver(user)
     bc_clinic_id = await resolve_clinic_id(request, user)
     doc = {
         "broadcast_id": bid,
@@ -68,7 +77,10 @@ async def create_broadcast(request: Request, payload: BroadcastCreate, user=Depe
         )
         # Push to owner + all users with broadcast approver permission
         approver_uids_cursor = db.users.find(
-            {"$or": [{"role": "owner"}, {"can_approve_broadcasts": True}]},
+            {"$or": [
+                {"role": {"$in": ["primary_owner", "owner", "partner"]}},
+                {"can_approve_broadcasts": True},
+            ]},
             {"user_id": 1},
         )
         approver_uids = [u["user_id"] async for u in approver_uids_cursor]
@@ -120,8 +132,7 @@ async def list_broadcasts(request: Request, status: Optional[str] = None, user=D
 
 @router.get("/api/broadcasts/pending_count")
 async def broadcasts_pending_count(request: Request, user=Depends(require_staff)):
-    is_approver = user.get("role") == "owner" or bool(user.get("can_approve_broadcasts"))
-    if not is_approver:
+    if not _is_broadcast_approver(user):
         return {"count": 0}
     clinic_id = await resolve_clinic_id(request, user)
     q: Dict[str, Any] = {"status": "pending_approval", **tenant_filter(user, clinic_id, allow_global=True)}
@@ -130,11 +141,8 @@ async def broadcasts_pending_count(request: Request, user=Depends(require_staff)
 
 @router.patch("/api/broadcasts/{bid}")
 async def review_broadcast(bid: str, body: BroadcastReview, user=Depends(require_user)):
-    role = user.get("role")
-    is_owner = role == "owner"
-    is_approver = bool(user.get("can_approve_broadcasts"))
-    if not (is_owner or is_approver):
-        raise HTTPException(status_code=403, detail="Only owner or designated approvers can review broadcasts")
+    if not _is_broadcast_approver(user):
+        raise HTTPException(status_code=403, detail="Only owner-tier users or designated approvers can review broadcasts")
     existing = await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
@@ -267,7 +275,7 @@ async def delete_broadcast(bid: str, user=Depends(require_user)):
     existing = await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
-    if user.get("role") != "owner" and existing.get("author_id") != user["user_id"]:
+    if user.get("role") not in OWNER_TIER_ROLES and existing.get("author_id") != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     if existing.get("status") == "sent":
         raise HTTPException(status_code=400, detail="Cannot delete a broadcast already sent")

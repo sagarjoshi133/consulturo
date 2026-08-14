@@ -116,3 +116,6 @@ After setting the token, reload. Works for `/my-records`, `/my-bookings`, `/dash
 - PATIENT (wave2.patient@example.com, role=patient, phone=+918888888888): `test_pat_w2_1781793521021` (fresh, 7-day TTL)
 - Own seeded booking (reason="BPH followup") and Rx (diagnosis="BPH") tied to +918888888888.
 - Honeypot patient `OtherSecret PatientZZZ` (+917777777777) inserted to verify patient search does NOT leak across patients.
+
+## Refreshed test sessions (2026-06 Phase A)
+- OWNER (primary_owner, sagar.joshi133@gmail.com): Bearer `test_session_1781800271528` (also `test_session_1781009714553`), refreshed +2 days on Phase A session. Mint new via db.user_sessions insert if expired.

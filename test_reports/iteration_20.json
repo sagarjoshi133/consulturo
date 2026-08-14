@@ -1,0 +1,36 @@
+{
+  "summary": "Phase A — Notification Incident Recovery independent verification. All 10 review items pass. Ran the main pytest suite (test_phase_a_notifications.py, 9/9) plus a new extended suite (test_phase_a_extended.py, 6/6) that specifically covers the review items not asserted in the main file: unauthenticated /api/register-push, POST /api/inbox/all/read dual-source marking, DELETE /api/broadcasts on unsent broadcast, /api/push/status regression, primary_owner pending_count, and doctor@example.com hygiene. Total 15/15 backend tests green. Frontend /notifications screen renders correctly for both guest ('You're all caught up' empty state) and signed-in (session token injected into localStorage — feed loads from /api/inbox/all with notif-* testIDs). No red screen or console errors. Fixture cleanup verified — 0 TEST_ residue in DB. Item 8 (typed 503) + item 2 (installation_id dedupe) + item 5 (broadcast_inbox mark-read via /api/notifications/{id}/read) + item 7 (primary_owner auto-approver, pending_count, delete unsent) + item 10 (DB hygiene) all pass end-to-end against the live preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase_a_notifications.py",
+    "/app/backend/tests/test_phase_a_extended.py",
+    "/app/test_reports/pytest/phase_a_notifications.xml",
+    "/app/test_reports/pytest/phase_a_extended.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "push_register.py: typed HTTPException detail shape ({error_code, message, mirrored}) is consistent across the three failure branches (relay_not_configured / relay_unauthorized / relay_upstream_error). Client can key off detail.error_code deterministically.",
+    "push_register.py: installation_id dedupe is implemented as upsert-by-(user_id,installation_id) + delete_many stale rows carrying same token under a different installation_id — this correctly handles both FCM-token-rotation AND app-reinstall-with-new-install-id scenarios.",
+    "broadcasts.py: _is_broadcast_approver() now correctly uses OWNER_TIER_ROLES (primary_owner, partner, super_owner, legacy owner) OR can_approve_broadcasts capability. This closes the legacy `role == 'owner'` string check that was locking primary_owner out after the 4-tier migration.",
+    "notifications.py: mark_notification_read now cascades to broadcast_inbox by matching both `inbox_id` and `broadcast_id`. Unknown ids still return 404. Good defensive pattern.",
+    "notifications router still lacks a bulk endpoint for JUST broadcast_inbox rows — but /api/broadcasts/inbox/read exists and /api/inbox/all/read does both. Coverage is complete, just spread across three routers. Not a bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_a_extended.py (new — 6 additional tests covering review items not in the main suite)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (notifications screen renders both guest + signed-in states, no errors)"},
+  "seed_data_creation": "Each test class mints its own 2-hour session token for the primary_owner (sagar.joshi133@gmail.com) via db.user_sessions insert. All test rows use TEST_phaseA_ / TEST_phaseA_ext_ / test_session_phase_a_ prefixes. Module-scoped fixture teardown deletes push_tokens, broadcast_inbox, broadcasts, notifications and user_sessions matching those prefixes. Post-run mongo audit confirms 0 residue across all 5 collections.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Two Phase A suites now live: (1) /app/backend/tests/test_phase_a_notifications.py — 9 tests, canonical. (2) /app/backend/tests/test_phase_a_extended.py — 6 tests, review-item coverage (unauth register-push, /api/inbox/all/read dual mark, DELETE broadcast, /api/push/status guidance, pending_count int, doctor@example.com hygiene). Run both with `pytest /app/backend/tests/test_phase_a_notifications.py /app/backend/tests/test_phase_a_extended.py -v`. Both suites depend on the primary_owner user (sagar.joshi133@gmail.com, role=primary_owner) existing in db.users — that's a hard prerequisite. EMERGENT_PUSH_KEY=placeholder in preview is by design; the 503 IS the expected response. Deploy will inject the real key automatically.",
+  "rca_of_issue": "N/A — this iteration is verification only, not bug fixing. Prior main-agent fixes verified: (a) push_register.py now returns typed 503 with detail.error_code+mirrored instead of a false 200; (b) installation_id upsert+delete_many pattern collapses token-rotation dupes to a single row; (c) broadcasts.py _is_broadcast_approver() uses OWNER_TIER_ROLES capability check instead of the legacy `role == 'owner'` string comparison, restoring auto-approve for primary_owner; (d) notifications router mark-read cascades to broadcast_inbox rows; (e) demo doctor@example.com accounts have been purged from db.users."
+}

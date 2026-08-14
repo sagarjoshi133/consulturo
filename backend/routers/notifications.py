@@ -54,7 +54,14 @@ async def mark_notification_read(notification_id: str, user=Depends(require_user
         {"$set": {"read": True, "read_at": datetime.now(timezone.utc)}},
     )
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Notification not found")
+        # Unified inbox (Phase A): the id may be a broadcast_inbox row.
+        b = await db.broadcast_inbox.update_one(
+            {"$or": [{"inbox_id": notification_id}, {"broadcast_id": notification_id}],
+             "user_id": user["user_id"]},
+            {"$set": {"read_at": datetime.now(timezone.utc)}},
+        )
+        if b.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Notification not found")
     return {"ok": True}
 
 @router.get("/api/notifications/{notification_id}")

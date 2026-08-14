@@ -223,22 +223,22 @@ class TestRegisterPushEndpoint:
     but the local push_tokens row is still upserted."""
 
     def test_register_push_with_auth_no_key(self, owner_session):
+        """Phase A behaviour: with EMERGENT_PUSH_KEY=placeholder the
+        endpoint returns a TYPED 503 (relay_not_configured) instead of a
+        misleading 200 — while STILL mirroring the token locally for the
+        post-deploy resync."""
         body = {
             "platform": "android",
             "device_token": "TEST_native_fcm_" + uuid.uuid4().hex[:12],
         }
         r = owner_session.post(f"{BASE_URL}/api/register-push", json=body, timeout=15)
-        assert r.status_code == 200, (
-            f"expected 200, got {r.status_code}: {r.text[:300]}"
+        assert r.status_code == 503, (
+            f"expected typed 503, got {r.status_code}: {r.text[:300]}"
         )
-        data = r.json()
-        assert data.get("registered") is True, data
-        assert data.get("user_id"), f"user_id missing in: {data}"
-        # Relay block should be present and indicate no-key fallback.
-        relay = data.get("relay") or {}
-        assert relay.get("registered") is False, f"relay should not register w/o key: {relay}"
-        assert relay.get("reason") == "no_emergent_key", relay
-        print(f"✓ /api/register-push OK with no_emergent_key relay: {data}")
+        detail = (r.json() or {}).get("detail") or {}
+        assert detail.get("error_code") == "relay_not_configured", detail
+        assert detail.get("mirrored") is True, detail
+        print(f"✓ /api/register-push typed 503 relay_not_configured: {detail}")
 
     def test_register_push_requires_auth(self):
         r = requests.post(

@@ -65,6 +65,21 @@ ConsultUro is a professional Expo (React Native) mobile app for **Dr. Sagar Josh
   - `splash-icon.png`: now the actual app icon with iOS-style rounded corners on transparency → splash literally shows the app icon (user request).
 - Visual verification via mask-simulation montage + analyzer: no artwork cut, no rings/seams. Requires a NEW APK build to appear on devices.
 
+## Changelog — 2026-06 (ConsultUro 2.0 — Phase A: Notification Incident Recovery) ✅
+Per the ConsultUro 2.0 Blueprint (Phases A–H), Phase A completed:
+1. **Typed non-2xx push registration errors** — `/api/register-push` now returns 503 `{error_code:'relay_not_configured', mirrored:true}` when EMERGENT_PUSH_KEY is placeholder, 502 `relay_unauthorized`/`relay_upstream_error` on relay failures, 400 `invalid_token`. Token is ALWAYS mirrored locally for post-deploy resync.
+2. **Client error surfacing** — `src/push.ts` parses typed error codes (new reasons `relay_not_configured`, `relay_upstream_error`); Notifications Health panel shows honest "Deploy required" chip instead of false "Registered ✓". relay_not_configured is not retried and not sent to Sentry.
+3. **`installation_id`** — stable per-install UUID (AsyncStorage) sent with registration; backend upserts by (user_id, installation_id) → FCM token rotation no longer duplicates push_tokens rows.
+4. **Capability-based broadcast authorization** — legacy `role=="owner"` string checks replaced with `_is_broadcast_approver` (OWNER_TIER_ROLES ∪ can_approve_broadcasts). Fixes primary_owner being locked out of broadcast create-approve/review/delete after the 4-tier role migration.
+5. **Unified inbox** — bell feed (NotificationProvider) now reads `GET /api/inbox/all` (notifications + broadcast_inbox + push log merged, super_owner kind-filter mirrored); mark-all uses `/api/inbox/all/read`; `/api/notifications/{id}/read` falls back to broadcast_inbox rows.
+6. **DB cleanup** — purged 2 demo `@example.com` doctor accounts (doc-test-…, TEST_doc_…); only the real Dr. Joshi doctor account remains in the practitioner directory.
+- Testing: pytest 9/9 `tests/test_phase_a_notifications.py` + 6/6 `tests/test_phase_a_extended.py` (testing agent) + 38-pass legacy push suite updated; frontend /notifications verified (report `/app/test_reports/iteration_20.json`).
+
+## ConsultUro 2.0 roadmap status
+- Phase A (notification recovery): ✅ DONE
+- Phase B (Notification V2: device_installations, notification_inbox, outbox worker w/ retry, /api/push/health-panel — Mongo-first): NEXT
+- Phase C–H (PostgreSQL platform foundation, patient registry, clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
+
 ## Next Action Items
 - **User: Publish + rebuild APK** so OTA/splash/safe-area/push fixes reach devices (splash & safe-area are native-level).
 - Verify push end-to-end on a real device after deployment (relay key auto-injected at deploy).

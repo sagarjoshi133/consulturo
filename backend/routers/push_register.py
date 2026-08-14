@@ -31,6 +31,9 @@ class RegisterPushBody(BaseModel):
     user_id: Optional[str] = None  # Optional — server prefers auth context
     platform: str
     device_token: str
+    # Phase A: stable per-install UUID generated on the device. Lets the
+    # backend dedupe rows when the FCM token rotates for the same install.
+    installation_id: Optional[str] = None
 
 
 @router.post("/api/register-push", status_code=200)
@@ -55,13 +58,17 @@ async def register_push(
     platform = (body.platform or "android").lower()
     token = (body.device_token or "").strip()
     if not token:
-        raise HTTPException(status_code=400, detail="device_token is required")
+        raise HTTPException(status_code=400, detail={
+            "error_code": "invalid_token",
+            "message": "device_token is required",
+        })
 
     # Persist locally for diagnostics + duplicate cleanup. Even though
     # the Emergent relay holds the canonical store, we keep a mirror so
     # the in-app "Notifications Health" panel can still show registered
     # devices and we can purge stale rows from the dashboard.
     now = datetime.now(timezone.utc)
+    install_id = (body.installation_id or "").strip() or None
     user_doc = await db.users.find_one({"user_id": uid}, {"_id": 0, "email": 1, "phone": 1, "role": 1}) or {}
     row = {
         "id": str(uuid.uuid4()),
@@ -71,21 +78,64 @@ async def register_push(
         "role": user_doc.get("role"),
         "platform": platform,
         "device_token": token,
+        "installation_id": install_id,
         "transport": "emergent_native",
         "updated_at": now,
     }
-    # Upsert by (user_id, device_token) — same device re-registering
-    # on app open shouldn't proliferate rows. Different devices
-    # belonging to the same user get separate rows (one per token).
-    await db.push_tokens.update_one(
-        {"user_id": uid, "device_token": token},
-        {"$set": row, "$setOnInsert": {"created_at": now}},
-        upsert=True,
-    )
+    if install_id:
+        # Phase A: upsert by (user_id, installation_id) — when the FCM
+        # token rotates for the SAME install, the row is replaced rather
+        # than duplicated. Then drop any legacy row holding the same
+        # token under a different / missing installation_id.
+        await db.push_tokens.update_one(
+            {"user_id": uid, "installation_id": install_id},
+            {"$set": row, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        await db.push_tokens.delete_many(
+            {"user_id": uid, "device_token": token,
+             "installation_id": {"$ne": install_id}},
+        )
+    else:
+        # Legacy clients (pre installation_id): upsert by (user_id, token).
+        await db.push_tokens.update_one(
+            {"user_id": uid, "device_token": token},
+            {"$set": row, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
 
     # Forward to the Emergent relay so it knows where to deliver.
     relay_result = await register_device(uid, platform, token)
-    return {"registered": True, "user_id": uid, "relay": relay_result}
+    if relay_result.get("registered"):
+        return {"registered": True, "user_id": uid, "relay": relay_result}
+
+    # ── Phase A: typed non-2xx errors ────────────────────────────────
+    # The token IS mirrored locally (startup/manual resync will forward
+    # it once the relay comes online), but we no longer lie with a 200:
+    # the client surfaces the exact failure in the Notifications Health
+    # panel instead of showing "Registered ✓" while the tray stays empty.
+    reason = relay_result.get("reason")
+    if reason == "no_emergent_key":
+        raise HTTPException(status_code=503, detail={
+            "error_code": "relay_not_configured",
+            "message": (
+                "Push relay key not configured (preview environment). "
+                "The token was saved and will auto-resync after Publish → Deploy."
+            ),
+            "mirrored": True,
+        })
+    if reason == "unauthorized":
+        raise HTTPException(status_code=502, detail={
+            "error_code": "relay_unauthorized",
+            "message": "The push relay rejected our credentials (HTTP 401). Redeploy to refresh the key.",
+            "mirrored": True,
+        })
+    raise HTTPException(status_code=502, detail={
+        "error_code": "relay_upstream_error",
+        "message": "The push relay could not register this device. It will be retried by the next resync.",
+        "relay_status": relay_result.get("status"),
+        "mirrored": True,
+    })
 
 
 # ── Lightweight diagnostic ─────────────────────────────────────────

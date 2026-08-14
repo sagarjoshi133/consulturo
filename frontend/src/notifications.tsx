@@ -17,10 +17,13 @@ import { useToast } from './toast';
 
 export type Notification = {
   id: string;
-  user_id: string;
+  user_id?: string;
   title: string;
   body: string;
   kind: string;
+  source_type?: string;
+  image_url?: string | null;
+  link?: string | null;
   data?: Record<string, any>;
   read: boolean;
   created_at: string;
@@ -70,7 +73,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
     setLoading(true);
     try {
-      const { data } = await api.get('/notifications', { params: { limit: 50 } });
+      // Phase A: unified feed — notifications + broadcast inbox + push
+      // log merged server-side into one list.
+      const { data } = await api.get('/inbox/all', { params: { limit: 50 } });
       const list: Notification[] = data?.items || [];
       // Sort in the order the user expects when tapping the bell:
       //   1. Unread first, newest to oldest.
@@ -152,7 +157,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markAllRead = useCallback(async () => {
     try {
-      await api.post('/notifications/read-all');
+      // Covers both db.notifications and db.broadcast_inbox in one call.
+      await api.post('/inbox/all/read');
       setItems((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnread(0);
       setPersonalUnread(0);

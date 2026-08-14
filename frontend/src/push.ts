@@ -17,6 +17,7 @@
  * On web: hard no-op. expo-notifications APIs throw on web.
  */
 import { Platform, AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import api from './api';
@@ -28,6 +29,8 @@ export type PushDiagnosticReason =
   | 'permission_denied'
   | 'token_fetch_failed'
   | 'api_register_failed'
+  | 'relay_not_configured'
+  | 'relay_upstream_error'
   | 'success';
 
 export type PushState = {
@@ -62,6 +65,28 @@ function sleep(ms: number) {
 
 export function getPushState(): PushState {
   return { ...lastState };
+}
+
+// ── Installation id (Phase A) ────────────────────────────────────────
+// A stable per-install UUID sent with every token registration so the
+// backend can dedupe rows when the FCM token rotates for this install.
+const INSTALL_ID_KEY = 'consulturo_installation_id';
+let cachedInstallationId: string | null = null;
+
+async function getInstallationId(): Promise<string> {
+  if (cachedInstallationId) return cachedInstallationId;
+  try {
+    let id = await AsyncStorage.getItem(INSTALL_ID_KEY);
+    if (!id) {
+      id = `inst_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+      await AsyncStorage.setItem(INSTALL_ID_KEY, id);
+    }
+    cachedInstallationId = id;
+  } catch {
+    // Storage unavailable — fall back to a session-scoped id.
+    cachedInstallationId = `inst_mem_${Math.random().toString(36).slice(2, 12)}`;
+  }
+  return cachedInstallationId;
 }
 
 function setState(s: PushState) {
@@ -144,29 +169,53 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     // 3. POST to backend (the relay endpoint). The backend uses the
     //    authenticated user_id from session — we don't need to send it.
+    //    Phase A: the backend now returns TYPED non-2xx errors —
+    //      503 relay_not_configured  (preview env; token mirrored, deterministic — no retry)
+    //      502 relay_unauthorized / relay_upstream_error (transient — retried)
+    const installationId = await getInstallationId();
     let postErr: any = null;
+    let typedCode: string | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await api.post('/register-push', {
           platform: Platform.OS,
           device_token: token,
+          installation_id: installationId,
         });
         postErr = null;
+        typedCode = null;
         break;
       } catch (e: any) {
         postErr = e;
+        const detail = e?.response?.data?.detail;
+        typedCode =
+          (detail && typeof detail === 'object' && detail.error_code) || null;
+        if (typedCode === 'relay_not_configured') break; // deterministic — retrying won't help
         await sleep(500 * Math.pow(2, attempt));
       }
     }
     if (postErr) {
+      const reason: PushDiagnosticReason =
+        typedCode === 'relay_not_configured'
+          ? 'relay_not_configured'
+          : typedCode
+          ? 'relay_upstream_error'
+          : 'api_register_failed';
+      const detail = postErr?.response?.data?.detail;
       setState({
         token,
-        reason: 'api_register_failed',
+        reason,
         platform: Platform.OS,
         at: Date.now(),
-        error: postErr?.message || String(postErr),
+        error:
+          (detail && typeof detail === 'object' && detail.message) ||
+          postErr?.message ||
+          String(postErr),
       });
-      captureError(postErr, { scope: 'push-registration', step: '/register-push' });
+      // relay_not_configured is expected in preview — don't spam Sentry.
+      if (reason !== 'relay_not_configured') {
+        captureError(postErr, { scope: 'push-registration', step: '/register-push', code: typedCode || 'none' });
+      }
       return null;
     }
 
