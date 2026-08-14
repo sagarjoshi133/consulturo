@@ -163,6 +163,59 @@ async def register_device(user_id: str, platform: str, device_token: str) -> Dic
         return {"registered": True, "status": resp.status_code, "body": body}
 
 
+# ─── Relay resync (self-heal after deploy) ─────────────────────────
+
+async def resync_devices_to_relay(limit: int = 500) -> Dict[str, Any]:
+    """Re-forward every locally-mirrored native device token to the
+    Emergent relay.
+
+    Why: devices that opened the app while EMERGENT_PUSH_KEY was still
+    'placeholder' had their tokens mirrored into `db.push_tokens` but
+    `register_device` no-op'd — so the relay never learned about them.
+    After a deploy injects the real key, this resync closes that gap
+    without requiring users to reopen the app.
+
+    Idempotent: the relay upserts by (user_id, token). Safe to run on
+    every backend startup."""
+    if not is_configured():
+        return {"ok": False, "reason": "no_emergent_key", "resynced": 0}
+    rows = await db.push_tokens.find(
+        {"device_token": {"$exists": True, "$nin": [None, ""]}},
+        {"_id": 0, "user_id": 1, "platform": 1, "device_token": 1},
+    ).sort("updated_at", -1).to_list(length=limit)
+    resynced = 0
+    errors: List[Dict[str, Any]] = []
+    seen: set = set()
+    for r in rows:
+        uid = r.get("user_id")
+        tok = r.get("device_token")
+        if not uid or not tok or (uid, tok) in seen:
+            continue
+        seen.add((uid, tok))
+        try:
+            res = await register_device(uid, r.get("platform") or "android", tok)
+            if res.get("registered"):
+                resynced += 1
+            else:
+                errors.append({"user_id": uid, "reason": res.get("reason"),
+                               "status": res.get("status")})
+        except Exception as e:
+            errors.append({"user_id": uid, "error": str(e)[:200]})
+    summary = {
+        "ok": not errors,
+        "total_rows": len(rows),
+        "resynced": resynced,
+        "errors": errors[:10],
+        "at": datetime.now(timezone.utc),
+    }
+    try:
+        await db.push_resync_log.insert_one({**summary, "id": str(uuid.uuid4())})
+    except Exception:
+        pass
+    summary.pop("_id", None)
+    return summary
+
+
 # ─── Send ──────────────────────────────────────────────────────────
 
 async def send_push(

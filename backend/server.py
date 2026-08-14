@@ -284,6 +284,31 @@ async def demo_readonly_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# Self-heal: re-forward all mirrored native device tokens to the
+# Emergent push relay on boot. Devices that registered while
+# EMERGENT_PUSH_KEY was still "placeholder" never reached the relay;
+# after a deploy injects the real key, this closes that gap without
+# users having to reopen the app. No-op when the key is placeholder.
+@app.on_event("startup")
+async def _resync_push_devices_to_relay() -> None:
+    import asyncio as _asyncio
+
+    async def _run():
+        try:
+            from services.push_relay import resync_devices_to_relay, is_configured
+            if not is_configured():
+                print("[startup] push relay resync skipped — EMERGENT_PUSH_KEY is placeholder")
+                return
+            res = await resync_devices_to_relay()
+            print(f"[startup] push relay resync: {res.get('resynced')}/{res.get('total_rows')} "
+                  f"tokens re-registered, errors={len(res.get('errors') or [])}")
+        except Exception as _e:
+            print(f"[startup] push relay resync failed: {_e}")
+
+    # Fire-and-forget — never block boot on relay availability.
+    _asyncio.get_event_loop().create_task(_run())
+
+
 # Background: check for due reminders (notes + bookings) once every minute
 # and fire an in-app + push notification so the bell updates on the home/
 # dashboard/my-bookings screens.
