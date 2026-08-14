@@ -61,6 +61,11 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "flag": "can_send_personal_messages",
         "policy": "staff_default_true",
     },
+    "access_patient_db": {
+        "label": "Access patient database",
+        "flag": "can_access_patient_db",
+        "policy": "owner_implicit",
+    },
     "manage_blog": {
         "label": "Write & edit blog posts",
         "flag": "can_manage_blog",

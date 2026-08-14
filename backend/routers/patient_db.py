@@ -40,10 +40,8 @@ router = APIRouter()
 
 
 def _can_access(user: Dict[str, Any]) -> bool:
-    role = user.get("role")
-    if role in {"super_owner", "primary_owner", "owner", "partner"}:
-        return True
-    return bool(user.get("can_access_patient_db"))
+    from services.capabilities import has_capability
+    return has_capability(user, "access_patient_db")
 
 
 def _can_export(user: Dict[str, Any]) -> bool:
@@ -136,7 +134,7 @@ async def list_patients(
     limit = max(1, min(int(limit or 50), 200))
     skip = max(0, int(skip or 0))
 
-    base: Dict[str, Any] = {}
+    base: Dict[str, Any] = {"merged_into": {"$exists": False}}
     base.update(_build_search_filter(q))
     if month:
         start, end = _month_bounds(month)
@@ -242,9 +240,17 @@ async def patient_detail(request: Request, phone: str, user=Depends(require_user
             profile[k] = profile[k].isoformat()
 
     suffix = p
-    bookings_q = {"patient_phone": {"$regex": suffix + "$"}, **tenant}
-    rx_q = {"patient_phone": {"$regex": suffix + "$"}, **tenant}
-    sx_q = {"patient_phone": {"$regex": suffix + "$"}, **tenant}
+    # Phase D — prefer the canonical patient_id join (indexed) with a
+    # phone-suffix fallback so legacy unstamped rows still appear.
+    def _hist_q() -> Dict[str, Any]:
+        ors: List[Dict[str, Any]] = [{"patient_phone": {"$regex": suffix + "$"}}]
+        if profile.get("patient_id"):
+            ors.append({"patient_id": profile["patient_id"]})
+        return {"$or": ors, **tenant}
+
+    bookings_q = _hist_q()
+    rx_q = _hist_q()
+    sx_q = _hist_q()
 
     bookings = []
     async for b in db.bookings.find(bookings_q, {"_id": 0}).sort("booking_date", -1).limit(50):

@@ -48,8 +48,14 @@ async def create_prescription(request: Request, payload: PrescriptionCreate, use
         payload.patient_name,
         email=getattr(payload, "patient_email", None),
     )
+    # Phase D — canonical patient registry id.
+    from services.patient_registry import resolve_patient_id
+    rx_patient_id = await resolve_patient_id(
+        payload.patient_phone, getattr(payload, "patient_email", None), payload.patient_name
+    )
     payload_data = payload.model_dump()
     payload_data["registration_no"] = reg_no
+    payload_data["patient_id"] = rx_patient_id
     payload_data["status"] = status
     # Phase E — tag the Rx with the active clinic.
     rx_clinic_id = await resolve_clinic_id(request, user)

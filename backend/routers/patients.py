@@ -179,4 +179,7 @@ async def set_patient_reg_no(body: PatientRegManual, user=Depends(require_prescr
     await db.bookings.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
     await db.prescriptions.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
     await db.surgeries.update_many({"patient_phone": {"$regex": p + "$"}}, {"$set": {"registration_no": reg}})
+    # Phase D — ensure the row carries canonical patient_id/phone_digits.
+    from services.patient_registry import resolve_patient_id
+    await resolve_patient_id(p, None, body.name)
     return {"ok": True, "phone": p, "registration_no": reg}

@@ -278,6 +278,11 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         payload.patient_name,
         email=getattr(payload, "patient_email", None),
     )
+    # Phase D — canonical patient registry id (indexed history joins).
+    from services.patient_registry import resolve_patient_id
+    booking_patient_id = await resolve_patient_id(
+        payload.patient_phone, getattr(payload, "patient_email", None), payload.patient_name
+    )
     # Phase E — tag the booking with the active clinic so /bookings/all
     # filters cleanly. Anonymous bookings (no user) inherit the clinic
     # from the X-Clinic-Id header (set by the public /c/<slug> page);
@@ -389,6 +394,7 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         "patient_age": payload.patient_age,
         "patient_gender": payload.patient_gender,
         "registration_no": reg_no,
+        "patient_id": booking_patient_id,
         "reason": payload.reason,
         "booking_date": payload.booking_date,
         "booking_time": payload.booking_time,

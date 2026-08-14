@@ -33,9 +33,11 @@ export default function PrescriptionsList() {
   const __darkBg = useScreenBg();
   const router = useRouter();
   const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
-  // Owner + doctor (and any custom prescriber role) can access the Rx list.
-  const canPrescribe = !!user && (user.role === 'owner' || user.role === 'doctor');
+  const OWNER_TIER = ['super_owner', 'primary_owner', 'partner', 'owner'];
+  const isOwner = !!user && OWNER_TIER.includes(user.role || '');
+  // Mirrors backend require_prescriber (capability resolver): owner
+  // tier is implicit; team members need the can_prescribe flag.
+  const canPrescribe = !!user && (isOwner || !!(user as any).can_prescribe);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

@@ -93,12 +93,21 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 4. **Capability resolver** — `services/capabilities.py`: 11-capability catalog (prescribe, manage_surgeries, manage_availability, approve_broadcasts, approve_bookings, full_dashboard, send_personal_messages, manage_blog, manage_team, manage_partners, platform_admin) with 6 policies. All legacy `require_*` deps in server.py + `_is_broadcast_approver` + `_can_send_personal_messages` now delegate to it (semantics preserved exactly). New `GET /api/me/capabilities` (UI gating) + `GET /api/capabilities/catalog` (owner).
 - Testing: pytest 16/16 `tests/test_phase_c_platform.py` (36/36 across A+B+C); frontend E2E + regression by testing agent (`/app/test_reports/iteration_22.json`).
 
+## Changelog — 2026-06 (ConsultUro 2.0 — Phase D: Canonical patient registry) ✅
+1. **`patient_id` (UUID) on every patients row** + `phone_digits` index. Startup migration `003_patient_registry`: backfilled all patients, auto-created registry rows for orphan activity phones, stamped `patient_id` onto ALL bookings/prescriptions/surgeries/receipts (indexed).
+2. **Registry service** — `services/patient_registry.py` (`resolve_patient` get-or-create, phone-wins identity per Dr. Joshi 2026-05-21 spec; `resolve_patient_id` convenience). Booking / Rx / surgery / receipt CREATE routes now stamp `patient_id` on new docs.
+3. **Registry API** — `GET /api/registry/patients` (search, capability `access_patient_db` — added to the Phase C catalog), `GET /api/registry/patients/{id}` (unified profile + cross-module history via indexed patient_id join with phone fallback), `POST /api/registry/patients` (get-or-create + reg_no allocation), `POST /api/registry/patients/{id}/merge` (owner: repoints activity rows, flags dup `merged_into`, hidden from search; merged rows kept for audit).
+4. **patient_db refactor** — `_can_access` → capability resolver; list/export exclude merged rows; by-phone detail history joins by patient_id ∪ phone regex, profile exposes patient_id. `PATCH /api/patients/reg_no` also ensures canonical fields.
+5. **Bug fix (found by testing agent, pre-existing)** — `app/prescriptions/index.tsx` gated on stale `role==='owner'||'doctor'`, locking primary_owner out of the Rx list ("Prescriber Access Only"). Now mirrors backend require_prescriber (owner tier ∪ can_prescribe). Verified via browser as Dr. Joshi.
+- Testing: pytest 14/14 `tests/test_phase_d_registry.py` (50/50 across A–D); frontend regression by testing agent (`/app/test_reports/iteration_23.json`).
+
 ## ConsultUro 2.0 roadmap status
 - Phase A (notification recovery): ✅ DONE
 - Phase B (Notification V2: device_installations, notification_inbox, outbox worker w/ retry, /api/push/health-panel — Mongo-first): ✅ DONE
 - Phase C (platform foundation — repository layer over Mongo [PostgreSQL swap intentionally skipped: managed env is Mongo-only], object storage for attachments, capability-based auth): ✅ DONE
-- Phase D (patient registry + scheduling, canonical patient_id): NEXT
-- Phase E–H (clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
+- Phase D (patient registry + scheduling, canonical patient_id): ✅ DONE
+- Phase E (clinical core — encounters, notes, diagnosis, Rx): NEXT
+- Phase F–H (surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
 
 ## Next Action Items
 - **User: Publish + rebuild APK** so OTA/splash/safe-area/push fixes reach devices (splash & safe-area are native-level).

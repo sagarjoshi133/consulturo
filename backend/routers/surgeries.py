@@ -48,6 +48,11 @@ async def create_surgery(request: Request, body: SurgeryBody, user=Depends(requi
         if m:
             patient_user_id = m["user_id"]
     sx_clinic_id = await resolve_clinic_id(request, user)
+    # Phase D — canonical patient registry id.
+    from services.patient_registry import resolve_patient_id
+    sx_patient_id = await resolve_patient_id(
+        body.patient_phone, getattr(body, "patient_email", None), body.patient_name
+    )
     # Phase 3.1 — derive sane defaults for the new scheduling fields.
     # Existing op-note flow callers won't pass these; new scheduler will.
     surgery_status = (body.surgery_status or "completed").strip() or "completed"
@@ -70,6 +75,8 @@ async def create_surgery(request: Request, body: SurgeryBody, user=Depends(requi
             body.patient_name,
             email=getattr(body, "patient_email", None),
         ),
+        # Phase D — canonical patient registry id.
+        "patient_id": sx_patient_id,
         "address": body.address,
         "patient_category": body.patient_category,
         "consultation_date": body.consultation_date,

@@ -88,6 +88,9 @@ async def create_receipt(request: Request, body: ReceiptBody, user=Depends(requi
         body.patient_name,
         email=body.patient_email,
     )
+    # Phase D — canonical patient registry id.
+    from services.patient_registry import resolve_patient_id
+    receipt_patient_id = await resolve_patient_id(phone, body.patient_email, body.patient_name)
 
     items, subtotal, discount_amt, gst_amount, total = _compute_totals(
         raw_items,
@@ -122,6 +125,7 @@ async def create_receipt(request: Request, body: ReceiptBody, user=Depends(requi
         "patient_email": (body.patient_email or "").strip() or None,
         "patient_user_id": patient_user_id,
         "registration_no": reg_no,
+        "patient_id": receipt_patient_id,
         "items": items,
         "subtotal": subtotal,
         "discount": discount_amt,

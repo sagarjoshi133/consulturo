@@ -325,6 +325,13 @@ async def _notification_v2_boot() -> None:
             print(f"[startup] notification v2 migration: {res}")
         except Exception as _e:
             print(f"[startup] notification v2 migration failed: {_e}")
+        # Phase D: canonical patient registry (indexes + one-time backfill).
+        try:
+            from migrations.patient_registry import run_patient_registry_migration
+            res = await run_patient_registry_migration()
+            print(f"[startup] patient registry migration: {res}")
+        except Exception as _e:
+            print(f"[startup] patient registry migration failed: {_e}")
         try:
             from services.notification_outbox import start_outbox_worker
             start_outbox_worker()
@@ -3396,6 +3403,7 @@ from routers.push_register import router as _push_register_router
 from routers.notifications_v2 import router as _notifications_v2_router
 from routers.files import router as _files_router
 from routers.capabilities import router as _capabilities_router
+from routers.patient_registry import router as _patient_registry_router
 from routers.client_crash import router as _client_crash_router
 app.include_router(_me_tier_router)
 app.include_router(_settings_homepage_router)
@@ -3423,6 +3431,7 @@ app.include_router(_push_register_router)
 app.include_router(_notifications_v2_router)
 app.include_router(_files_router)
 app.include_router(_capabilities_router)
+app.include_router(_patient_registry_router)
 app.include_router(_client_crash_router)
 
 # ─── Phase-3 router registrations ───

@@ -10,10 +10,12 @@ opportunistically.
 """
 from repositories.base import MongoRepository
 from repositories.files import FileObjectsRepository, files
+from repositories.patients import PatientsRepository, patients
 from repositories.users import UsersRepository, users
 
 __all__ = [
     "MongoRepository",
     "FileObjectsRepository", "files",
+    "PatientsRepository", "patients",
     "UsersRepository", "users",
 ]
