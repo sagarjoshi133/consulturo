@@ -75,10 +75,21 @@ Per the ConsultUro 2.0 Blueprint (Phases A–H), Phase A completed:
 6. **DB cleanup** — purged 2 demo `@example.com` doctor accounts (doc-test-…, TEST_doc_…); only the real Dr. Joshi doctor account remains in the practitioner directory.
 - Testing: pytest 9/9 `tests/test_phase_a_notifications.py` + 6/6 `tests/test_phase_a_extended.py` (testing agent) + 38-pass legacy push suite updated; frontend /notifications verified (report `/app/test_reports/iteration_20.json`).
 
+## Changelog — 2026-06 (ConsultUro 2.0 — Phase B: Notification V2 foundations) ✅
+Mongo-first, non-breaking (dual-write; reads stay on legacy until Phase C):
+1. **`device_installations` registry** — canonical device rows keyed by unique (user_id, installation_id); dual-written on `/api/register-push` (legacy clients get synthetic `legacy:<token-prefix>` key). Startup backfill from push_tokens (5 rows migrated).
+2. **`notification_inbox`** — canonical inbox collection dual-written by `create_notification` (same `id` as legacy row, `source_type:"notification"`). Backfilled last-60-days notifications (101 rows).
+3. **Notification outbox + worker** — `services/notification_outbox.py`: `send_push_reliable()` queues failed relay sends into `notification_outbox`; background worker drains every 60 s (wake-on-enqueue), backoff 30s→2m→10m→30m→60m, max 5 attempts → dead-letter, 6 h TTL → expired. No-op claiming while EMERGENT_PUSH_KEY is placeholder (expiry sweep still runs). `push_to_user`/`push_to_owner` now route through it.
+4. **`GET /api/push/health-panel`** — single-call pipeline snapshot (relay state, caller installations, outbox stats, inbox v2 counts, 24 h send aggregates, last resync, dead-letters for owner-tier, next_step guidance). Plus owner-gated `POST /api/push/outbox/flush` + `GET /api/push/outbox`.
+5. **Migration shim** — `migrations/notification_v2.py` runs at boot: idempotent indexes + one-time backfill recorded in `schema_migrations` (`002_notification_v2_backfill`).
+6. **Frontend** — Notifications Health panel gained a "Delivery pipeline" card (testID `push-v2-pipeline`): Relay LIVE / Deploy-required chip, Devices/Queued/Sent-24h/Dead-24h stats, next_step hint. Legacy sections unchanged.
+- Testing: pytest 11/11 `tests/test_phase_b_notification_v2.py`; frontend + regression verified by testing agent (`/app/test_reports/iteration_21.json`).
+
 ## ConsultUro 2.0 roadmap status
 - Phase A (notification recovery): ✅ DONE
-- Phase B (Notification V2: device_installations, notification_inbox, outbox worker w/ retry, /api/push/health-panel — Mongo-first): NEXT
-- Phase C–H (PostgreSQL platform foundation, patient registry, clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
+- Phase B (Notification V2: device_installations, notification_inbox, outbox worker w/ retry, /api/push/health-panel — Mongo-first): ✅ DONE
+- Phase C (PostgreSQL platform foundation, object storage, capability auth): NEXT — defer until A+B ratified on-device post-deploy.
+- Phase D–H (patient registry, clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
 
 ## Next Action Items
 - **User: Publish + rebuild APK** so OTA/splash/safe-area/push fixes reach devices (splash & safe-area are native-level).

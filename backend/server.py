@@ -309,6 +309,31 @@ async def _resync_push_devices_to_relay() -> None:
     _asyncio.get_event_loop().create_task(_run())
 
 
+# ConsultUro 2.0 — Phase B: Notification V2 foundations.
+# 1) Migration shim: indexes + one-time backfill of device_installations
+#    (from push_tokens) and notification_inbox (from notifications).
+# 2) Outbox worker: background drain loop for queued push payloads
+#    (retry with backoff; no-op while EMERGENT_PUSH_KEY is placeholder).
+@app.on_event("startup")
+async def _notification_v2_boot() -> None:
+    import asyncio as _asyncio
+
+    async def _run():
+        try:
+            from migrations.notification_v2 import run_notification_v2_migration
+            res = await run_notification_v2_migration()
+            print(f"[startup] notification v2 migration: {res}")
+        except Exception as _e:
+            print(f"[startup] notification v2 migration failed: {_e}")
+        try:
+            from services.notification_outbox import start_outbox_worker
+            start_outbox_worker()
+        except Exception as _e:
+            print(f"[startup] outbox worker failed to start: {_e}")
+
+    _asyncio.get_event_loop().create_task(_run())
+
+
 # Background: check for due reminders (notes + bookings) once every minute
 # and fire an in-app + push notification so the bell updates on the home/
 # dashboard/my-bookings screens.
@@ -3386,6 +3411,7 @@ from routers.razorpay_pay import router as _razorpay_pay_router
 from routers.announcements import router as _announcements_router
 from routers.referrals import router as _referrals_router
 from routers.push_register import router as _push_register_router
+from routers.notifications_v2 import router as _notifications_v2_router
 from routers.client_crash import router as _client_crash_router
 app.include_router(_me_tier_router)
 app.include_router(_settings_homepage_router)
@@ -3410,6 +3436,7 @@ app.include_router(_razorpay_pay_router)
 app.include_router(_announcements_router)
 app.include_router(_referrals_router)
 app.include_router(_push_register_router)
+app.include_router(_notifications_v2_router)
 app.include_router(_client_crash_router)
 
 # ─── Phase-3 router registrations ───

@@ -90,6 +90,21 @@ type Diag = {
   recent: RecentRow[];
 };
 
+/** Phase B — /push/health-panel response (delivery pipeline v2). */
+type V2Panel = {
+  relay_configured: boolean;
+  devices: { total_installations: number; yours: number };
+  outbox: {
+    pending: number;
+    processing: number;
+    sent_24h: number;
+    dead_24h: number;
+    expired_24h: number;
+  };
+  inbox: { unread: number; total: number };
+  next_step?: string;
+};
+
 const REASON_COPY: Record<PushDiagnosticReason, { icon: any; color: string; label: string; hint?: string }> = {
   success: { icon: 'checkmark-circle', color: COLORS.success, label: 'Registered' },
   already_registered: { icon: 'checkmark-circle', color: COLORS.success, label: 'Registered' },
@@ -152,6 +167,7 @@ function formatTime(iso?: string) {
 export function NotificationsHealthPanel() {
   const { isWebDesktop } = useResponsive();
   const [data, setData] = React.useState<Diag | null>(null);
+  const [v2, setV2] = React.useState<V2Panel | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
@@ -163,6 +179,12 @@ export function NotificationsHealthPanel() {
       const { data: d } = await api.get('/push/diagnostics');
       setData(d);
       setSelfState(getPushState());
+      try {
+        const { data: hp } = await api.get('/push/health-panel');
+        setV2(hp);
+      } catch {
+        // v2 panel is additive — never block the legacy diagnostics
+      }
     } catch (e: any) {
       // silent — panel stays in loading if auth fails
     } finally {
@@ -358,6 +380,50 @@ export function NotificationsHealthPanel() {
           <Stat label="Attempts 24h" value={String(data.sends_last_24h)} />
         </View>
       </View>
+
+      {/* Delivery pipeline v2 (Phase B: installations + outbox) */}
+      {v2 && (
+        <View style={styles.v2Card} testID="push-v2-pipeline">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="git-network-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.selfTitle}>Delivery pipeline</Text>
+            <View
+              style={[
+                styles.relayChip,
+                {
+                  backgroundColor: (v2.relay_configured ? COLORS.success : COLORS.warning) + '22',
+                  borderColor: (v2.relay_configured ? COLORS.success : COLORS.warning) + '55',
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  ...FONTS.bodyMedium,
+                  fontSize: 11,
+                  color: v2.relay_configured ? COLORS.success : COLORS.warning,
+                }}
+              >
+                {v2.relay_configured ? 'Relay LIVE' : 'Deploy required'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.statsRow}>
+            <Stat label="Devices" value={String(v2.devices?.total_installations ?? 0)} />
+            <Stat
+              label="Queued"
+              value={String((v2.outbox?.pending ?? 0) + (v2.outbox?.processing ?? 0))}
+              color={(v2.outbox?.pending ?? 0) > 0 ? COLORS.warning : undefined}
+            />
+            <Stat label="Sent 24h" value={String(v2.outbox?.sent_24h ?? 0)} color={COLORS.success} />
+            <Stat
+              label="Dead 24h"
+              value={String(v2.outbox?.dead_24h ?? 0)}
+              color={(v2.outbox?.dead_24h ?? 0) > 0 ? COLORS.accent : undefined}
+            />
+          </View>
+          {!!v2.next_step && <Text style={styles.selfHint}>{v2.next_step}</Text>}
+        </View>
+      )}
 
       {/* This device state */}
       <View style={styles.selfCard}>
@@ -622,6 +688,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  v2Card: {
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: 12,
+    gap: 10,
+  },
+  relayChip: {
+    marginLeft: 'auto',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   selfCard: {
     backgroundColor: '#fff',
     borderRadius: RADIUS.lg,

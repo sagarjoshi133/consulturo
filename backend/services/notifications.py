@@ -388,9 +388,10 @@ async def push_to_owner(title: str, body: str, data: Optional[Dict[str, Any]] = 
     if not owner_ids:
         return
     try:
-        from services.push_relay import send_push as relay_send, is_configured
+        from services.push_relay import is_configured
+        from services.notification_outbox import send_push_reliable
         if is_configured():
-            await relay_send(
+            await send_push_reliable(
                 recipients=owner_ids,
                 data={"title": title, "message": body, **(data or {})},
                 kind=(data or {}).get("kind") or (data or {}).get("type"),
@@ -430,16 +431,17 @@ async def push_to_user(user_id: Optional[str], phone: Optional[str], title: str,
     if not user_ids:
         return False
 
-    # 1) Try the Emergent relay first.
+    # 1) Try the Emergent relay first (with outbox retry on failure).
     try:
-        from services.push_relay import send_push as relay_send, is_configured
+        from services.push_relay import is_configured
+        from services.notification_outbox import send_push_reliable
         if is_configured():
-            res = await relay_send(
+            res = await send_push_reliable(
                 recipients=user_ids,
                 data={"title": title, "message": body, **(data or {})},
                 kind=(data or {}).get("kind") or (data or {}).get("type"),
             )
-            if (res or {}).get("sent", 0) > 0:
+            if (res or {}).get("sent", 0) > 0 or (res or {}).get("queued_for_retry"):
                 return True
             # Fall through to legacy path so a transient relay outage
             # doesn't silently drop the push.
@@ -539,7 +541,14 @@ async def create_notification(
         "read": False,
         "created_at": datetime.now(timezone.utc),
     }
+    # Phase B: dual-write into the canonical notification_inbox
+    # collection (reads stay on the legacy path until Phase C flips).
+    inbox_doc = {**doc, "source_type": "notification"}
     await db.notifications.insert_one(doc)
+    try:
+        await db.notification_inbox.insert_one(inbox_doc)
+    except Exception:
+        pass
     if push:
         try:
             await push_to_user(user_id, None, title, body, {**(data or {}), "kind": kind})

@@ -104,6 +104,33 @@ async def register_push(
             upsert=True,
         )
 
+    # ── Phase B: canonical device_installations registry ─────────────
+    # Dual-write alongside push_tokens during the migration window.
+    # Keyed by (user_id, installation_id); legacy clients without an
+    # installation_id get a synthetic "legacy:<token-prefix>" key.
+    try:
+        inst_key = install_id or f"legacy:{token[:48]}"
+        await db.device_installations.update_one(
+            {"user_id": uid, "installation_id": inst_key},
+            {
+                "$set": {
+                    "user_id": uid,
+                    "installation_id": inst_key,
+                    "platform": platform,
+                    "device_token": token,
+                    "transport": "emergent_native",
+                    "email": user_doc.get("email"),
+                    "role": user_doc.get("role"),
+                    "last_seen_at": now,
+                },
+                "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now},
+            },
+            upsert=True,
+        )
+    except Exception:
+        # Registry write must never fail a registration.
+        pass
+
     # Forward to the Emergent relay so it knows where to deliver.
     relay_result = await register_device(uid, platform, token)
     if relay_result.get("registered"):
