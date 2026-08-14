@@ -330,6 +330,14 @@ async def _notification_v2_boot() -> None:
             start_outbox_worker()
         except Exception as _e:
             print(f"[startup] outbox worker failed to start: {_e}")
+        # Phase C: warm the object-storage key so the first upload
+        # doesn't pay the /init round-trip.
+        try:
+            from services.object_storage import init_storage
+            await init_storage()
+            print("[startup] object storage initialised")
+        except Exception as _e:
+            print(f"[startup] object storage init failed: {_e}")
 
     _asyncio.get_event_loop().create_task(_run())
 
@@ -1376,9 +1384,8 @@ async def require_full_dashboard_access(user=Depends(require_user)) -> Dict[str,
     Notifs, Team config, Homepage settings, push test, etc.). Granting
     / revoking this flag remains strictly primary-owner only.
     """
-    if is_owner_or_partner(user):
-        return user
-    if bool(user.get("dashboard_full_access")):
+    from services.capabilities import has_capability
+    if has_capability(user, "full_dashboard"):
         return user
     raise HTTPException(status_code=403, detail="Full dashboard access required")
 
@@ -1394,12 +1401,8 @@ async def require_doctor_or_full_access(user=Depends(require_user)) -> Dict[str,
     gate if the Primary Owner / Partner has enabled `can_prescribe`
     on their user record (same as any other team-member role).
     """
-    role = user.get("role")
-    if role in OWNER_TIER_ROLES:
-        return user
-    if bool(user.get("can_prescribe")):
-        return user
-    if bool(user.get("dashboard_full_access")):
+    from services.capabilities import has_capability
+    if has_capability(user, "prescribe") or has_capability(user, "full_dashboard"):
         return user
     raise HTTPException(status_code=403, detail="Prescriber or Full-Access access required")
 
@@ -1413,10 +1416,8 @@ async def require_prescriber(user=Depends(require_user)) -> Dict[str, Any]:
     it must be enabled per-user via the Team panel, same as for
     nursing / reception / assistant / custom roles.
     """
-    role = user.get("role")
-    if role in OWNER_TIER_ROLES:
-        return user
-    if bool(user.get("can_prescribe")):
+    from services.capabilities import has_capability
+    if has_capability(user, "prescribe"):
         return user
     raise HTTPException(status_code=403, detail="Prescriber access required")
 
@@ -1425,10 +1426,8 @@ async def is_prescriber(user: Dict[str, Any]) -> bool:
     """Helper — does this user have prescribe permission?
     Owner-tier always; team members only if `can_prescribe` is True.
     """
-    role = user.get("role")
-    if role in OWNER_TIER_ROLES:
-        return True
-    return bool(user.get("can_prescribe"))
+    from services.capabilities import has_capability
+    return has_capability(user, "prescribe")
 
 
 async def require_can_manage_surgeries(user=Depends(require_user)) -> Dict[str, Any]:
@@ -1437,10 +1436,8 @@ async def require_can_manage_surgeries(user=Depends(require_user)) -> Dict[str, 
     / Partner. Used by every surgery CRUD endpoint (POST/PATCH/
     DELETE /api/surgeries, /api/surgeries/import, surgeries.csv).
     """
-    role = user.get("role")
-    if role in OWNER_TIER_ROLES:
-        return user
-    if bool(user.get("can_manage_surgeries")):
+    from services.capabilities import has_capability
+    if has_capability(user, "manage_surgeries"):
         return user
     raise HTTPException(status_code=403, detail="Surgery management access required")
 
@@ -1452,10 +1449,8 @@ async def require_can_manage_availability(user=Depends(require_user)) -> Dict[st
        - GET/PUT /api/availability/me  (own weekly schedule)
        - GET/POST/DELETE /api/unavailabilities  (holiday / time-off)
     """
-    role = user.get("role")
-    if role in OWNER_TIER_ROLES:
-        return user
-    if bool(user.get("can_manage_availability")):
+    from services.capabilities import has_capability
+    if has_capability(user, "manage_availability"):
         return user
     raise HTTPException(status_code=403, detail="Availability management access required")
 
@@ -1475,18 +1470,14 @@ async def require_can_manage_availability(user=Depends(require_user)) -> Dict[st
 async def require_blog_writer(user=Depends(require_user)) -> Dict[str, Any]:
     """Pass for super_owner, owner-tier (unless explicitly revoked), or
     any team member who has been granted `can_manage_blog: true`."""
-    if is_super_owner(user):
+    from services.capabilities import has_capability
+    if has_capability(user, "manage_blog"):
         return user
-    role = user.get("role")
-    if role in ("primary_owner", "owner", "partner"):
-        if user.get("can_create_blog") is not False:
-            return user
+    if user.get("role") in ("primary_owner", "owner", "partner"):
         raise HTTPException(
             status_code=403,
             detail="Blog editorial access was revoked by the Super Owner.",
         )
-    if bool(user.get("can_manage_blog")):
-        return user
     raise HTTPException(
         status_code=403,
         detail="Blog editorial access required. Ask your Primary Owner to grant it.",
@@ -2719,17 +2710,8 @@ def _can_send_personal_messages(user: Dict[str, Any]) -> bool:
     primary_owner can explicitly revoke (False). Patients are not
     permitted unless owner explicitly authorises (True).
     """
-    if not user:
-        return False
-    role = user.get("role", "")
-    explicit = user.get("can_send_personal_messages")
-    # Owner tier — always allowed regardless of the per-user flag
-    # (the hierarchy SuperOwner > PrimaryOwner > Partner grants it).
-    if role in ("owner", "primary_owner", "super_owner", "partner"):
-        return True
-    if role and role != "patient":
-        return explicit is not False
-    return bool(explicit)
+    from services.capabilities import has_capability
+    return has_capability(user, "send_personal_messages")
 
 
 # ── Owner-only: toggle messaging permission for ANY user (incl.
@@ -3412,6 +3394,8 @@ from routers.announcements import router as _announcements_router
 from routers.referrals import router as _referrals_router
 from routers.push_register import router as _push_register_router
 from routers.notifications_v2 import router as _notifications_v2_router
+from routers.files import router as _files_router
+from routers.capabilities import router as _capabilities_router
 from routers.client_crash import router as _client_crash_router
 app.include_router(_me_tier_router)
 app.include_router(_settings_homepage_router)
@@ -3437,6 +3421,8 @@ app.include_router(_announcements_router)
 app.include_router(_referrals_router)
 app.include_router(_push_register_router)
 app.include_router(_notifications_v2_router)
+app.include_router(_files_router)
+app.include_router(_capabilities_router)
 app.include_router(_client_crash_router)
 
 # ─── Phase-3 router registrations ───

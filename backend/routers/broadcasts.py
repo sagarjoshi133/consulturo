@@ -24,13 +24,11 @@ router = APIRouter()
 
 
 def _is_broadcast_approver(user: Dict[str, Any]) -> bool:
-    """Phase A — capability-based approval check. Any owner-tier role
-    (primary_owner / partner / super_owner / legacy `owner`) OR an
-    explicitly granted `can_approve_broadcasts` capability. Replaces the
-    legacy `role == "owner"` string check that silently locked out
-    primary_owner accounts after the 4-tier role migration."""
-    u = user or {}
-    return u.get("role") in OWNER_TIER_ROLES or bool(u.get("can_approve_broadcasts"))
+    """Capability-based approval check (Phase A, centralised in the
+    Phase C capability resolver). Owner-tier roles OR an explicitly
+    granted `can_approve_broadcasts` capability."""
+    from services.capabilities import has_capability
+    return has_capability(user, "approve_broadcasts")
 
 
 @router.post("/api/broadcasts")

@@ -35,6 +35,8 @@ import {
   openAttachment,
   saveAttachment,
   shareAttachment,
+  hasAttachmentData,
+  getAttachmentDisplayUri,
 } from '../../src/attachments';
 
 type NotificationDetail = {
@@ -350,6 +352,17 @@ function AttachmentRow({ att }: { att: any }) {
   const { kind = 'file', name = 'file', size_bytes = 0, mime = '', data_url } = att || {};
   const toast = useToast();
   const [busy, setBusy] = useState<null | 'open' | 'save' | 'share'>(null);
+  // Phase C: object-storage attachments have no data_url — resolve an
+  // authenticated display URI (adds ?sid= for web <img> tags).
+  const [displayUri, setDisplayUri] = useState<string | null>(data_url || null);
+  useEffect(() => {
+    let live = true;
+    if (!data_url && hasAttachmentData(att)) {
+      getAttachmentDisplayUri(att).then((u) => { if (live) setDisplayUri(u); });
+    }
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data_url, att?.file_id, att?.url]);
 
   const sizeFmt = (() => {
     const n = Number(size_bytes) || 0;
@@ -363,7 +376,7 @@ function AttachmentRow({ att }: { att: any }) {
     label: 'open' | 'save' | 'share',
     fn: () => Promise<{ ok: true } | { ok: false; error: string }>,
   ) => {
-    if (!data_url) {
+    if (!hasAttachmentData(att)) {
       toast.error('Attachment has no data');
       return;
     }
@@ -381,11 +394,11 @@ function AttachmentRow({ att }: { att: any }) {
   const onSave = () => run('save', () => saveAttachment(att));
   const onShare = () => run('share', () => shareAttachment(att));
 
-  if (kind === 'image' && data_url) {
+  if (kind === 'image' && displayUri) {
     return (
       <View style={styles.attachImageWrap}>
         <TouchableOpacity onPress={onOpen} activeOpacity={0.85} style={styles.attachImageBtn}>
-          <Image source={{ uri: data_url }} style={styles.attachImage} resizeMode="cover" />
+          <Image source={{ uri: displayUri }} style={styles.attachImage} resizeMode="cover" />
           <View style={styles.attachImageMeta}>
             <Text style={styles.attachImageMetaName} numberOfLines={1}>{name}</Text>
             {!!sizeFmt && <Text style={styles.attachImageMetaSize}>{sizeFmt}</Text>}

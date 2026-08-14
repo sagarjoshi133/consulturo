@@ -397,16 +397,19 @@ class BroadcastReview(BaseModel):
     reject_reason: Optional[str] = None
 
 class MessageAttachment(BaseModel):
-    """Base64-encoded attachment for personal messages.
-    Mime is required; size is bytes (best-effort, the server
-    re-validates from the data URI). The client sends `data_url` in
-    the form `data:<mime>;base64,<...>` so we can persist raw and
-    render it back without a separate upload endpoint.
+    """Attachment for personal messages.
+
+    Phase C (object storage): new clients upload via POST /api/files/
+    upload first and send a reference (`file_id` + `url`). Legacy
+    clients may still send an inline base64 `data_url` — both shapes
+    are accepted during the migration window.
     """
     name: str
     mime: str
     size_bytes: Optional[int] = 0
-    data_url: str
+    data_url: Optional[str] = None      # legacy inline base64
+    file_id: Optional[str] = None       # Phase C object-storage reference
+    url: Optional[str] = None           # "/api/files/{file_id}"
     kind: Optional[str] = None  # "image" | "video" | "file" — hint for renderer
 
 class PersonalMessageBody(BaseModel):

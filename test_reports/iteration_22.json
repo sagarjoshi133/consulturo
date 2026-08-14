@@ -1,0 +1,31 @@
+{
+  "summary": "Phase C — Platform foundation frontend E2E + light backend confirmation. Backend (4 spot checks): GET /api/me/capabilities as primary_owner → 200 with full 11-capability map (prescribe/manage_surgeries/manage_availability/approve_broadcasts/approve_bookings/full_dashboard/send_personal_messages/manage_blog/manage_team/manage_partners all true; platform_admin false) ✅; GET /api/files/{fake_id} unauth → 401 ✅; GET /api/prescriptions as owner → 200 (require_prescriber → capability delegation intact) ✅; GET /api/availability/me → 200 (manage_availability delegation intact) ✅. Bonus: GET /api/capabilities/catalog → 200 with 11 items, GET /api/broadcasts → 200, GET /api/surgeries → 200. Full attachment round-trip via API: POST /api/files/upload of 1x1 PNG → 200 {file_id,url,size_bytes:68}, then POST /api/messages/send with file_id-shaped attachment → 200, then GET /api/files/{id}?sid=<token> → 200 image/png 68 bytes, and unauth GET /api/files/{id} → 401. Frontend E2E (mobile 390x844): injected test_phasec_* session token into localStorage as 'session_token', opened /dashboard → primary_owner shell renders with hero card, TODAY summary, Book/Consults/Prescriptions/Surgeries/OT Schedule/Broadcasts/Notes/Reminders nav; opened /messages/{msg_id} → renders 'PERSONAL MESSAGE', 'TEST_phasec title', body 'TEST_phasec msg body', TO card (Dr Sagar Joshi · DOCTOR), timestamp, 'Sent' chip, 'ATTACHMENTS · 1' section with TEST_phasec.png · 68 B, and Save/Share/Open buttons ✅. The image <img> tag src resolved to /api/files/<id>?sid=<token> and loaded successfully (naturalWidth=1, naturalHeight=1 — the 1x1 PNG). msg-detail-back testID present. Phase B regression: pushed the Notifs bottom-tab and [data-testid=push-v2-pipeline] still renders. Regression: composer-send without attachments (POST /api/messages/send with no attachments field) → 200. Legacy inline base64 data_url shape is still handled by AttachmentRow (initialises displayUri from data_url when present) — code-review confirmed. Cleanup: removed test sessions, TEST_phasec file_objects row, TEST_phasec notifications.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase_c_platform.py (existing — not re-run this iteration per hand-off note)"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/files.py::_may_access — correctly grants access to uploader (owner_id match), broadcast-scope files, and to sender OR recipient via db.notifications lookup on data.attachments.file_id + $or {user_id, data.sender_user_id}. Sender path is important since only the recipient's notification row exists; the query covers both.",
+    "routers/files.py::download_file — dual auth (Bearer via get_current_user then ?sid= via _user_from_sid) is correctly wired; _user_from_sid mirrors get_current_user's expiry handling (naive datetime → UTC coercion + expired-token None). Suspended-user block honoured. Cache-Control 'private, max-age=3600' prevents cross-user CDN caching — good.",
+    "services/capabilities.py — 11 capabilities defined; policies cover super_only/primary_only/owner_only/owner_implicit/owner_revocable/staff_default_true consistently. has_capability semantics preserved exactly for legacy require_* deps (owner_implicit == owner tier passthrough + flag; owner_revocable for blog uses can_create_blog is not False for owner tier; staff_default_true for personal messages allows non-patient staff unless explicit False). Confirmed at runtime: primary_owner gets all 10 non-platform-admin caps true.",
+    "app/messages/[id].tsx::AttachmentRow — Phase C dual-shape support is clean: initialises displayUri = data_url || null and, when data_url is absent, calls getAttachmentDisplayUri(att) to resolve the /api/files/{id}?sid=<token> URI for <Image> rendering. useEffect deps include data_url, att.file_id, att.url — correct.",
+    "routers/messaging.py::messages_send — MAX_ATTACHMENTS cap applied, attachments loop preserves both legacy (data_url/data_base64) and new (file_id/url) shapes when persisting into notification data.attachments (Mongo doc shows file_id+url only, no base64 bloat for new uploads)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (all 4 required light confirmation calls + upload+send+download round-trip)",
+    "frontend": "100% (/dashboard render, /messages/{id} render with /api/files-backed image loaded, Notifs push-v2-pipeline regression, compose-without-attachments regression via API)"
+  },
+  "seed_data_creation": "Minted 2 test sessions (owner user_4775ed40276e token test_phasec_1786729971511; recipient user_5712cb329052 token test_phasec_rcpt_1786730059934). Uploaded 1 TEST_phasec.png (68 B) into file_objects. Sent 2 personal messages (with-attachment + regression plain). All test rows removed at end of run: 2 user_sessions, 1 file_objects, 2 notifications.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To re-verify Phase C attachment rendering: (1) mongosh insert user_sessions row for sagar.joshi133@gmail.com (primary_owner) with token 'test_phasec_*' and 2h expiry; (2) POST /api/files/upload with a tiny data_base64 png; (3) POST /api/messages/send with recipient_user_id != self plus attachments:[{file_id,url,name,mime,kind:'image'}] — response gives notification_id; (4) inject session into localStorage as 'session_token', navigate /messages/<notification_id> in web preview; (5) assert an <img> whose src contains '/api/files/<file_id>?sid=' and naturalWidth>0. Note GET /api/notifications/{id} also works for the SENDER because messaging enriches data.sender_user_id — so the sender's session can view a message even though the notification row is stored under the recipient's user_id (verified). GET /api/messages/{id} (without /notifications prefix) does NOT exist — 404 is expected there. Cleanup regex: /^TEST_phasec/ across file_objects+notifications, /^test_phasec_/ across user_sessions.",
+  "rca_of_issue": "N/A — verification iteration, no bug fixing."
+}

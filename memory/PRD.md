@@ -85,11 +85,20 @@ Mongo-first, non-breaking (dual-write; reads stay on legacy until Phase C):
 6. **Frontend** — Notifications Health panel gained a "Delivery pipeline" card (testID `push-v2-pipeline`): Relay LIVE / Deploy-required chip, Devices/Queued/Sent-24h/Dead-24h stats, next_step hint. Legacy sections unchanged.
 - Testing: pytest 11/11 `tests/test_phase_b_notification_v2.py`; frontend + regression verified by testing agent (`/app/test_reports/iteration_21.json`).
 
+## Changelog — 2026-06 (ConsultUro 2.0 — Phase C: Platform foundation) ✅
+User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); repository layer + object storage + capability auth instead:
+1. **Repository layer** — `/app/backend/repositories/` (`MongoRepository` base + `files`, `users` repos). All Phase C+ code accesses collections through repositories → future DB engine swap only re-implements this package.
+2. **Emergent Object Storage for attachments** — `services/object_storage.py` (init→storage_key handshake, threadpool-wrapped, stale-key 503 retry, 402 quota typed error). New `POST /api/files/upload` (JSON base64, 8 MB cap, path `consulturo/uploads/{uid}/{uuid}.{ext}`, metadata in `file_objects` via repo) + `GET /api/files/{id}` (Bearer OR `?sid=` query auth for web `<img>`; access = uploader ∪ message sender/recipient ∪ broadcast scope). Storage key warmed at startup.
+3. **Message attachments migrated** — composer uploads first, sends `{file_id, url}` refs (per-attachment fallback to legacy inline base64 if upload fails); `/api/messages/send` validates refs (must exist + be uploaded by sender) and stores refs instead of base64. Renderers (`attachments.ts`, `/messages/[id]`) support BOTH shapes — old base64 messages still work everywhere, incl. the currently installed APK.
+4. **Capability resolver** — `services/capabilities.py`: 11-capability catalog (prescribe, manage_surgeries, manage_availability, approve_broadcasts, approve_bookings, full_dashboard, send_personal_messages, manage_blog, manage_team, manage_partners, platform_admin) with 6 policies. All legacy `require_*` deps in server.py + `_is_broadcast_approver` + `_can_send_personal_messages` now delegate to it (semantics preserved exactly). New `GET /api/me/capabilities` (UI gating) + `GET /api/capabilities/catalog` (owner).
+- Testing: pytest 16/16 `tests/test_phase_c_platform.py` (36/36 across A+B+C); frontend E2E + regression by testing agent (`/app/test_reports/iteration_22.json`).
+
 ## ConsultUro 2.0 roadmap status
 - Phase A (notification recovery): ✅ DONE
 - Phase B (Notification V2: device_installations, notification_inbox, outbox worker w/ retry, /api/push/health-panel — Mongo-first): ✅ DONE
-- Phase C (PostgreSQL platform foundation, object storage, capability auth): NEXT — defer until A+B ratified on-device post-deploy.
-- Phase D–H (patient registry, clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
+- Phase C (platform foundation — repository layer over Mongo [PostgreSQL swap intentionally skipped: managed env is Mongo-only], object storage for attachments, capability-based auth): ✅ DONE
+- Phase D (patient registry + scheduling, canonical patient_id): NEXT
+- Phase E–H (clinical core, surgery/IPD/finance, AI+n8n, legacy archive): pending, strict order.
 
 ## Next Action Items
 - **User: Publish + rebuild APK** so OTA/splash/safe-area/push fixes reach devices (splash & safe-area are native-level).

@@ -336,6 +336,29 @@ async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
     attachments_clean: List[Dict[str, Any]] = []
     for a in (body.attachments or [])[:MAX_ATTACHMENTS]:
         d = a.model_dump() if hasattr(a, "model_dump") else (a.dict() if hasattr(a, "dict") else dict(a))
+        # ── Phase C: object-storage reference (preferred) ────────────
+        file_id = (d.get("file_id") or "").strip()
+        if file_id:
+            frow = await db.file_objects.find_one(
+                {"id": file_id, "deleted": {"$ne": True}}, {"_id": 0}
+            )
+            if not frow:
+                raise HTTPException(status_code=400, detail=f"Attachment '{d.get('name')}' was not uploaded")
+            if frow.get("owner_id") != user["user_id"]:
+                raise HTTPException(status_code=403, detail="You can only attach files you uploaded")
+            mime = (d.get("mime") or frow.get("mime") or "").lower()
+            attachments_clean.append({
+                "name": d.get("name") or frow.get("name"),
+                "mime": mime,
+                "size_bytes": frow.get("size_bytes") or d.get("size_bytes") or 0,
+                "kind": d.get("kind") or frow.get("kind") or (
+                    "image" if mime.startswith("image/") else "video" if mime.startswith("video/") else "file"
+                ),
+                "file_id": file_id,
+                "url": f"/api/files/{file_id}",
+            })
+            continue
+        # ── Legacy inline base64 path ────────────────────────────────
         url = (d.get("data_url") or "").strip()
         if not url.startswith("data:"):
             continue

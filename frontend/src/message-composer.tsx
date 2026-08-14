@@ -173,9 +173,35 @@ export default function MessageComposer({
       const targets = selected.length > 0
         ? selected
         : (recipient ? [recipient] : []);
-      const payloadAttachments = attachments.map((a) => ({
-        name: a.name, mime: a.mime, size_bytes: a.size_bytes, data_url: a.data_url, kind: a.kind,
-      }));
+      // ── Phase C: upload attachments to object storage FIRST, then
+      // send lightweight references. Falls back to legacy inline
+      // base64 per-attachment if an upload fails, so the message
+      // still goes out.
+      const payloadAttachments = await Promise.all(
+        attachments.map(async (a) => {
+          try {
+            const { data: f } = await api.post('/files/upload', {
+              name: a.name,
+              mime: a.mime,
+              data_url: a.data_url,
+              kind: a.kind,
+              scope: 'message',
+            });
+            return {
+              name: a.name,
+              mime: a.mime,
+              size_bytes: f?.size_bytes ?? a.size_bytes,
+              kind: a.kind,
+              file_id: f.file_id,
+              url: f.url,
+            };
+          } catch {
+            return {
+              name: a.name, mime: a.mime, size_bytes: a.size_bytes, data_url: a.data_url, kind: a.kind,
+            };
+          }
+        }),
+      );
       // Fire all sends in parallel — one POST per recipient. Failures
       // are aggregated so the user sees how many delivered.
       const outcomes = await Promise.allSettled(
