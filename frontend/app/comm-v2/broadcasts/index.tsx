@@ -63,6 +63,13 @@ export default function BroadcastList() {
         </Pressable>
         <Text style={shared.headerTitle}>Broadcast Studio</Text>
         <Pressable
+          onPress={() => router.push('/comm-v2/broadcasts/templates' as any)}
+          hitSlop={10}
+          style={{ paddingHorizontal: 8, paddingVertical: 6 }}
+        >
+          <Ionicons name="bookmarks-outline" size={20} color={V2.accent} />
+        </Pressable>
+        <Pressable
           onPress={() => router.push('/comm-v2/broadcasts/compose' as any)}
           style={{ backgroundColor: V2.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
         >

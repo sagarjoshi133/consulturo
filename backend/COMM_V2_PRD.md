@@ -233,4 +233,66 @@ Rollback path:
       plus `COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED=false`, restart.
   3. Legacy write endpoints resume returning 200; V2 code paths
       become dormant but retain data.
+
+================================================================
+COMM-10 (SHIPPED) — Broadcast Templates
+================================================================
+Reusable announcement templates so weekly notices go out in two
+taps (pick → confirm → submit).
+
+Collection: `comm_broadcast_templates`
+  {id, name (unique), title, body, category, audience_mode,
+   action_type, selected_patient_user_ids[], created_by_user_id,
+   created_by_role, is_active, use_count, last_used_at,
+   created_at, updated_at, schema_version=1}
+
+Indexes:
+  * tpl_name_unique          — unique(name), partial (name exists).
+  * tpl_active_updated       — (is_active, updated_at desc).
+  * tpl_category             — (category, updated_at desc).
+
+Permissions:
+  * Owner-tier: create / edit / delete (soft — flips is_active=false).
+  * All staff (owner + doctor/assistant/reception/nursing):
+    list + get + apply.
+  * Patients: forbidden (403 staff_only).
+
+Endpoints:
+  GET    /api/v2/communications/broadcast-templates
+         ?category&search&include_inactive&limit&cursor
+  GET    /api/v2/communications/broadcast-templates/{id}
+  POST   /api/v2/communications/broadcast-templates                 (owner)
+  PATCH  /api/v2/communications/broadcast-templates/{id}            (owner)
+  DELETE /api/v2/communications/broadcast-templates/{id}            (owner, soft)
+  POST   /api/v2/communications/broadcast-templates/{id}/apply      (staff)
+         → creates a new draft broadcast (state=draft) with
+           source_template_id + source_template_name stamped on it.
+           Body supports override fields (title/body/category/
+           audience_mode/action_type/selected_patient_user_ids/
+           scheduled_at); anything absent inherits from the template.
+         → bumps template.use_count / last_used_at atomically.
+         → audit trail: 'broadcast_template.apply'.
+
+Frontend (React Native / Expo Router):
+  /comm-v2/broadcasts/templates                  — list + use + delete
+  /comm-v2/broadcasts/templates/[id]             — create ('new') / edit
+  /comm-v2/broadcasts                            — new 🔖 icon opens template library
+  /comm-v2/broadcasts/compose                    — "Templates" quick-link
+                                                    + "Save as template" CTA
+                                                    that prefills the New form.
+
+Smoke test: tests/smoke_comm10_broadcast_templates.py
+  * owner-only create/edit/delete
+  * staff-only list/apply
+  * unique(name) constraint
+  * validation (bad category/audience/name/chars)
+  * apply → draft with lineage
+  * overrides at apply-time
+  * use_count increment
+  * soft delete + include_inactive listing
+  * apply on inactive rejected
+  PASSING.
+
+No variables/tokens support in v1 (deliberate — keep it simple).
+Add {{clinic_name}} / {{today}} etc. in a later pass if requested.
 """

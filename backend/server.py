@@ -381,6 +381,14 @@ async def _notification_v2_boot() -> None:
             print(f"[startup] comm_v2 broadcasts backfill: {res}")
         except Exception as _e:
             print(f"[startup] comm_v2 broadcasts backfill failed: {_e}")
+        # ── Comm V2 broadcast-template indexes (Comm-10) ──
+        try:
+            from services.comm_broadcast_templates import ensure_indexes as _tpl_indexes
+            created = await _tpl_indexes(db)
+            if created:
+                print(f"[startup] comm_v2 broadcast_templates indexes: {created}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 broadcast_templates indexes failed: {_e}")
         try:
             from services.comm_outbox import start_worker as _start_comm_worker
             _start_comm_worker()
@@ -3611,6 +3619,13 @@ app.include_router(_comm_v2_broadcasts_router)
 # does NOT emit push or inbox — separate "Also create Broadcast".
 from routers.comm_v2_notices import router as _comm_v2_notices_router
 app.include_router(_comm_v2_notices_router)
+
+
+# ─── Communications V2 — Broadcast Templates (Comm-10) ───
+# Reusable announcement templates so weekly notices go out in two
+# taps (pick → approve → send).
+from routers.comm_v2_broadcast_templates import router as _comm_v2_bcast_tpl_router
+app.include_router(_comm_v2_bcast_tpl_router)
 
 
 @app.on_event("startup")

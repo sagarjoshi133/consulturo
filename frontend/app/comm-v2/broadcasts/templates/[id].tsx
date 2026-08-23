@@ -1,10 +1,10 @@
 /**
- * Comm V2 — Broadcast composer (create OR edit draft/rejected).
+ * Comm V2 — Broadcast Template create/edit form.
  *
- * Fields per spec: title, body, category, audience_mode
- * (+ scheduled_at chosen on the detail screen after approval).
+ * Owner-tier only. Reuses the same field set as compose.tsx plus a
+ * name (unique) for the template itself.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
@@ -12,8 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import api from '../../../src/api';
-import { V2, shared } from '../../../src/comm-v2/ui-tokens';
+import api from '../../../../src/api';
+import { V2, shared } from '../../../../src/comm-v2/ui-tokens';
 
 const CATEGORIES = ['announcements', 'appointments', 'reminders', 'system', 'marketing'];
 const AUDIENCES: Array<{ value: string; label: string; hint: string }> = [
@@ -24,79 +24,80 @@ const AUDIENCES: Array<{ value: string; label: string; hint: string }> = [
     hint: 'Patients with at least one confirmed booking in the future.' },
 ];
 
-export default function BroadcastCompose() {
+export default function TemplateFormScreen() {
   const router = useRouter();
-  const { edit } = useLocalSearchParams<{ edit?: string }>();
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [category, setCategory] = useState('announcements');
-  const [audience, setAudience] = useState('patients');
+  const params = useLocalSearchParams<{
+    id?: string; prefill_title?: string; prefill_body?: string;
+    prefill_category?: string; prefill_audience?: string;
+  }>();
+  const isEdit = !!params.id && params.id !== 'new';
+  const editingId = isEdit ? String(params.id) : null;
+
+  const [name, setName] = useState('');
+  const [title, setTitle] = useState(String(params.prefill_title || ''));
+  const [body, setBody] = useState(String(params.prefill_body || ''));
+  const [category, setCategory] = useState(String(params.prefill_category || 'announcements'));
+  const [audience, setAudience] = useState(String(params.prefill_audience || 'patients'));
+  const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [savingTpl, setSavingTpl] = useState(false);
 
-  const saveAsTemplate = async () => {
-    if (!title.trim() || !body.trim()) {
-      Alert.alert('Missing fields', 'Please fill title and body before saving.');
-      return;
-    }
-    // Prompt for a template name. Web uses window.prompt; native uses a
-    // one-line Alert-based flow via the templates New screen prefill.
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const name = window.prompt('Template name (unique)?');
-      if (!name) return;
-      setSavingTpl(true);
+  useEffect(() => {
+    if (!isEdit || !editingId) return;
+    (async () => {
       try {
-        await api.post('/v2/communications/broadcast-templates', {
-          name: name.trim(), title: title.trim(), body: body.trim(),
-          category, audience_mode: audience, action_type: 'open_broadcast',
-        });
-        Alert.alert('Saved', `Template "${name}" saved.`);
+        const r = await api.get(`/v2/communications/broadcast-templates/${encodeURIComponent(editingId)}`);
+        const t = r?.data?.template;
+        if (t) {
+          setName(t.name || '');
+          setTitle(t.title || '');
+          setBody(t.body || '');
+          setCategory(t.category || 'announcements');
+          setAudience(t.audience_mode || 'patients');
+        }
       } catch (e: any) {
-        const d = e?.response?.data?.detail;
-        const msg = typeof d === 'object' ? d?.message : d;
-        Alert.alert('Save failed', msg || e?.message || 'unknown');
+        Alert.alert('Load failed', e?.response?.data?.detail || e?.message);
       } finally {
-        setSavingTpl(false);
+        setLoading(false);
       }
-    } else {
-      // Native — route to the New template screen; user re-enters name there.
-      router.push({
-        pathname: '/comm-v2/broadcasts/templates/new',
-        params: { prefill_title: title, prefill_body: body,
-                    prefill_category: category, prefill_audience: audience },
-      } as any);
-    }
-  };
+    })();
+  }, [isEdit, editingId]);
 
-  const save = async (submit: boolean) => {
-    if (!title.trim() || !body.trim()) {
-      Alert.alert('Missing fields', 'Please fill title and body.');
+  const save = async () => {
+    if (!name.trim() || !title.trim() || !body.trim()) {
+      Alert.alert('Missing fields', 'Please fill name, title, and body.');
       return;
     }
     setSaving(true);
     try {
-      let id = edit;
-      if (edit) {
-        await api.patch(`/v2/communications/broadcasts/${encodeURIComponent(String(edit))}`, {
-          title: title.trim(), body: body.trim(), category, audience_mode: audience,
-        });
+      const payload = {
+        name: name.trim(), title: title.trim(), body: body.trim(),
+        category, audience_mode: audience, action_type: 'open_broadcast',
+      };
+      if (isEdit && editingId) {
+        await api.patch(`/v2/communications/broadcast-templates/${encodeURIComponent(editingId)}`, payload);
       } else {
-        const r = await api.post('/v2/communications/broadcasts', {
-          title: title.trim(), body: body.trim(), category, audience_mode: audience,
-        });
-        id = r?.data?.broadcast?.id;
+        await api.post('/v2/communications/broadcast-templates', payload);
       }
-      if (submit && id) {
-        await api.post(`/v2/communications/broadcasts/${encodeURIComponent(String(id))}/submit`);
-      }
-      router.replace((id ? `/comm-v2/broadcasts/${id}` : '/comm-v2/broadcasts') as any);
+      router.replace('/comm-v2/broadcasts/templates' as any);
     } catch (e: any) {
-      Alert.alert('Save failed', e?.response?.data?.detail?.message
-        || e?.response?.data?.detail || e?.message || 'unknown');
+      const d = e?.response?.data?.detail;
+      const code = typeof d === 'object' ? d?.error_code : null;
+      const msg = code === 'duplicate_name'
+        ? 'A template with this name already exists.'
+        : (typeof d === 'object' ? d?.message : d) || e?.message || 'unknown';
+      Alert.alert('Save failed', msg);
     } finally {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView edges={['top']} style={shared.screen}>
+        <View style={{ paddingVertical: 40 }}><ActivityIndicator color={V2.accent} /></View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={shared.screen}>
@@ -104,26 +105,27 @@ export default function BroadcastCompose() {
         <Pressable onPress={() => router.back()} style={shared.headerBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={V2.fg} />
         </Pressable>
-        <Text style={shared.headerTitle}>{edit ? 'Edit broadcast' : 'New broadcast'}</Text>
-        {!edit ? (
-          <Pressable
-            onPress={() => router.push('/comm-v2/broadcasts/templates' as any)}
-            hitSlop={10}
-            style={{ paddingHorizontal: 10, paddingVertical: 6 }}
-          >
-            <Text style={{ color: V2.accent, fontSize: 13, fontWeight: '700' }}>Templates</Text>
-          </Pressable>
-        ) : null}
+        <Text style={shared.headerTitle}>{isEdit ? 'Edit template' : 'New template'}</Text>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
 
-          <Section title="Title">
+          <Section title="Template name">
             <TextInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder="e.g. Clinic closed on Nov 12–14"
+              value={name} onChangeText={setName}
+              placeholder="e.g. Weekly Monday hours"
+              placeholderTextColor={V2.fgHint}
+              maxLength={80}
+              style={styles.input}
+            />
+            <Text style={styles.hint}>Shown only to staff. Must be unique.</Text>
+          </Section>
+
+          <Section title="Title (patient-facing)">
+            <TextInput
+              value={title} onChangeText={setTitle}
+              placeholder="e.g. Clinic hours this Monday"
               placeholderTextColor={V2.fgHint}
               maxLength={200}
               style={styles.input}
@@ -132,8 +134,7 @@ export default function BroadcastCompose() {
 
           <Section title="Body">
             <TextInput
-              value={body}
-              onChangeText={setBody}
+              value={body} onChangeText={setBody}
               placeholder="Message body (max 4000 chars)"
               placeholderTextColor={V2.fgHint}
               maxLength={4000}
@@ -169,32 +170,14 @@ export default function BroadcastCompose() {
             ))}
           </Section>
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-            <Pressable
-              onPress={() => save(false)}
-              disabled={saving}
-              style={[styles.btn, styles.btnGhost, { flex: 1 }]}
-            >
-              <Text style={{ color: V2.accent, fontWeight: '700' }}>Save draft</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => save(true)}
-              disabled={saving}
-              style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
-            >
-              {saving ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={{ color: '#fff', fontWeight: '700' }}>Submit for approval</Text>}
-            </Pressable>
-          </View>
-
           <Pressable
-            onPress={saveAsTemplate}
-            disabled={savingTpl}
-            style={[styles.btn, styles.btnGhost, { marginTop: 6 }]}
+            onPress={save}
+            disabled={saving}
+            style={[styles.btn, styles.btnPrimary, { marginTop: 8 }]}
           >
-            {savingTpl ? <ActivityIndicator color={V2.accent} size="small" />
-              : <Text style={{ color: V2.accent, fontWeight: '700' }}>
-                  💾 Save as template
+            {saving ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {isEdit ? 'Save changes' : 'Save template'}
                 </Text>}
           </Pressable>
         </ScrollView>
@@ -238,7 +221,7 @@ const styles = StyleSheet.create({
     borderColor: V2.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
     fontSize: 14, color: V2.fg,
   },
-  hint: { fontSize: 11, color: V2.fgHint, textAlign: 'right', marginTop: 4 },
+  hint: { fontSize: 11, color: V2.fgHint, marginTop: 4 },
   audienceRow: {
     flexDirection: 'row', gap: 10, padding: 10, borderRadius: 10,
     backgroundColor: V2.card, borderWidth: StyleSheet.hairlineWidth,
@@ -257,5 +240,4 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   btnPrimary: { backgroundColor: V2.accent, borderColor: V2.accent },
-  btnGhost: { backgroundColor: V2.card, borderColor: V2.accent },
 });
