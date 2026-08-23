@@ -363,6 +363,24 @@ async def _notification_v2_boot() -> None:
             print(f"[startup] comm_v2 inbox backfill: {res}")
         except Exception as _e:
             print(f"[startup] comm_v2 inbox backfill failed: {_e}")
+        # ── Comm V2 messages backfill (Comm-8) ──
+        # Legacy `notifications`(kind=personal|personal_message) →
+        # `comm_conversations` + `comm_messages`. Patient↔staff only.
+        try:
+            from migrations.comm_v2_messaging_backfill import run_messaging_backfill
+            res = await run_messaging_backfill(db)
+            print(f"[startup] comm_v2 messaging backfill: {res}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 messaging backfill failed: {_e}")
+        # ── Comm V2 broadcasts backfill (Comm-8) ──
+        # Legacy `broadcasts` + `broadcast_inbox` →
+        # `comm_broadcasts` + `comm_broadcast_recipients`.
+        try:
+            from migrations.comm_v2_broadcasts_backfill import run_broadcasts_backfill
+            res = await run_broadcasts_backfill(db)
+            print(f"[startup] comm_v2 broadcasts backfill: {res}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 broadcasts backfill failed: {_e}")
         try:
             from services.comm_outbox import start_worker as _start_comm_worker
             _start_comm_worker()

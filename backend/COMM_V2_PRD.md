@@ -101,4 +101,78 @@ relay retained only behind a rollback flag.
 ================================================================
 COMM-3 → COMM-9 — See README block at top of routers/comm_v2_admin.py
 ================================================================
+
+================================================================
+COMM-8 (SHIPPED) — Migration & Reconciliation
+================================================================
+Idempotent backfills of the entire legacy comms footprint into V2
+collections, plus a non-invasive reconciliation report.
+
+Backfills (all run once per boot, gated by _status markers in
+comm_migration_map):
+  • migrations/comm_v2_inbox_backfill.py (Comm-3, already shipped)
+    notifications          → comm_inbox_items
+    Skips kind ∈ {personal, personal_message} — those are messaging.
+  • migrations/comm_v2_messaging_backfill.py
+    notifications(kind=personal|personal_message) →
+      comm_conversations + comm_messages + comm_message_receipts.
+    Only patient↔staff pairs migrate. Staff↔staff and patient↔patient
+    are out of V2's "one conversation per patient" model and are left
+    legacy-only.
+    Idempotency-key = "{sender_uid}:legacy:{notification_id}" so we
+    never double-insert on force re-runs.
+  • migrations/comm_v2_broadcasts_backfill.py
+    broadcasts        → comm_broadcasts
+       status sent  → state completed
+       status approved / pending_approval / rejected → same state
+       target all/patients/staff → audience_mode both/patients/staff
+    broadcast_inbox   → comm_broadcast_recipients
+       delivery_status = 'provider_accepted' (legacy inbox rows were
+       only written AFTER send).
+    All migrated rows carry migrated_from_legacy:true.
+
+Reconciliation:
+  services/comm_reconciliation.py.build_report(db) returns:
+    {
+      "ok": bool (all four domains ok),
+      "notifications_inbox": {legacy_total, legacy_migratable,
+                                v2_total_from_legacy, missing_sample[],
+                                delta, ok},
+      "messages": {legacy_personal_total, v2_migrated_messages,
+                    v2_conversations, mapped_rows,
+                    delta_mapped_vs_v2, ok},
+      "broadcasts": {legacy_total, legacy_by_status, v2_total,
+                      v2_from_legacy, v2_by_state_from_legacy,
+                      mapped_rows, delta_legacy_vs_v2, ok},
+      "broadcast_recipients": {legacy_total, v2_total,
+                                 v2_from_legacy, mapped_rows,
+                                 delta_legacy_vs_v2, ok},
+    }
+
+Admin endpoints (owner-tier only):
+  POST /api/v2/communications/admin/migrations/run
+       body: {scope: "all"|"notifications"|"messages"|"broadcasts",
+              force: bool}
+  GET  /api/v2/communications/admin/migrations/status
+       → {markers: {notifications_backfilled: {count, completed_at},
+                     messages_backfilled: {...},
+                     broadcasts_backfilled: {...}}}
+  GET  /api/v2/communications/admin/reconciliation/report
+       → full reconciliation report (as above).
+
+Boot wiring: server.py `_notification_v2_boot` runs the three
+backfills sequentially after the Comm-1 index migration. Each bails
+out fast if its _status marker already exists.
+
+Smoke test: tests/smoke_comm8_migration.py — seeds a synthetic
+legacy corpus, runs each backfill twice, asserts idempotency, then
+verifies the reconciliation report structure. Cleans up its own
+rows on exit. PASSING as of shipping.
+
+Rollback: comment out the three try/except blocks in server.py
+that call `run_messaging_backfill` and `run_broadcasts_backfill`
+(and the existing `run_notifications_backfill`). All V2 collections
+retain the `migrated_from_legacy:true` flag so a targeted
+`db.comm_*.delete_many({migrated_from_legacy: true})` cleanly
+reverses the migration without touching real V2 data.
 """

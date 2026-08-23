@@ -192,3 +192,16 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - Push v2 flag stays OFF pending physical-device acceptance test.
 
 ## Comm V2 endpoint surface — 39 endpoints total
+
+## Comm-7 (Frontend V2 screens) — SHIPPED (Jun 2026)
+- **Six new screens** under `/app/comm-v2/*`:
+  - `index.tsx` — canary hub with 3 tiles (Notification Centre / Messages / Broadcast Studio) + live unread counters from the `CommunicationsProvider`.
+  - `inbox.tsx` — Notification Centre: 7 category chips with server-computed unread numbers · unread-first · cursor pagination · "Mark shown as read" (spec-compliant — only touches ids currently on screen, never wipes items the user hasn't seen) · long-press to archive · validated deep-linking via action_type (open_booking / open_prescription / open_conversation / open_broadcast / open_home).
+  - `conversations/index.tsx` — staff view: all conversations, state-filter chips (all / awaiting_clinic / awaiting_patient / escalated / resolved), unread-first + search over last_message_preview · per-side unread badge · patient view: their one auto-created conversation.
+  - `conversations/[id].tsx` — thread with reverse-chrono list · reply-to via long-press · Idempotency-Key regenerated per compose+send (header + body fallback) · read-mark on scroll-into-view for received messages · staff action bar (escalate / resolve / reopen) · honest delivery-state hints under own messages (sent / delivered / read).
+  - `broadcasts/index.tsx` — Broadcast Studio list with state-filter chips, live "New" button.
+  - `broadcasts/compose.tsx` — draft composer / edit-rejected · title (200), body (4000), category (5), audience mode (4 radio options with hints) · Save-draft OR Submit-for-approval buttons.
+  - `broadcasts/[id].tsx` — detail with rejection reason box · audience preview card (intended/included/excluded/push-eligible + exclusion reasons) · analytics card with 9 INDEPENDENT counters + non-conflation note · owner action bar (Approve / Reject-with-reason / Send-now / Cancel / Retry-failed) · meta section.
+- **Design tokens** (`src/comm-v2/ui-tokens.ts`) — shared muted-clinical palette, category & state labels, relative time formatter, chip/card/empty styles. Every V2 screen inherits the same look.
+- **Owner entry point** — the More tab now shows a "Communications V2 (preview)" tile under Admin (owner-only) that opens `/comm-v2`.
+- **Verified**: hub loads, renders "Canary not active" panel correctly for unauthenticated sessions, layout is functional at 390×844 viewport. Existing legacy screens untouched — cutover happens in Comm-8/9.

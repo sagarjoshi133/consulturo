@@ -555,6 +555,16 @@ export default function More() {
         testID: 'more-announcements',
         color: C_CONTENT,
       });
+      // Comm V2 preview (owner canary). Hidden for everyone else
+      // until the master flag flips.
+      adminItems.push({
+        icon: 'sparkles',
+        label: 'Communications V2 (preview)',
+        sub: 'New Notification Centre · Messaging · Broadcast Studio',
+        route: '/comm-v2' as any,
+        testID: 'more-comm-v2',
+        color: C_CONTENT,
+      });
     }
     // 9. Video settings — can_manage_settings.
     if (canSettings) {

@@ -22,6 +22,7 @@ from server import db, require_owner
 from services import comm_flags
 from services import comm_outbox
 from services import comm_audit
+from services import comm_reconciliation
 
 router = APIRouter(prefix="/api/v2/communications", tags=["communications-v2"])
 
@@ -154,3 +155,88 @@ async def health(user=Depends(require_owner)) -> Dict[str, Any]:
         "collections": collections,
         "flags": flags,
     }
+
+
+
+# ── Comm-8: migrations & reconciliation ─────────────────────────
+
+
+class MigrationRunBody(BaseModel):
+    scope: str = "all"        # "notifications" | "messages" | "broadcasts" | "all"
+    force: bool = False       # re-run even if the _status marker is set
+
+
+@router.post("/admin/migrations/run")
+async def run_migration(body: MigrationRunBody,
+                          user=Depends(require_owner)) -> Dict[str, Any]:
+    """Trigger one or more V2 backfills on demand.
+
+    Idempotent — each backfill's `_status:*_backfilled` marker in
+    `comm_migration_map` guards against duplicate work unless `force=true`
+    is passed. Owner-tier only.
+    """
+    scope = (body.scope or "all").lower().strip()
+    if scope not in ("all", "notifications", "messages", "broadcasts"):
+        raise HTTPException(status_code=400, detail={
+            "error_code": "bad_scope",
+            "valid": ["all", "notifications", "messages", "broadcasts"],
+        })
+    out: Dict[str, Any] = {}
+
+    if scope in ("all", "notifications"):
+        try:
+            from migrations.comm_v2_inbox_backfill import run_notifications_backfill
+            out["notifications"] = await run_notifications_backfill(db, force=body.force)
+        except Exception as e:
+            out["notifications"] = {"error": str(e)}
+
+    if scope in ("all", "messages"):
+        try:
+            from migrations.comm_v2_messaging_backfill import run_messaging_backfill
+            out["messages"] = await run_messaging_backfill(db, force=body.force)
+        except Exception as e:
+            out["messages"] = {"error": str(e)}
+
+    if scope in ("all", "broadcasts"):
+        try:
+            from migrations.comm_v2_broadcasts_backfill import run_broadcasts_backfill
+            out["broadcasts"] = await run_broadcasts_backfill(db, force=body.force)
+        except Exception as e:
+            out["broadcasts"] = {"error": str(e)}
+
+    await comm_audit.log(
+        db, action="migration.run",
+        actor_user_id=user.get("user_id"),
+        actor_role=user.get("role"),
+        target_type="migration", target_id=scope,
+        metadata={"force": body.force, "result": out},
+    )
+    return {"scope": scope, "force": body.force, "result": out}
+
+
+@router.get("/admin/migrations/status")
+async def migration_status(user=Depends(require_owner)) -> Dict[str, Any]:
+    """Return current backfill markers + last-run timestamps."""
+    markers: Dict[str, Any] = {}
+    async for row in db.comm_migration_map.find(
+        {"source_collection": "_status"},
+        {"_id": 0, "source_id": 1, "count": 1, "created_at": 1},
+    ):
+        markers[row.get("source_id")] = {
+            "count": int(row.get("count") or 0),
+            "completed_at": row.get("created_at"),
+        }
+    return {"markers": markers}
+
+
+@router.get("/admin/reconciliation/report")
+async def reconciliation_report(user=Depends(require_owner)) -> Dict[str, Any]:
+    """Non-invasive legacy-vs-V2 reconciliation report.
+
+    Compares:
+      * notifications  → comm_inbox_items (migratable subset only)
+      * messages       → comm_messages (patient↔staff only)
+      * broadcasts     → comm_broadcasts
+      * broadcast_inbox→ comm_broadcast_recipients
+    """
+    return await comm_reconciliation.build_report(db)
