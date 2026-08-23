@@ -73,6 +73,25 @@ async def _handle_push_send(row: Dict[str, Any]) -> Dict[str, Any]:
                          "token_hash": tok.get("token_hash")})
         if r.get("ok"):
             any_ok = True
+            # ── Broadcast analytics hook (Comm-5) ──
+            # If this push was fired for a broadcast, stamp
+            # provider_accepted_at on the recipient row. We tie back
+            # via aggregate_type + user_id.
+            try:
+                if row.get("aggregate_type") == "broadcast":
+                    bid = row.get("aggregate_id")
+                    uid = (payload.get("user_id")
+                           or (tok.get("user_id") if isinstance(tok, dict) else None))
+                    if bid and uid:
+                        from datetime import datetime as _dt, timezone as _tz
+                        await _db.comm_broadcast_recipients.update_one(
+                            {"broadcast_id": bid, "user_id": uid,
+                             "provider_accepted_at": None},
+                            {"$set": {"provider_accepted_at": _dt.now(_tz.utc),
+                                       "delivery_status": "provider_accepted"}},
+                        )
+            except Exception:
+                pass
             continue
         # Permanent token error → invalidate the installation immediately.
         if r.get("category") == "invalidate":
@@ -81,6 +100,19 @@ async def _handle_push_send(row: Dict[str, Any]) -> Dict[str, Any]:
                 token_hash_hex=tok.get("token_hash") or "",
                 reason=str(r.get("code") or "invalidate"),
             )
+            # Broadcast analytics: record the provider error code.
+            try:
+                if row.get("aggregate_type") == "broadcast":
+                    bid = row.get("aggregate_id")
+                    uid = payload.get("user_id")
+                    if bid and uid:
+                        await _db.comm_broadcast_recipients.update_one(
+                            {"broadcast_id": bid, "user_id": uid},
+                            {"$set": {"provider_error_code": str(r.get("code") or "invalidate"),
+                                       "delivery_status": "provider_error"}},
+                        )
+            except Exception:
+                pass
 
     # If NOTHING succeeded, treat as transient failure so the outbox
     # retries with backoff — unless every result was "invalidate" (in

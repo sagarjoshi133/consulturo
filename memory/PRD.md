@@ -164,3 +164,31 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - **Verified via `tests/smoke_comm4_messaging.py`** — 14/14 conditions passing (idempotency, dedupe, state machine, unread counters, cross-patient isolation, staff-only gates, illegal transitions, non-staff assignee rejection).
 - **Frontend `CommunicationsProvider`** extended with `messageCounts.total_unread` + `conversation_count`. Refresh runs both count queries in parallel on foreground / 60s tick / push-tap. Still flag-gated via `/v2/communications/me`.
 - **Attachments still deferred** behind `COMMUNICATIONS_V2_ATTACHMENTS_ENABLED=false` per spec (no durable private storage decision made yet).
+
+## Comm-5 (Broadcast Studio) — SHIPPED (Jun 2026)
+- **Full lifecycle**: draft → pending_approval → approved (recipients frozen) → scheduled → dispatching → completed / partially_failed. Rejected/cancelled terminal states from appropriate pre-states. Server enforces every transition; illegal jumps rejected.
+- **Audience modes**: patients / staff / both / selected_patients / patients_with_future_appointments. Audience is FROZEN into `comm_broadcast_recipients` at approve time with `has_active_installation_at_freeze` + `excluded_reason` (consent opt-out). Dispatch NEVER re-queries the audience.
+- **Owner-only actions** (approve, reject, schedule, cancel, retry-failed); staff can create/edit/submit drafts.
+- **Dispatch via durable outbox**: `broadcast.dispatch` event enqueued with `available_at=scheduled_at`. Handler creates one inbox item per recipient (item_type=v2_broadcast, dedupe on unique index) and per-recipient `push.send` events (dedupe_key=`bcast:{id}:push:{uid}`) so retries never duplicate.
+- **Retry-failed** only requeues rows in `push_enqueue_error` or `provider_error` — excluded and already-accepted rows are untouched.
+- **Honest analytics**: `intended_recipients / excluded_recipients / inbox_items_created / push_eligible / push_enqueued / provider_accepted / provider_failed / invalid_tokens / app_opened / broadcast_read` — every counter INDEPENDENT. Spec-required non-conflation note included in the API response.
+- **Push handler hook**: on successful FCM send, `provider_accepted_at` stamped on the recipient row. On permanent error, `provider_error_code` recorded and delivery_status → `provider_error`. Inbox `mark_read` on a `v2_broadcast` item forwards `read_at` and `app_opened_at` to the recipient row.
+- **11 endpoints** under `/api/v2/communications/broadcasts/*`.
+- **Verified** (`tests/smoke_comm5_broadcasts.py`) — 15/15 acceptance conditions pass on 22 real patient users. Notable: freezing captured 1 opt-out correctly; excluded patients received zero inbox items; analytics counters stayed truthful post-dispatch (`broadcast_read=1`, `provider_accepted=0` — independent).
+
+## Comm-6 (Home Notice Banner) — SHIPPED (Jun 2026)
+- **Backend service** `services/comm_home_notices.py`: CRUD + `list_active_for_user` (audience filter patient/staff/both, active window, dismissal exclusion, priority ordering by urgency > style-priority > published_at desc).
+- **6 endpoints** under `/api/v2/communications/home-notices/*` and `/admin/home-notices/*`. Owner-only for admin write; any authenticated user for `active` and `dismiss`.
+- **Publication does NOT create push or inbox items** — spec-compliant. "Also create Broadcast" is a separate explicit action (Comm-5).
+- **Frontend** `src/comm-v2/home-notice-ticker.tsx`: horizontally-below-safe-area ticker; rotates every 6s when >1 notice; tap pauses + opens validated action; dismiss button (unless notice is non-dismissible); **reduce-motion aware** (static wrapped text when enabled); AsyncStorage-cached last successful response for offline fallback; foreground + 5-min periodic refresh.
+- **Wired into home screen** `(tabs)/index.tsx` — renders below hero card, above legacy AnnouncementsBanner. Flag-gated via server response (safe no-op for users outside canary).
+- **Two mock notices seeded** for owner review:
+  - `[warning]` "🕉️ Clinic closed for Diwali · Nov 12–14. Emergencies: call the on-call line…"
+  - `[success]` "✨ New: video consultations are now live. Book a video slot from the Bookings tab."
+
+## Canary status
+- **`COMMUNICATIONS_V2_CANARY_USER_IDS = [user_4775ed40276e]`** — Dr. Sagar Joshi (primary_owner, sagar.joshi133@gmail.com) is the first canary user.
+- Enabled for canary: `home_notices`, `messages`, `broadcasts`. Master `COMMUNICATIONS_V2_ENABLED` remains false so no other user sees any V2 UI yet.
+- Push v2 flag stays OFF pending physical-device acceptance test.
+
+## Comm V2 endpoint surface — 39 endpoints total

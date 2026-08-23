@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS, FONTS, RADIUS, DOCTOR_PHOTO_URL } from '../../src/theme';
+import { HomeNoticeTicker } from '../../src/comm-v2/home-notice-ticker';
 import { useDarkMode } from '../../src/dark-mode';
 import api from '../../src/api';
 import { useAuth } from '../../src/auth';
@@ -430,6 +431,16 @@ function PatientHome() {
             </SafeAreaView>
           </LinearGradient>
         </View>
+
+        {/* Comm V2 — Home Notice Ticker (flag-gated; canary users only until Comm-7 cutover). */}
+        <HomeNoticeTicker
+          onAction={(actionType, target) => {
+            if (actionType === 'open_booking') router.push('/(tabs)/book');
+            else if (actionType === 'open_home') router.push('/(tabs)');
+            else if (actionType === 'open_broadcast' && target) router.push(`/announcements/${target}` as any);
+            else if (actionType === 'open_conversation' && target) router.push(`/conversations/${target}` as any);
+          }}
+        />
 
         {/* Owner-curated announcements (patient home) */}
         <View style={{ paddingHorizontal: 16, marginTop: 12 }}>

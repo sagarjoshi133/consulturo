@@ -299,11 +299,31 @@ async def mark_read(db, *, user_id: str, item_ids: List[str]) -> int:
     if not item_ids:
         return 0
     now = _now()
+    # Read the (item_type, source_id) tuples BEFORE flipping so we can
+    # forward broadcast reads into comm_broadcast_recipients analytics.
+    broadcast_hits: List[str] = []
+    async for r in db.comm_inbox_items.find(
+        {"user_id": user_id, "id": {"$in": list(item_ids)},
+         "read_at": None, "archived_at": None,
+         "item_type": "v2_broadcast"},
+        {"_id": 0, "source_id": 1},
+    ):
+        if r.get("source_id"):
+            broadcast_hits.append(r["source_id"])
     res = await db.comm_inbox_items.update_many(
         {"user_id": user_id, "id": {"$in": list(item_ids)},
          "read_at": None, "archived_at": None},
         {"$set": {"read_at": now}},
     )
+    # Comm-5 analytics: forward first-time reads to broadcast recipient rows.
+    for bid in broadcast_hits:
+        try:
+            await db.comm_broadcast_recipients.update_one(
+                {"broadcast_id": bid, "user_id": user_id, "read_at": None},
+                {"$set": {"read_at": now, "app_opened_at": now}},
+            )
+        except Exception:
+            pass
     return int(res.modified_count or 0)
 
 

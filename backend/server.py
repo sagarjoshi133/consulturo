@@ -380,6 +380,13 @@ async def _notification_v2_boot() -> None:
                 print(f"[startup] direct FCM v1 NOT configured: {_fcm.last_init_error()}")
         except Exception as _e:
             print(f"[startup] comm_v2 push handler wiring failed: {_e}")
+        # Register broadcast.dispatch handler on the comm outbox (Comm-5).
+        try:
+            from services.comm_broadcasts import register_handlers as _bcast_reg
+            _bcast_reg()
+            print("[startup] comm_v2 broadcast dispatcher registered")
+        except Exception as _e:
+            print(f"[startup] comm_v2 broadcast handler wiring failed: {_e}")
 
     _asyncio.get_event_loop().create_task(_run())
 
@@ -3574,6 +3581,18 @@ app.include_router(_comm_v2_inbox_router)
 # resolved / archived. Idempotency-Key required for message create.
 from routers.comm_v2_messaging import router as _comm_v2_messaging_router
 app.include_router(_comm_v2_messaging_router)
+
+# ─── Communications V2 (Comm-5 Broadcast Studio) ───
+# draft → pending_approval → approved (recipients frozen) →
+# scheduled → dispatching → completed / partially_failed.
+from routers.comm_v2_broadcasts import router as _comm_v2_broadcasts_router
+app.include_router(_comm_v2_broadcasts_router)
+
+# ─── Communications V2 (Comm-6 Home Notice Banner) ───
+# Horizontally scrolling ticker on home screen. Publication alone
+# does NOT emit push or inbox — separate "Also create Broadcast".
+from routers.comm_v2_notices import router as _comm_v2_notices_router
+app.include_router(_comm_v2_notices_router)
 
 
 @app.on_event("startup")
