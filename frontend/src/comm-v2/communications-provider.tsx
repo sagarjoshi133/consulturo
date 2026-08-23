@@ -26,6 +26,11 @@ export type InboxCounts = {
   by_category: Record<string, number>;
 };
 
+export type MessagesCounts = {
+  total_unread: number;
+  conversation_count: number;
+};
+
 export type InboxItem = {
   id: string;
   category: string;
@@ -45,8 +50,10 @@ export type InboxItem = {
 type CommV2Ctx = {
   /** Comm V2 master switch — false when flag off + user not canary. */
   enabled: boolean;
-  /** Server-computed counts. Never derived on the client. */
+  /** Server-computed notification-inbox counts. Never derived on the client. */
   counts: InboxCounts;
+  /** Server-computed message counts (Comm-4). */
+  messageCounts: MessagesCounts;
   /** Explicit refresh (e.g. after push tap). */
   refresh: () => Promise<void>;
   /** Cursor-paginated inbox fetch. */
@@ -67,10 +74,12 @@ type CommV2Ctx = {
 };
 
 const DEFAULT_COUNTS: InboxCounts = { total_unread: 0, by_category: {} };
+const DEFAULT_MSG_COUNTS: MessagesCounts = { total_unread: 0, conversation_count: 0 };
 
 const CommV2Context = createContext<CommV2Ctx>({
   enabled: false,
   counts: DEFAULT_COUNTS,
+  messageCounts: DEFAULT_MSG_COUNTS,
   refresh: async () => {},
   fetchInbox: async () => ({ items: [], next_cursor: null }),
   markRead: async () => 0,
@@ -98,6 +107,7 @@ export function CommunicationsProvider({ children }: { children: React.ReactNode
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [counts, setCounts] = useState<InboxCounts>(DEFAULT_COUNTS);
+  const [messageCounts, setMessageCounts] = useState<MessagesCounts>(DEFAULT_MSG_COUNTS);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -122,11 +132,39 @@ export function CommunicationsProvider({ children }: { children: React.ReactNode
     if (!user || inFlight.current) return;
     inFlight.current = true;
     try {
-      const r = await api.get('/v2/communications/inbox/counts');
-      setCounts({
-        total_unread: Number(r?.data?.total_unread || 0),
-        by_category: (r?.data?.by_category || {}) as Record<string, number>,
-      });
+      // Run both count queries in parallel.
+      const [inboxRes, convRes] = await Promise.allSettled([
+        api.get('/v2/communications/inbox/counts'),
+        api.get('/v2/communications/conversations', { params: { limit: 100 } }),
+      ]);
+
+      if (inboxRes.status === 'fulfilled') {
+        const r: any = inboxRes.value;
+        setCounts({
+          total_unread: Number(r?.data?.total_unread || 0),
+          by_category: (r?.data?.by_category || {}) as Record<string, number>,
+        });
+      }
+
+      if (convRes.status === 'fulfilled') {
+        const items: any[] = (convRes.value?.data?.items || []) as any[];
+        // Sum unread per side depending on whether this user is the
+        // patient in the conversation or on the clinic side. The
+        // conversation payload already carries both counters.
+        let total = 0;
+        for (const c of items) {
+          const isPatient = c?.patient_user_id === (user as any)?.user_id;
+          const n = isPatient
+            ? Number(c?.unread_for_patient || 0)
+            : Number(c?.unread_for_clinic || 0);
+          total += n;
+        }
+        setMessageCounts({
+          total_unread: total,
+          conversation_count: items.length,
+        });
+      }
+
       setLastRefreshedAt(Date.now());
       setLastError(null);
     } catch (e: any) {
@@ -206,13 +244,14 @@ export function CommunicationsProvider({ children }: { children: React.ReactNode
   const value = useMemo<CommV2Ctx>(() => ({
     enabled,
     counts,
+    messageCounts,
     refresh,
     fetchInbox,
     markRead,
     archive: archiveItem,
     lastRefreshedAt,
     lastError,
-  }), [enabled, counts, refresh, fetchInbox, markRead, archiveItem, lastRefreshedAt, lastError]);
+  }), [enabled, counts, messageCounts, refresh, fetchInbox, markRead, archiveItem, lastRefreshedAt, lastError]);
 
   return <CommV2Context.Provider value={value}>{children}</CommV2Context.Provider>;
 }

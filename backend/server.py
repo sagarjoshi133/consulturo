@@ -3568,6 +3568,13 @@ app.include_router(_comm_v2_push_router)
 from routers.comm_v2_inbox import router as _comm_v2_inbox_router
 app.include_router(_comm_v2_inbox_router)
 
+# ─── Communications V2 (Comm-4 Messaging) ───
+# One "ConsultUro Clinic" conversation per patient. State machine:
+# open / awaiting_clinic / awaiting_patient / escalated_to_doctor /
+# resolved / archived. Idempotency-Key required for message create.
+from routers.comm_v2_messaging import router as _comm_v2_messaging_router
+app.include_router(_comm_v2_messaging_router)
+
 
 @app.on_event("startup")
 async def _ensure_tenant_indexes() -> None:

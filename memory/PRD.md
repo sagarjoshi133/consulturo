@@ -145,3 +145,22 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - **Legacy backfill migration** `migrations/comm_v2_inbox_backfill.py`: idempotent, rerunnable copy of `db.notifications` → `comm_inbox_items` with dedupe via `comm_migration_map`. Runs on startup; bails out fast when done. Preserves read/unread state.
 - **Frontend** `src/comm-v2/communications-provider.tsx`: single source of truth for unread counts + refresh. Foreground refresh via `AppState`, 60s periodic tick, and `triggerCommV2Refresh()` external hook wired to push-tap. Flag-gated via `/api/v2/communications/me` (safe no-op when master flag is off).
 - **Verified** (`tests/smoke_comm3_inbox.py` + real-data backfill): 108 legacy rows → 106 mirrored + 2 personal-msgs skipped; idempotent 2nd run = 0 writes; 0 arbitrary-URL action_targets; category coercion, dedupe, cursor pagination, batch read-only-supplied-ids, cross-user isolation, archive-with-include_archived — all pass.
+
+## Comm-4 (Patient ↔ Clinic Messaging V2) — SHIPPED (Jun 2026)
+- **One "ConsultUro Clinic" conversation per patient** — unique index on `comm_conversations.patient_user_id`, idempotent `get_or_create` with race-safe collision handling.
+- **Conversation state machine**: `open / awaiting_clinic / awaiting_patient / escalated_to_doctor / resolved / archived`. Server enforces all transitions; illegal transitions raise `ValueError`. Patient send auto-transitions to `awaiting_clinic`, staff send to `awaiting_patient`.
+- **Message state machine**: `saved → recipient_inbox_created → push_queued → provider_accepted → recipient_app_synced → read`. Delivery is NEVER declared on FCM 200 alone — `recipient_app_synced` is bumped only when the recipient's app actually lists the message; `read` requires explicit `POST /messages/{id}/read`.
+- **Idempotency-Key REQUIRED** for message create (header `Idempotency-Key` OR `body.idempotency_key`). Scoped by sender to prevent cross-user collision on short keys. Replays return the ORIGINAL persisted message body.
+- **Sender identity dual layer**: `sender_display = "ConsultUro Clinic"` (patient-facing brand), `sender_audit = {actor_user_id, actor_role, actor_display_name}` (compliance-preserved actual sender).
+- **Fanout via durable outbox**: staff senders → all owner-tier users receive an inbox item + push event; patient senders → owner-tier gets an inbox item + push. Stable `dedupe_key = msgpush:{msg_id}:{recipient_uid}` so retries never duplicate. Push copy is GENERIC (spec-compliant privacy) — real content only inside the authenticated app.
+- **Per-side unread counters**: `unread_for_patient` / `unread_for_clinic`. Reading opposite-side message decrements ONLY the reader's side. Reading own message is a no-op. Double-read is idempotent.
+- **Endpoints (Comm-4, 9 new)**:
+  - `GET  /api/v2/communications/conversations` (staff: all + unread-first + search + state filter; patient: own only, auto-created on first GET)
+  - `POST /api/v2/communications/conversations/get-or-create` (patient: own; staff: with `patient_user_id`)
+  - `GET  /api/v2/communications/conversations/{id}/messages` (cursor pagination by sequence_number; bumps `recipient_app_synced` for received msgs, writes `comm_message_receipts.delivered_at`)
+  - `POST /api/v2/communications/conversations/{id}/messages` (requires Idempotency-Key)
+  - `POST /api/v2/communications/messages/{id}/read` (bumps state → `read`, writes receipt read_at, decrements opposite-side counter)
+  - `POST /api/v2/communications/conversations/{id}/assign|escalate|resolve|reopen` (staff-only; illegal transitions rejected; audit logged to `comm_audit_log`)
+- **Verified via `tests/smoke_comm4_messaging.py`** — 14/14 conditions passing (idempotency, dedupe, state machine, unread counters, cross-patient isolation, staff-only gates, illegal transitions, non-staff assignee rejection).
+- **Frontend `CommunicationsProvider`** extended with `messageCounts.total_unread` + `conversation_count`. Refresh runs both count queries in parallel on foreground / 60s tick / push-tap. Still flag-gated via `/v2/communications/me`.
+- **Attachments still deferred** behind `COMMUNICATIONS_V2_ATTACHMENTS_ENABLED=false` per spec (no durable private storage decision made yet).
