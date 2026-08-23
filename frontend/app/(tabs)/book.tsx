@@ -93,6 +93,37 @@ export default function Book() {
   const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | ''>('');
+  // Track whether we've already autofilled from the logged-in profile
+  // so a subsequent re-render doesn't clobber staff-typed values.
+  const [autofilledFromProfile, setAutofilledFromProfile] = useState(false);
+  // ── Autofill contact details for logged-in PATIENTS ──
+  // When a patient user is signed in, prefill the form with their
+  // registered phone / name / country so booking their own visit is a
+  // one-tap job. Staff/owner accounts stay blank because they almost
+  // always book on behalf of somebody else. Every field stays fully
+  // editable — user can wipe/replace to book for a family member.
+  useEffect(() => {
+    if (autofilledFromProfile) return;
+    if (!user) return;
+    const role = String((user as any).role || '').toLowerCase();
+    // Only prefill for patients (or unclassified roles). Staff booking
+    // for a patient should always start blank.
+    if (role && role !== 'patient') return;
+    const anyUser = user as any;
+    const nextName = anyUser.name || '';
+    // Backend stores phone as digits (or E.164). Strip whatever prefix
+    // matches the current country code so the digits field is clean.
+    let nextPhone = String(anyUser.phone || '').replace(/\D/g, '');
+    const cc = String(anyUser.country_code || '').replace(/\D/g, '');
+    if (cc && nextPhone.startsWith(cc)) nextPhone = nextPhone.slice(cc.length);
+    if (!patientName && nextName) setPatientName(nextName);
+    if (!phone && nextPhone) setPhone(nextPhone);
+    if (!age && anyUser.age) setAge(String(anyUser.age));
+    if (!gender && anyUser.gender && ['Male', 'Female', 'Other'].includes(anyUser.gender)) {
+      setGender(anyUser.gender);
+    }
+    setAutofilledFromProfile(true);
+  }, [user, autofilledFromProfile, patientName, phone, age, gender]);
   const [reason, setReason] = useState('');
   const [mode, setMode] = useState<'in-person' | 'online'>('in-person');
   // When mode == 'online', which channel does the patient prefer?

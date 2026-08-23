@@ -44,9 +44,27 @@ def _iso(row: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/api/registry/patients")
 async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
+                          registration_status: str = "all",
                           user=Depends(require_registry_access)):
+    """Search the canonical patient registry.
+
+    `registration_status`:
+      * `all`          — every non-merged row (default).
+      * `registered`   — rows whose phone/email matches a `users` doc
+                          with role='patient' (they have an account).
+      * `unregistered` — rows with NO matching patient user account.
+                          These are typically walk-in / phone-in bookings
+                          from people who never signed up; their contact
+                          details are captured so staff can convert them
+                          into registered patients later.
+    """
     limit = max(1, min(int(limit or 50), 200))
     skip = max(0, int(skip or 0))
+    status = (registration_status or "all").lower().strip()
+    if status not in ("all", "registered", "unregistered"):
+        raise HTTPException(status_code=400,
+                             detail="registration_status must be all|registered|unregistered")
+
     flt: Dict[str, Any] = {}
     qs = (q or "").strip()
     if qs:
@@ -60,8 +78,77 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
         if digits:
             ors.append({"phone_digits": {"$regex": digits + "$"}})
         flt["$or"] = ors
+
+    # ── Registration-status classification ──
+    # A patient is REGISTERED if a `users` row exists with matching
+    # normalised phone (last-10 digits) OR email. This runs as a fast
+    # $in filter after we materialise the set of patient user IDs.
+    if status in ("registered", "unregistered"):
+        # Collect the set of phone_digits / emails that ARE registered.
+        registered_phones: set = set()
+        registered_emails: set = set()
+        async for u in db.users.find(
+            {"role": {"$in": ["patient", None]}},
+            {"_id": 0, "phone": 1, "email": 1},
+        ):
+            ph = re.sub(r"\D", "", u.get("phone") or "")
+            if ph:
+                registered_phones.add(ph[-10:])
+            em = (u.get("email") or "").strip().lower()
+            if em:
+                registered_emails.add(em)
+        if status == "registered":
+            flt.setdefault("$and", [])
+            flt["$and"].append({
+                "$or": [
+                    {"phone_digits": {"$in": list(registered_phones)}},
+                    {"email": {"$in": list(registered_emails)}},
+                ]
+            })
+        else:  # unregistered
+            flt.setdefault("$and", [])
+            flt["$and"].append({
+                "phone_digits": {"$nin": list(registered_phones)},
+                "email": {"$nin": list(registered_emails)},
+            })
+
     rows = await patients_repo.search(flt, limit=limit, skip=skip)
-    return {"items": [_iso(r) for r in rows], "limit": limit, "skip": skip}
+    return {"items": [_iso(r) for r in rows], "limit": limit, "skip": skip,
+             "registration_status": status}
+
+
+@router.get("/api/registry/patients/summary")
+async def registry_summary(user=Depends(require_registry_access)):
+    """One-shot counts for tab badges: total, registered, unregistered.
+
+    Cheap enough to hit on every screen open — uses a single sweep of
+    `db.users` to build the registered set, then two count_documents.
+    """
+    registered_phones: List[str] = []
+    registered_emails: List[str] = []
+    async for u in db.users.find(
+        {"role": {"$in": ["patient", None]}},
+        {"_id": 0, "phone": 1, "email": 1},
+    ):
+        ph = re.sub(r"\D", "", u.get("phone") or "")
+        if ph:
+            registered_phones.append(ph[-10:])
+        em = (u.get("email") or "").strip().lower()
+        if em:
+            registered_emails.append(em)
+    total = await db.patients.count_documents({"merged_into": {"$exists": False}})
+    registered = await db.patients.count_documents({
+        "merged_into": {"$exists": False},
+        "$or": [
+            {"phone_digits": {"$in": registered_phones}},
+            {"email": {"$in": registered_emails}},
+        ],
+    })
+    return {
+        "total": int(total),
+        "registered": int(registered),
+        "unregistered": int(total) - int(registered),
+    }
 
 
 @router.get("/api/registry/patients/{patient_id}")

@@ -99,6 +99,27 @@ export default function StaffPatientsScreen() {
         >
           <CockpitHeader subtitle="Look up a patient by phone number" />
 
+          {/* Quick access to the full patient directory + Unregistered tab.
+              This is the primary browse surface — search below is a
+              secondary phone-first shortcut. */}
+          <TouchableOpacity
+            onPress={() => router.push('/patients' as any)}
+            activeOpacity={0.8}
+            style={styles.directoryTile}
+            testID="staff-patients-open-directory"
+          >
+            <View style={styles.directoryIcon}>
+              <Ionicons name="people-circle" size={28} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.directoryTitle}>Patient directory</Text>
+              <Text style={styles.directorySub}>
+                Registered · Unregistered (walk-ins) · All
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+
           {/* Search box */}
           <View style={styles.searchRow}>
             <View style={styles.inputWrap}>
@@ -365,5 +386,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  directoryTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    marginBottom: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  directoryIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.primary + '18',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  directoryTitle: {
+    ...FONTS.body, fontSize: 15, fontWeight: '700', color: COLORS.textPrimary,
+  },
+  directorySub: {
+    ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, marginTop: 2,
   },
 });

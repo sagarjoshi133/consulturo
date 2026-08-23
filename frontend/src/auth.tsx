@@ -13,6 +13,13 @@ export interface User {
   name: string;
   picture?: string;
   role: 'patient' | 'doctor' | 'owner' | 'assistant' | 'reception' | 'nursing' | string;
+  /** Phone in E.164 or normalised digits, when the user has completed
+   *  phone verification. Consumed by the booking form to autofill the
+   *  patient contact number (still editable — see book.tsx). */
+  phone?: string;
+  country_code?: string;
+  age?: string;
+  gender?: 'Male' | 'Female' | 'Other' | string;
   /** Granted by owner — gives same dashboard tabs as owner */
   dashboard_full_access?: boolean;
   /** Convenience flag set by /auth/me: role==='owner' OR dashboard_full_access */
