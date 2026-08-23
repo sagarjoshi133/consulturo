@@ -99,8 +99,36 @@ export default function StaffPatientDb() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [permError, setPermError] = useState(false);
+  const [summary, setSummary] = useState<{
+    total: number; registered: number; unregistered: number;
+  } | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    total_invited: number; converted_total: number;
+    conversion_rate_total: number;
+    converted_within_7d: number; converted_within_30d: number;
+  } | null>(null);
 
   const months = useMemo(() => recentMonths(6), []);
+
+  // Load Unregistered summary + invite analytics from the same call
+  // pattern as /app/patients — this way the Patients bottom tab
+  // exposes the new directory tile and conversion insights inline.
+  React.useEffect(() => {
+    if (!canAccess) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [sumRes, anaRes] = await Promise.all([
+          api.get('/registry/patients/summary').catch(() => ({ data: null })),
+          api.get('/registry/invites/analytics').catch(() => ({ data: null })),
+        ]);
+        if (cancelled) return;
+        if (sumRes?.data) setSummary(sumRes.data);
+        if (anaRes?.data) setAnalytics(anaRes.data);
+      } catch { /* non-fatal */ }
+    })();
+    return () => { cancelled = true; };
+  }, [canAccess]);
 
   // Debounce the search input by 280 ms so we don't fire a request
   // on every keystroke.
@@ -235,6 +263,52 @@ export default function StaffPatientDb() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ── Directory tile (Unregistered / Duplicates / Bulk invite) ── */}
+      <TouchableOpacity
+        onPress={() => router.push('/patients' as any)}
+        activeOpacity={0.85}
+        style={styles.dirTile}
+        testID="patient-db-open-directory"
+      >
+        <View style={styles.dirIcon}>
+          <Ionicons name="people-circle" size={26} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.dirTitle}>Patient directory</Text>
+          <Text style={styles.dirSub}>
+            {summary
+              ? `Unregistered · ${summary.unregistered}   ·   Registered · ${summary.registered}`
+              : 'Registered · Unregistered · Duplicates · Bulk invite'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+
+      {/* ── Invite conversion insight (owner-only via /invites/analytics) ── */}
+      {analytics && analytics.total_invited > 0 ? (
+        <TouchableOpacity
+          onPress={() => router.push('/patients' as any)}
+          activeOpacity={0.85}
+          style={styles.analyticsTile}
+          testID="patient-db-invite-analytics"
+        >
+          <View style={styles.analyticsIcon}>
+            <Ionicons name="trending-up" size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.analyticsLbl}>Invite → sign-up conversion</Text>
+            <Text style={styles.analyticsVal}>
+              {analytics.converted_total} of {analytics.total_invited}{' '}
+              walk-ins signed up ·{' '}
+              <Text style={{ color: COLORS.success, fontWeight: '700' }}>
+                {(analytics.conversion_rate_total * 100).toFixed(0)}%
+              </Text>
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      ) : null}
 
       {/* Search */}
       <View style={styles.searchRow}>
@@ -490,4 +564,36 @@ const styles = StyleSheet.create({
   empty: { padding: 32, alignItems: 'center', gap: 8 },
   emptyTitle: { ...FONTS.h2, fontSize: 16, color: COLORS.textPrimary, marginTop: 12, textAlign: 'center' },
   emptySub: { ...FONTS.body, fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', maxWidth: 320, lineHeight: 18 },
+  // ── Directory tile + invite conversion insight ──
+  dirTile: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginTop: 10, padding: 12,
+    backgroundColor: '#fff', borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  dirIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: COLORS.primary + '18',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dirTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  dirSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  analyticsTile: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginTop: 8, padding: 12,
+    backgroundColor: '#fff', borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+    borderLeftWidth: 3, borderLeftColor: COLORS.primary,
+  },
+  analyticsIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.primary + '15',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  analyticsLbl: {
+    fontSize: 11, fontWeight: '700', color: COLORS.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2,
+  },
+  analyticsVal: { fontSize: 13, color: COLORS.textSecondary },
+
 });

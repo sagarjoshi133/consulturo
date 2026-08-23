@@ -120,3 +120,87 @@ stamping, no-contact 400, STRONG phone dup, WEAK name dup, unrelated
 name excluded, merge absorbs, and merged rows drop out of the next
 duplicates fetch. PASSING.
 
+---
+
+## Bulk Invites & Invite Analytics (Session 3)
+
+### Backend (`routers/patient_registry_bulk.py`)
+
+`POST /api/registry/invites/bulk`
+  * Body: `{patient_ids[], template_id?, send_via_wa_business?}`
+  * Uses `_build_invite_payload()` on every ID — same magic-link /
+    wa.me / SMS / mailto generation as the single-patient endpoint.
+  * When `template_id` is supplied, its `title + body` becomes the
+    override message (bumps template use_count / last_used_at just
+    like the single-apply endpoint).
+  * Records a batch doc in `walkin_invite_batches` for the audit
+    trail: `{batch_id, template_id, template_snapshot, patient_ids,
+    ok_count, error_count, created_by, created_at,
+    send_via_wa_business_requested}`.
+  * Returns `{ok_count, error_count, results[]}` where each result
+    contains the share payload OR an `error` code (`no_contact`,
+    `not_found`, `invite_failed`).
+  * `send_via_wa_business` is accepted but silently falls back to
+    queue mode (placeholder for future WA Business API integration).
+
+`GET /api/registry/invites/analytics`
+  * "Any signup with matching phone/email AFTER invited_at counts as
+    conversion." Users created BEFORE invited_at (pre-existing accounts)
+    are NOT counted.
+  * Returns `{total_invited, invites_last_7d, invites_last_30d,
+    converted_total, converted_within_7d, converted_within_30d,
+    conversion_rate_total, conversion_rate_7d, conversion_rate_30d}`.
+  * TZ-safe: coerces every Mongo datetime to UTC-aware before comparing.
+
+`GET /api/registry/invites/batches?limit=`
+  * Lists the last N bulk-invite batches with counts + template
+    snapshot. Redacts `patient_ids` (only `patient_count` is
+    surfaced) to keep the payload lean.
+
+Route paths intentionally live under `/registry/invites/*` — putting
+them under `/registry/patients/*` would have been captured by the
+existing parametric `/registry/patients/{patient_id}` route.
+
+### Frontend
+
+Patients directory (`app/patients/index.tsx`):
+  * **Analytics tile** at the top of the screen (hidden when
+    total_invited=0), showing overall conversion + 7d/30d deltas.
+    Tap-through anchor is the screen itself for the MVP.
+  * **Multi-select mode**:
+    - Enter via "Select" button (Unregistered tab only) OR long-press
+      on any walk-in card.
+    - Cards render a checkbox instead of the avatar; row background
+      turns primary-tinted when selected.
+    - Sticky bottom bar shows count + "Bulk Invite" CTA.
+  * **Template picker sheet** (opens on "Bulk Invite"):
+    - "Default invite text" row + one row per active Broadcast Studio
+      template (via `/v2/communications/broadcast-templates`).
+    - Tap = fire `/registry/invites/bulk` and swap to queue view.
+  * **Queue view**:
+    - Per-patient row with a small WA / SMS / Email button that
+      opens the pre-filled compose sheet on the OS.
+    - Errored patients show a red hint ("no phone/email on file", etc).
+    - "Done" closes the flow and exits select mode.
+
+Owner dashboard card (`src/home/super-owner-home.tsx`):
+  * "Invite → sign-up" card between platform-stats and demo accounts,
+    only rendered when total_invited > 0.
+  * Shows "X of Y walk-ins signed up · 42% conversion · Last 7d: A ·
+    30d: B".
+  * Tap → deep-links to `/patients` so owner can see the underlying
+    list.
+
+### Smoke test
+`tests/smoke_walkin_bulk_analytics.py` — 8 HTTP assertions:
+  * bulk invite with template override (3 ok / 2 errors mixed)
+  * invited_at + invite_count stamped for every processed patient
+  * template use_count + last_used_at bumped
+  * batch doc persisted
+  * /invite-batches lists the new batch
+  * analytics baseline snapshot
+  * conversion count jumps by exactly 1 after simulating a signup
+  * pre-existing users (created BEFORE invite) NOT counted
+  PASSING.
+
+

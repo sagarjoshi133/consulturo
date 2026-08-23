@@ -19,6 +19,7 @@ import {
   RefreshControl,
   Image,
   Platform,
+  Pressable,
 } from 'react-native';
 import Animated, {
   useAnimatedScrollHandler,
@@ -62,12 +63,21 @@ export default function SuperOwnerHome({
   const insets = useSafeAreaInsets();
   const bubbleBottom = Platform.OS === 'web' ? 24 : 64 + insets.bottom + 20;
   const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [inviteAnalytics, setInviteAnalytics] = useState<{
+    total_invited: number; converted_total: number;
+    conversion_rate_total: number;
+    converted_within_7d: number; converted_within_30d: number;
+  } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const r = await api.get('/admin/platform-stats');
-      setStats(r.data);
+      const [statsRes, invRes] = await Promise.all([
+        api.get('/admin/platform-stats'),
+        api.get('/registry/invites/analytics').catch(() => ({ data: null })),
+      ]);
+      setStats(statsRes.data);
+      if (invRes?.data) setInviteAnalytics(invRes.data);
     } catch {
       /* ignore */
     }
@@ -257,6 +267,37 @@ export default function SuperOwnerHome({
             last
           />
         </Card>
+
+        {inviteAnalytics && inviteAnalytics.total_invited > 0 && (
+          <>
+            <SectionHeader title="Invite → sign-up" />
+            <Card>
+              <Pressable
+                onPress={() => router.push('/patients' as any)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+              >
+                <View style={{
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: COLORS.primary + '18',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Ionicons name="trending-up" size={22} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>
+                    {inviteAnalytics.converted_total} of {inviteAnalytics.total_invited} walk-ins signed up
+                  </Text>
+                  <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+                    {(inviteAnalytics.conversion_rate_total * 100).toFixed(0)}% conversion ·
+                    {' '}Last 7d: {inviteAnalytics.converted_within_7d} ·
+                    {' '}30d: {inviteAnalytics.converted_within_30d}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+              </Pressable>
+            </Card>
+          </>
+        )}
 
         {stats && stats.demo_accounts > 0 && (
           <>

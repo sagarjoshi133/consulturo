@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 24 — Verified the fix that exposes the new Patient directory + Invite conversion tiles on the staff Patients bottom tab (via staff-patient-db.tsx). Backend 7/7 pytests pass against the public URL with owner token (registry summary, invite analytics, invite batches, bulk invite). Frontend UI test on /tools confirms: (1) 'Patient directory' tile (testID patient-db-open-directory) renders with live subtitle 'Unregistered · 5   ·   Registered · 2'; (2) 'Invite → sign-up conversion' tile (testID patient-db-invite-analytics) renders with '0 of 2 walk-ins signed up · 0%' because total_invited > 0; (3) tapping the directory tile navigates to /patients and the Unregistered/Registered/All pill tabs render; (4) existing Patient Database features (header, search input, month pills, Export CSV, patient list) are still present — no regression. Deprecated style warnings detected (pre-existing): 'shadow*'/'textShadow*' style props and props.pointerEvents (React Native web deprecations, not this iteration).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/tools (StaffPatientDb via bottom tab)",
+        "issues": [
+          "Screenshot shows a persistent left-side web navigation drawer occupying ~50% of the 390px mobile viewport (Home / Book / Inbox / Dashboard / etc.), squeezing the 'Patient Database' title into ~1 character per line. Appears pre-existing in the web-preview layout, not caused by this iteration; flagging for main-agent visibility."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      { "component": "Global styles", "issue": "React-Native-Web deprecation warnings: 'shadow*' and 'textShadow*' style props are deprecated — should use 'boxShadow' / 'textShadow' shorthand. Reference: multiple files (framework-wide)." },
+      { "component": "Global props", "issue": "props.pointerEvents is deprecated — should use style.pointerEvents." },
+      { "component": "Animated", "issue": "'Animated: useNativeDriver is not supported' warning on web. Non-fatal but noisy." }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_registry_invites_iteration24.py",
+    "/app/test_reports/pytest/iteration24_registry_invites.xml"
+  ],
+  "action_items": [
+    "None required for this iteration — the reported bug is FIXED. The two new tiles are visible on the Patients bottom-tab screen for owner/staff role and navigate correctly to /patients.",
+    "Optional cleanup (unrelated to this iter): sweep 'shadow*' / 'textShadow*' style props to boxShadow/textShadow and props.pointerEvents → style.pointerEvents to silence RN-Web deprecation warnings.",
+    "Optional: investigate why the web-preview mobile viewport shows a persistent side drawer eating half the screen — squeezes header layout to single-char columns."
+  ],
+  "critical_code_review_comments": [
+    "staff-patient-db.tsx (600 lines) is approaching the 700-line soft cap; consider splitting the row-card + pill components into a sibling file for future maintainability.",
+    "The two /registry endpoints are fetched with Promise.all + .catch(()=>({data:null})) which is fine, but summary is silently absent on failure — subtitle then falls back to a static 'Registered · Unregistered · Duplicates · Bulk invite' string. That's acceptable but consider a subtle retry or error toast if the endpoint 500s so the owner knows counts are stale."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_registry_invites_iteration24.py"
+  ],
+  "success_rate": { "backend": "100% (7/7)", "frontend": "100% — all 4 UI expectations met" },
+  "seed_data_creation": "No new seed data. Used existing owner token _FUheqDsTzh8q1HO0t7vfrmYaUcBiM1hxK0VffuyZXM and pre-existing 7 patients (5 unregistered / 2 registered) + 2 invited walk-ins already in the DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The staff bottom-tab 'Patients' slot is rendered by /app/frontend/app/(tabs)/tools.tsx which mounts <StaffPatientDb/> from src/home/staff-patient-db.tsx (NOT staff-patients-screen.tsx). Directory tile testID = patient-db-open-directory. Analytics tile testID = patient-db-invite-analytics (conditional on total_invited > 0). Public backend endpoints used: GET /api/registry/patients/summary, GET /api/registry/invites/analytics, GET /api/registry/invites/batches, POST /api/registry/invites/bulk. Owner token in /app/memory/test_credentials.md.",
+  "rca_of_issue": "Original bug: Two similar screens (staff-patient-db.tsx and staff-patients-screen.tsx) existed. Prior iterations added new features (multi-select bulk invite, invite analytics) only to /patients (staff-patients-screen). Bottom-tab routed to /tools which mounts staff-patient-db.tsx for staff — so users never saw the new features. Fix: added a 'Patient directory' tile + 'Invite → sign-up conversion' tile to staff-patient-db.tsx that both navigate to /patients, and hydrate their subtitles/values from /api/registry/patients/summary + /api/registry/invites/analytics on mount. Verified end-to-end in this iteration."
+}

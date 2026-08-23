@@ -3472,6 +3472,7 @@ from routers.notifications_v2 import router as _notifications_v2_router
 from routers.files import router as _files_router
 from routers.capabilities import router as _capabilities_router
 from routers.patient_registry import router as _patient_registry_router
+from routers.patient_registry_bulk import router as _patient_registry_bulk_router
 from routers.client_crash import router as _client_crash_router
 app.include_router(_me_tier_router)
 app.include_router(_settings_homepage_router)
@@ -3500,6 +3501,7 @@ app.include_router(_notifications_v2_router)
 app.include_router(_files_router)
 app.include_router(_capabilities_router)
 app.include_router(_patient_registry_router)
+app.include_router(_patient_registry_bulk_router)
 app.include_router(_client_crash_router)
 
 # ─── Phase-3 router registrations ───

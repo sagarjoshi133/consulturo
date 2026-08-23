@@ -71,20 +71,41 @@ export default function UnregisteredPatientsScreen() {
   const [summary, setSummary] = useState<{
     total: number; registered: number; unregistered: number;
   } | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    total_invited: number; converted_total: number;
+    conversion_rate_total: number;
+    converted_within_7d: number; converted_within_30d: number;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // ── Multi-select mode ──
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = (pid: string) => {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      return next;
+    });
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setErr(null);
     try {
-      const [listRes, summaryRes] = await Promise.all([
+      const [listRes, summaryRes, analyticsRes] = await Promise.all([
         api.get('/registry/patients', {
           params: { q: q.trim(), limit: 100, registration_status: tab },
         }),
         api.get('/registry/patients/summary').catch(() => ({ data: null })),
+        api.get('/registry/invites/analytics').catch(() => ({ data: null })),
       ]);
       setItems(Array.isArray(listRes?.data?.items) ? listRes.data.items : []);
       if (summaryRes?.data) setSummary(summaryRes.data);
+      if (analyticsRes?.data) setAnalytics(analyticsRes.data);
     } catch (e: any) {
       const d = e?.response?.data?.detail;
       const msg = typeof d === 'string' ? d
@@ -232,15 +253,105 @@ export default function UnregisteredPatientsScreen() {
     }
   };
 
+  // ── Bulk invite flow ──
+  const [bulkModal, setBulkModal] = useState<'template_picker' | 'queue' | null>(null);
+  const [bulkTemplates, setBulkTemplates] = useState<any[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<any | null>(null);
+
+  const openBulkPicker = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkModal('template_picker');
+    try {
+      const r = await api.get('/v2/communications/broadcast-templates',
+        { params: { limit: 50 } });
+      setBulkTemplates(Array.isArray(r?.data?.items) ? r.data.items : []);
+    } catch {
+      setBulkTemplates([]);
+    }
+  };
+
+  const sendBulk = async (templateId: string | null) => {
+    setBulkLoading(true);
+    try {
+      const r = await api.post('/registry/invites/bulk', {
+        patient_ids: Array.from(selectedIds),
+        template_id: templateId,
+      });
+      setBulkResult(r.data);
+      setBulkModal('queue');
+      // Optimistically flag the invited rows with the "invited" chip.
+      const okIds = new Set<string>(
+        (r.data?.results || [])
+          .filter((x: any) => !x.error)
+          .map((x: any) => x.patient_id),
+      );
+      setItems((cur) => cur.map((x) =>
+        okIds.has(x.patient_id)
+          ? { ...x, invite_count: (x.invite_count || 0) + 1,
+              invited_at: new Date().toISOString() }
+          : x,
+      ));
+      // Refresh analytics.
+      load({ silent: true });
+    } catch (e: any) {
+      Alert.alert('Bulk invite failed',
+        e?.response?.data?.detail || e?.message || 'unknown');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerBtn} hitSlop={12}>
-          <Ionicons name="chevron-back" size={22} color={COLORS.text} />
+          <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Patients</Text>
-        <View style={{ width: 32 }} />
+        {tab === 'unregistered' && !selectMode ? (
+          <Pressable onPress={() => setSelectMode(true)} hitSlop={10}
+            style={{ paddingHorizontal: 10 }}>
+            <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: '700' }}>
+              Select
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ width: 60 }} />
+        )}
       </View>
+
+      {/* Analytics tile (owner-only insight; hidden when empty) */}
+      {analytics && analytics.total_invited > 0 && !selectMode ? (
+        <View style={styles.analyticsTile}>
+          <View style={styles.analyticsIcon}>
+            <Ionicons name="trending-up" size={22} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.analyticsTitle}>Invite → sign-up conversion</Text>
+            <Text style={styles.analyticsSub}>
+              <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
+                {analytics.converted_total}
+              </Text>
+              {' of '}
+              <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
+                {analytics.total_invited}
+              </Text>
+              {' invited walk-ins signed up'}
+              {' · '}
+              <Text style={{ fontWeight: '700', color: COLORS.success }}>
+                {(analytics.conversion_rate_total * 100).toFixed(0)}%
+              </Text>
+            </Text>
+            {analytics.converted_within_7d || analytics.converted_within_30d ? (
+              <Text style={styles.analyticsMeta}>
+                Last 7d: {analytics.converted_within_7d} ·
+                Last 30d: {analytics.converted_within_30d}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
 
       {/* Tab pills */}
       <View style={styles.tabRow}>
@@ -320,19 +431,37 @@ export default function UnregisteredPatientsScreen() {
               }}
             />
           }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
+          renderItem={({ item }) => {
+            const isSelected = selectedIds.has(item.patient_id);
+            return (
+            <View style={[styles.card, isSelected && styles.cardSelected]}>
               <Pressable
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
-                onPress={() => router.push(`/dashboard?tab=consultations` as any)}
+                onPress={() => selectMode
+                  ? toggleSelected(item.patient_id)
+                  : router.push(`/dashboard?tab=consultations` as any)}
+                onLongPress={() => {
+                  if (tab === 'unregistered') {
+                    if (!selectMode) setSelectMode(true);
+                    toggleSelected(item.patient_id);
+                  }
+                }}
               >
-                <View style={styles.avatar}>
-                  <Ionicons
-                    name={tab === 'unregistered' ? 'person-add' : 'person'}
-                    size={20}
-                    color={COLORS.primary}
-                  />
-                </View>
+                {selectMode ? (
+                  <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
+                    {isSelected
+                      ? <Ionicons name="checkmark" size={16} color="#fff" />
+                      : null}
+                  </View>
+                ) : (
+                  <View style={styles.avatar}>
+                    <Ionicons
+                      name={tab === 'unregistered' ? 'person-add' : 'person'}
+                      size={20}
+                      color={COLORS.primary}
+                    />
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Text style={styles.name} numberOfLines={1}>
@@ -358,34 +487,177 @@ export default function UnregisteredPatientsScreen() {
                   </Text>
                 </View>
               </Pressable>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, marginLeft: 52 }}>
-                {tab === 'unregistered' ? (
+              {selectMode ? null : (
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, marginLeft: 52 }}>
+                  {tab === 'unregistered' ? (
+                    <Pressable
+                      onPress={() => openInvite(item)}
+                      style={styles.actionBtn}
+                      hitSlop={4}
+                    >
+                      <Ionicons name="paper-plane-outline" size={13} color={COLORS.primary} />
+                      <Text style={styles.actionBtnTxt}>Invite</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
-                    onPress={() => openInvite(item)}
+                    onPress={() => openDuplicates(item)}
                     style={styles.actionBtn}
                     hitSlop={4}
                   >
-                    <Ionicons name="paper-plane-outline" size={13} color={COLORS.primary} />
-                    <Text style={styles.actionBtnTxt}>Invite</Text>
+                    <Ionicons name="git-merge-outline" size={13} color={COLORS.primary} />
+                    <Text style={styles.actionBtnTxt}>Duplicates</Text>
                   </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={() => openDuplicates(item)}
-                  style={styles.actionBtn}
-                  hitSlop={4}
-                >
-                  <Ionicons name="git-merge-outline" size={13} color={COLORS.primary} />
-                  <Text style={styles.actionBtnTxt}>Duplicates</Text>
-                </Pressable>
-                <Pressable onPress={() => bookFor(item)} style={styles.bookBtn} hitSlop={4}>
-                  <Ionicons name="calendar" size={13} color="#fff" />
-                  <Text style={styles.bookTxt}>Book</Text>
-                </Pressable>
-              </View>
+                  <Pressable onPress={() => bookFor(item)} style={styles.bookBtn} hitSlop={4}>
+                    <Ionicons name="calendar" size={13} color="#fff" />
+                    <Text style={styles.bookTxt}>Book</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
-          )}
+            );
+          }}
         />
       )}
+
+      {/* ── Sticky bulk-action bar ── */}
+      {selectMode ? (
+        <View style={styles.bulkBar}>
+          <Pressable onPress={exitSelectMode} hitSlop={10}>
+            <Text style={styles.bulkCancel}>Cancel</Text>
+          </Pressable>
+          <Text style={styles.bulkCount}>
+            {selectedIds.size} selected
+          </Text>
+          <Pressable
+            onPress={openBulkPicker}
+            disabled={selectedIds.size === 0}
+            style={[styles.bulkBtn, selectedIds.size === 0 && { opacity: 0.5 }]}
+          >
+            <Ionicons name="paper-plane" size={14} color="#fff" />
+            <Text style={styles.bulkBtnTxt}>Bulk Invite</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* ── Template picker modal ── */}
+      <Modal
+        visible={bulkModal === 'template_picker'}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setBulkModal(null)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setBulkModal(null)} />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Send bulk invite</Text>
+          <Text style={styles.sheetSub}>
+            {selectedIds.size} walk-in patient{selectedIds.size === 1 ? '' : 's'} selected.
+            Pick a Broadcast Studio template to use as the invite message,
+            or skip and use the default text.
+          </Text>
+          <FlatList
+            data={bulkTemplates}
+            keyExtractor={(t) => t.id}
+            style={{ maxHeight: 300 }}
+            ListHeaderComponent={
+              <Pressable
+                onPress={() => sendBulk(null)}
+                style={[styles.tplRow, { backgroundColor: COLORS.primary + '10' }]}
+              >
+                <Ionicons name="text" size={20} color={COLORS.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tplTitle}>Default invite text</Text>
+                  <Text style={styles.tplBody} numberOfLines={2}>
+                    Uses the standard “Hi [name], the clinic has saved your details…” message.
+                  </Text>
+                </View>
+                {bulkLoading ? <ActivityIndicator color={COLORS.primary} size="small" /> : null}
+              </Pressable>
+            }
+            ListEmptyComponent={
+              <View style={{ paddingVertical: 16, paddingHorizontal: 4 }}>
+                <Text style={styles.tplBody}>
+                  No broadcast templates yet. Owner can create one in
+                  Broadcast Studio → 🔖 Templates.
+                </Text>
+              </View>
+            }
+            renderItem={({ item: t }) => (
+              <Pressable
+                onPress={() => sendBulk(t.id)}
+                style={styles.tplRow}
+              >
+                <Ionicons name="bookmarks" size={20} color={COLORS.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tplTitle}>{t.name}</Text>
+                  <Text style={styles.tplBody} numberOfLines={2}>{t.title}</Text>
+                </View>
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
+
+      {/* ── Bulk queue result modal ── */}
+      <Modal
+        visible={bulkModal === 'queue'}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { setBulkModal(null); exitSelectMode(); }}
+      >
+        <Pressable style={styles.backdrop}
+          onPress={() => { setBulkModal(null); exitSelectMode(); }} />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Invite queue ready</Text>
+          <Text style={styles.sheetSub}>
+            {bulkResult?.ok_count || 0} ready to send · {bulkResult?.error_count || 0} skipped.
+            Tap each to open WhatsApp / SMS with the message prefilled.
+          </Text>
+          <FlatList
+            data={bulkResult?.results || []}
+            keyExtractor={(r: any) => r.patient_id}
+            style={{ maxHeight: 380 }}
+            renderItem={({ item: r }: { item: any }) => (
+              <View style={styles.queueRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {r.name || 'Unnamed'}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {r.phone ? `📞 ${r.phone}` : ''}{r.email ? ` · ✉️ ${r.email}` : ''}
+                  </Text>
+                  {r.error ? (
+                    <Text style={{ fontSize: 11, color: COLORS.danger, marginTop: 3 }}>
+                      {r.error === 'no_contact' ? 'no phone/email on file'
+                        : r.error === 'not_found' ? 'patient not found' : r.error}
+                    </Text>
+                  ) : null}
+                </View>
+                {r.wa_url ? (
+                  <Pressable onPress={() => openLink(r.wa_url)} style={styles.queueBtn}>
+                    <Ionicons name="logo-whatsapp" size={16} color="#fff" />
+                  </Pressable>
+                ) : r.sms_uri ? (
+                  <Pressable onPress={() => openLink(r.sms_uri)} style={styles.queueBtn}>
+                    <Ionicons name="chatbubble" size={14} color="#fff" />
+                  </Pressable>
+                ) : r.mailto_uri ? (
+                  <Pressable onPress={() => openLink(r.mailto_uri)} style={styles.queueBtn}>
+                    <Ionicons name="mail" size={14} color="#fff" />
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+          />
+          <Pressable
+            onPress={() => { setBulkModal(null); exitSelectMode(); }}
+            style={styles.closeBtn}
+          >
+            <Text style={styles.closeBtnTxt}>Done</Text>
+          </Pressable>
+        </View>
+      </Modal>
 
       {/* ── Invite modal ── */}
       <Modal
@@ -575,6 +847,65 @@ const styles = StyleSheet.create({
     marginHorizontal: 12, marginTop: 8, padding: 12,
     backgroundColor: COLORS.surface, borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  cardSelected: {
+    borderColor: COLORS.primary, borderWidth: 1.5,
+    backgroundColor: COLORS.primary + '08',
+  },
+  checkbox: {
+    width: 24, height: 24, borderRadius: 6,
+    borderWidth: 2, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  analyticsTile: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 12, marginTop: 10, padding: 12,
+    backgroundColor: COLORS.surface, borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+    borderLeftWidth: 3, borderLeftColor: COLORS.primary,
+  },
+  analyticsIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: COLORS.primary + '18',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  analyticsTitle: {
+    fontSize: 12, fontWeight: '700', color: COLORS.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3,
+  },
+  analyticsSub: { fontSize: 13, color: COLORS.textSecondary },
+  analyticsMeta: { fontSize: 11, color: COLORS.textDisabled, marginTop: 2 },
+  bulkBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 12, paddingVertical: 12,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border,
+  },
+  bulkCancel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  bulkCount: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  bulkBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
+  },
+  bulkBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  tplRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 12, marginBottom: 6, borderRadius: 10,
+    backgroundColor: COLORS.bg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  tplTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  tplBody: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  queueRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+  },
+  queueBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
   },
   avatar: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: '#E6F4F7',
