@@ -33,6 +33,14 @@ def _is_broadcast_approver(user: Dict[str, Any]) -> bool:
 
 @router.post("/api/broadcasts")
 async def create_broadcast(request: Request, payload: BroadcastCreate, user=Depends(require_staff)):
+    # Comm-9 cutover — legacy broadcast create is retired. Route
+    # staff through the V2 Broadcast Studio.
+    from services.comm_cutover import legacy_writes_disabled, cutover_gone_response
+    if await legacy_writes_disabled(db):
+        raise HTTPException(
+            status_code=410,
+            detail=cutover_gone_response("POST /api/v2/communications/broadcasts/draft"),
+        )
     title = (payload.title or "").strip()
     body = (payload.body or "").strip()
     if not title or not body:
@@ -139,6 +147,14 @@ async def broadcasts_pending_count(request: Request, user=Depends(require_staff)
 
 @router.patch("/api/broadcasts/{bid}")
 async def review_broadcast(bid: str, body: BroadcastReview, user=Depends(require_user)):
+    # Comm-9 cutover — approve/reject/send happens in V2 Broadcast Studio now.
+    from services.comm_cutover import legacy_writes_disabled, cutover_gone_response
+    if await legacy_writes_disabled(db):
+        raise HTTPException(
+            status_code=410,
+            detail=cutover_gone_response(
+                "POST /api/v2/communications/broadcasts/{id}/approve|reject|schedule"),
+        )
     if not _is_broadcast_approver(user):
         raise HTTPException(status_code=403, detail="Only owner-tier users or designated approvers can review broadcasts")
     existing = await db.broadcasts.find_one({"broadcast_id": bid}, {"_id": 0})

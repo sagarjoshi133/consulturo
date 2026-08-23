@@ -140,6 +140,21 @@ function _isDrEligiblePath(url: string | undefined): boolean {
 api.interceptors.response.use(
   (resp) => resp,
   async (error: AxiosError & { config?: AxiosRequestConfig & { __drRetried?: boolean } }) => {
+    // ── Comm-9 cutover: normalise 410 Gone from retired legacy
+    //    endpoints so screens catching `e.response.data.detail`
+    //    display a user-friendly string instead of "[object Object]".
+    try {
+      const status = (error as any)?.response?.status;
+      const detail = (error as any)?.response?.data?.detail;
+      if (status === 410 && detail && typeof detail === 'object'
+          && detail.error_code === 'legacy_endpoint_retired') {
+        const friendly = `${detail.detail || 'This endpoint has moved.'} Please use Communications V2.`;
+        (error as any).response.data.detail = friendly;
+        (error as any).response.data._legacy_retired = true;
+        (error as any).response.data._v2_endpoint = detail.v2_endpoint;
+      }
+    } catch { /* never let the interceptor throw */ }
+
     const cfg = error.config;
     if (!cfg || cfg.__drRetried) return Promise.reject(error);
     if (!isDrClassError(error)) return Promise.reject(error);

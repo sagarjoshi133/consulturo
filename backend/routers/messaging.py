@@ -298,6 +298,15 @@ async def messages_recipients(
 
 @router.post("/api/messages/send")
 async def messages_send(body: PersonalMessageBody, user=Depends(require_user)):
+    # Comm-9 cutover — patient↔clinic messaging lives in the V2
+    # single-conversation-per-patient model. Legacy 1:1 sends retired.
+    from services.comm_cutover import legacy_writes_disabled, cutover_gone_response
+    if await legacy_writes_disabled(db):
+        raise HTTPException(
+            status_code=410,
+            detail=cutover_gone_response(
+                "POST /api/v2/communications/conversations/{id}/messages"),
+        )
     if not _can_send_personal_messages(user):
         raise HTTPException(status_code=403, detail="Not permitted to send personal messages")
     title = (body.title or "").strip()

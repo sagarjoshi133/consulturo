@@ -560,7 +560,33 @@ async def create_notification(
         pass
     if push:
         try:
-            await push_to_user(user_id, None, title, body, {**(data or {}), "kind": kind})
+            # Comm-9 cutover: prefer V2 push (direct FCM v1) when the
+            # flag is on. Falls back to the legacy Emergent-relay path
+            # for any reason (unconfigured, error, etc.).
+            v2_pushed = False
+            try:
+                from services.comm_cutover import legacy_push_disabled, enqueue_v2_push
+                if await legacy_push_disabled(db):
+                    v2_pushed = await enqueue_v2_push(
+                        db,
+                        user_id=user_id,
+                        title=title,
+                        body=body,
+                        data={**(data or {}), "kind": kind},
+                        dedupe_key=f"legacy_notif:{doc['id']}",
+                        correlation_id=f"notif:{doc['id']}",
+                        category=(
+                            "appointments" if str(kind or "").startswith("booking") else
+                            "care_updates" if str(kind or "").startswith("prescription") else
+                            "reminders"    if str(kind or "") in ("reminder", "note_reminder") else
+                            "announcements" if str(kind or "").startswith("broadcast") else
+                            "system"
+                        ),
+                    )
+            except Exception:
+                v2_pushed = False
+            if not v2_pushed:
+                await push_to_user(user_id, None, title, body, {**(data or {}), "kind": kind})
         except Exception:
             pass
     return doc

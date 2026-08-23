@@ -70,23 +70,24 @@ export default function BroadcastList() {
         </Pressable>
       </View>
 
-      <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
-        style={styles.stateRow}
-        contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}
-      >
-        {STATE_FILTERS.map((s) => (
-          <Pressable
-            key={s || 'all'}
-            onPress={() => setStateFilter(s)}
-            style={[styles.chip, { backgroundColor: stateFilter === s ? V2.accent : V2.card, borderColor: stateFilter === s ? V2.accent : V2.border }]}
-          >
-            <Text style={{ color: stateFilter === s ? '#fff' : V2.fg, fontSize: 12, fontWeight: '700' }}>
-              {s ? stateLabel[s] : 'All'}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View style={styles.stateRow}>
+        <ScrollView
+          horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stateRowInner}
+        >
+          {STATE_FILTERS.map((s) => (
+            <Pressable
+              key={s || 'all'}
+              onPress={() => setStateFilter(s)}
+              style={[styles.chip, { backgroundColor: stateFilter === s ? V2.accent : V2.card, borderColor: stateFilter === s ? V2.accent : V2.border }]}
+            >
+              <Text style={{ color: stateFilter === s ? '#fff' : V2.fg, fontSize: 12, fontWeight: '700' }}>
+                {s ? stateLabel[s] : 'All'}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
 
       {loading ? (
         <View style={{ paddingVertical: 40 }}><ActivityIndicator color={V2.accent} /></View>
@@ -150,11 +151,15 @@ const styles = StyleSheet.create({
   stateRow: {
     backgroundColor: V2.card,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: V2.border,
-    paddingVertical: 8, maxHeight: 46, flexGrow: 0,
+    paddingVertical: 10,
+  },
+  stateRowInner: {
+    paddingHorizontal: 12, gap: 8, alignItems: 'center',
   },
   chip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 34, justifyContent: 'center', alignItems: 'center',
   },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

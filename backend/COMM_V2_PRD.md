@@ -175,4 +175,62 @@ that call `run_messaging_backfill` and `run_broadcasts_backfill`
 retain the `migrated_from_legacy:true` flag so a targeted
 `db.comm_*.delete_many({migrated_from_legacy: true})` cleanly
 reverses the migration without touching real V2 data.
+
+================================================================
+COMM-9 (SHIPPED) — Cutover
+================================================================
+Cutover flags flipped GLOBALLY (env defaults + persisted DB
+overrides via `POST /api/v2/communications/admin/cutover/apply`):
+  COMMUNICATIONS_V2_ENABLED               = true
+  COMMUNICATIONS_V2_PUSH_ENABLED          = true
+  COMMUNICATIONS_V2_MESSAGES_ENABLED      = true
+  COMMUNICATIONS_V2_BROADCASTS_ENABLED    = true
+  COMMUNICATIONS_V2_HOME_NOTICES_ENABLED  = true
+  COMMUNICATIONS_V2_MIRROR_LEGACY         = true   (safety dual-write)
+  COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED = true (cutover sentinel)
+
+New helpers (services/comm_cutover.py):
+  * `legacy_writes_disabled(db)` — true when cutover is active. Used
+    by legacy write endpoints to short-circuit to 410 Gone.
+  * `legacy_push_disabled(db)` — true when V2 owns the push channel.
+    `services.notifications.create_notification` calls this and
+    prefers `enqueue_v2_push` → direct FCM v1 outbox over the
+    legacy Emergent-relay path.
+  * `enqueue_v2_push(db, ...)` — thin wrapper over `comm_outbox.enqueue`
+    for `event_type=push.send` with a `via:v2_cutover` marker in data.
+  * `cutover_gone_response(pointer)` — standard 410 body.
+
+Retired legacy write endpoints (return 410 Gone when cutover is on;
+still 200 while flag is off — safe rollback):
+  POST  /api/broadcasts             → V2: /v2/communications/broadcasts/draft
+  PATCH /api/broadcasts/{bid}       → V2: /v2/communications/broadcasts/{id}/approve|reject|schedule
+  POST  /api/messages/send          → V2: /v2/communications/conversations/{id}/messages
+
+Legacy READ endpoints are UNCHANGED (historical data still readable;
+mirror_legacy=true keeps `comm_inbox_items` populated in parallel).
+
+Admin endpoints:
+  POST /api/v2/communications/admin/cutover/apply
+       → flip all cutover flags on (idempotent).
+  POST /api/v2/communications/admin/cutover/rollback
+       → revert to safe legacy-only state (mirror stays on).
+  GET  /api/v2/communications/admin/cutover/status
+       → {state, flags, recent_actions[]} where state ∈ {cutover_active,
+         mixed, canary_only, legacy_only}.
+
+Boot verification: the app now boots with `state=cutover_active`,
+430+ routes, all three backfills already-applied (idempotent skip),
+outbox worker healthy, direct FCM v1 ready.
+
+Smoke test: `tests/smoke_comm9_cutover.py` — flip flags on/off,
+verify gate helpers, verify V2 outbox row is created with the
+`via:v2_cutover` marker. PASSING.
+
+Rollback path:
+  1. `POST /api/v2/communications/admin/cutover/rollback` (instant,
+      persisted in db.comm_flags).
+  2. OR edit `.env` and set all `COMMUNICATIONS_V2_*_ENABLED=false`
+      plus `COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED=false`, restart.
+  3. Legacy write endpoints resume returning 200; V2 code paths
+      become dormant but retain data.
 """

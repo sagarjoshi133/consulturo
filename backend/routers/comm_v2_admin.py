@@ -240,3 +240,95 @@ async def reconciliation_report(user=Depends(require_owner)) -> Dict[str, Any]:
       * broadcast_inbox→ comm_broadcast_recipients
     """
     return await comm_reconciliation.build_report(db)
+
+
+# ── Comm-9: cutover / rollback controls ─────────────────────────
+
+_CUTOVER_ON = {
+    "COMMUNICATIONS_V2_ENABLED": True,
+    "COMMUNICATIONS_V2_PUSH_ENABLED": True,
+    "COMMUNICATIONS_V2_MESSAGES_ENABLED": True,
+    "COMMUNICATIONS_V2_BROADCASTS_ENABLED": True,
+    "COMMUNICATIONS_V2_HOME_NOTICES_ENABLED": True,
+    "COMMUNICATIONS_V2_MIRROR_LEGACY": True,
+    "COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED": True,
+}
+
+_CUTOVER_OFF = {
+    # rollback = all V2 off + mirror preserved (safe read state)
+    "COMMUNICATIONS_V2_ENABLED": False,
+    "COMMUNICATIONS_V2_PUSH_ENABLED": False,
+    "COMMUNICATIONS_V2_MESSAGES_ENABLED": False,
+    "COMMUNICATIONS_V2_BROADCASTS_ENABLED": False,
+    "COMMUNICATIONS_V2_HOME_NOTICES_ENABLED": False,
+    "COMMUNICATIONS_V2_MIRROR_LEGACY": True,
+    "COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED": False,
+}
+
+
+@router.post("/admin/cutover/apply")
+async def cutover_apply(user=Depends(require_owner)) -> Dict[str, Any]:
+    """Apply the Comm-9 cutover: flip all V2 flags ON + set the
+    legacy-runtime-disabled sentinel. Writes go to db.comm_flags so
+    they survive a process restart WITHOUT touching .env.
+
+    Idempotent — re-running is a no-op.
+    """
+    for k, v in _CUTOVER_ON.items():
+        await comm_flags.set_flag(db, k, v, actor_user_id=user.get("user_id"))
+    await comm_audit.log(
+        db, action="cutover.apply",
+        actor_user_id=user.get("user_id"),
+        actor_role=user.get("role"),
+        target_type="comm_v2", target_id="cutover",
+        metadata=_CUTOVER_ON,
+    )
+    return {"ok": True, "applied": _CUTOVER_ON,
+            "flags": await comm_flags.get_all_flags(db)}
+
+
+@router.post("/admin/cutover/rollback")
+async def cutover_rollback(user=Depends(require_owner)) -> Dict[str, Any]:
+    """Emergency rollback — flip V2 subsystems OFF and re-enable
+    legacy write routes. Historical V2 data is preserved (never
+    deleted); this only changes runtime gating."""
+    for k, v in _CUTOVER_OFF.items():
+        await comm_flags.set_flag(db, k, v, actor_user_id=user.get("user_id"))
+    await comm_audit.log(
+        db, action="cutover.rollback",
+        actor_user_id=user.get("user_id"),
+        actor_role=user.get("role"),
+        target_type="comm_v2", target_id="cutover",
+        metadata=_CUTOVER_OFF,
+    )
+    return {"ok": True, "applied": _CUTOVER_OFF,
+            "flags": await comm_flags.get_all_flags(db)}
+
+
+@router.get("/admin/cutover/status")
+async def cutover_status(user=Depends(require_owner)) -> Dict[str, Any]:
+    """Human-readable summary of the cutover state.
+
+    Returns:
+      state: "cutover_active" | "canary_only" | "legacy_only" | "mixed"
+      flags: current effective flag map.
+      recent_actions: last 10 comm audit rows tagged cutover.*.
+    """
+    flags = await comm_flags.get_all_flags(db)
+    v2_on = bool(flags.get("COMMUNICATIONS_V2_ENABLED"))
+    canary = flags.get("COMMUNICATIONS_V2_CANARY_USER_IDS") or []
+    legacy_off = bool(flags.get("COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED"))
+    if v2_on and legacy_off:
+        state = "cutover_active"
+    elif v2_on and not legacy_off:
+        state = "mixed"
+    elif not v2_on and canary:
+        state = "canary_only"
+    else:
+        state = "legacy_only"
+    recent = []
+    async for row in db.comm_audit_log.find(
+        {"action": {"$regex": "^cutover\\."}}, {"_id": 0},
+    ).sort("created_at", -1).limit(10):
+        recent.append(row)
+    return {"state": state, "flags": flags, "recent_actions": recent}

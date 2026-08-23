@@ -152,26 +152,27 @@ export default function InboxScreen() {
       </View>
 
       {/* Category chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipRow}
-        contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}
-      >
-        <Chip
-          selected={selectedCat === null}
-          label={`All${totalUnread ? ` · ${totalUnread}` : ''}`}
-          onPress={() => setSelectedCat(null)}
-        />
-        {catChips.map((c) => (
+      <View style={styles.chipRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRowInner}
+        >
           <Chip
-            key={c.key}
-            selected={selectedCat === c.key}
-            label={`${c.label}${c.unread ? ` · ${c.unread}` : ''}`}
-            onPress={() => setSelectedCat(c.key)}
+            selected={selectedCat === null}
+            label={`All${totalUnread ? ` · ${totalUnread}` : ''}`}
+            onPress={() => setSelectedCat(null)}
           />
-        ))}
-      </ScrollView>
+          {catChips.map((c) => (
+            <Chip
+              key={c.key}
+              selected={selectedCat === c.key}
+              label={`${c.label}${c.unread ? ` · ${c.unread}` : ''}`}
+              onPress={() => setSelectedCat(c.key)}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
       {loading ? (
         <View style={{ paddingVertical: 40 }}><ActivityIndicator color={V2.accent} /></View>
@@ -245,11 +246,19 @@ const styles = StyleSheet.create({
   chipRow: {
     backgroundColor: V2.card,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: V2.border,
-    paddingVertical: 8, maxHeight: 46, flexGrow: 0,
+    paddingVertical: 10,
+  },
+  chipRowInner: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: 'center',
   },
   chip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   rowCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
