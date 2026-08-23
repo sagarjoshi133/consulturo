@@ -359,6 +359,18 @@ async def _notification_v2_boot() -> None:
             _start_comm_worker()
         except Exception as _e:
             print(f"[startup] comm_v2 outbox worker failed to start: {_e}")
+        # Register push.send handler on the comm outbox.
+        try:
+            from services.comm_push_handler import register as _register_push_handler
+            _register_push_handler()
+            # Warm firebase_admin so the first send doesn't pay init cost.
+            from services import comm_fcm as _fcm
+            if _fcm.is_configured():
+                print(f"[startup] direct FCM v1 ready — project {_fcm.project_id()}")
+            else:
+                print(f"[startup] direct FCM v1 NOT configured: {_fcm.last_init_error()}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 push handler wiring failed: {_e}")
 
     _asyncio.get_event_loop().create_task(_run())
 
@@ -3536,6 +3548,11 @@ app.include_router(_wcp_router)
 # /api/v2/communications prefix.
 from routers.comm_v2_admin import router as _comm_v2_admin_router
 app.include_router(_comm_v2_admin_router)
+
+# ─── Communications V2 (Comm-2 direct FCM push) ───
+# Installations register/revoke + owner diagnostics/test-self.
+from routers.comm_v2_push import router as _comm_v2_push_router
+app.include_router(_comm_v2_push_router)
 
 
 @app.on_event("startup")

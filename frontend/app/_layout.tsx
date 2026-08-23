@@ -56,6 +56,11 @@ import {
   registerAndroidChannels,
   registerIosCategories,
 } from '../src/push-channels';
+import {
+  registerV2AndroidChannels,
+  registerV2IosCategories,
+} from '../src/comm-v2/push-channels-v2';
+import { attachV2TokenRotationListener } from '../src/comm-v2/installation';
 import { initSentry } from '../src/sentry';
 import { initOtaUpdates } from '../src/ota-updates';
 import { COLORS } from '../src/theme';
@@ -120,6 +125,10 @@ if (Platform.OS !== 'web') {
 // before the first push arrives. iOS gets equivalent categories.
 try { registerAndroidChannels(); } catch {}
 try { registerIosCategories(); } catch {}
+// Comm V2: 5 new PRIVATE-visibility channels alongside legacy. These
+// power the direct-FCM path (spec: no clinical detail on lock screen).
+try { registerV2AndroidChannels(); } catch {}
+try { registerV2IosCategories(); } catch {}
 
 function RootNav() {
   const { loading } = useAuth();
@@ -176,6 +185,12 @@ function RootNav() {
     // so a flaky network never interrupts the clinic flow.
     const stopOta = initOtaUpdates();
     return () => { stopOta(); };
+  }, []);
+
+  // Comm V2: watch for FCM token rotations and auto-re-register.
+  useEffect(() => {
+    const sub = attachV2TokenRotationListener();
+    return () => { try { sub?.remove(); } catch {} };
   }, []);
 
   useEffect(() => {

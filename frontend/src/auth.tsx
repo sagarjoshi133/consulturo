@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import { registerForPushNotifications } from './push';
+import { registerV2Installation, revokeV2Installation } from './comm-v2/installation';
 import { setSentryUser } from './sentry';
 
 export interface User {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data);
       // Fire-and-forget push registration once the user is authenticated
       registerForPushNotifications().catch(() => {});
+      registerV2Installation().catch(() => {});
     } catch (e: any) {
       // DIFFERENTIATE network errors from authentication errors:
       //  - Explicit 401/403: the token is invalid/expired → clear the
@@ -142,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await AsyncStorage.setItem('session_token', data.session_token);
             setUser(data.user);
             registerForPushNotifications().catch(() => {});
+            registerV2Installation().catch(() => {});
           } catch {
             // Surface a soft error via console; login screen will explain.
           }
@@ -159,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem('session_token', data.session_token);
         setUser(data.user);
         registerForPushNotifications().catch(() => {});
+        registerV2Installation().catch(() => {});
       } catch {
         // Silent — login screen will surface a real error if needed.
       }
@@ -189,10 +193,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('session_token', data.session_token);
     setUser(data.user);
     registerForPushNotifications().catch(() => {});
+    registerV2Installation().catch(() => {});
     return data.user as User;
   }, []);
 
   const signOut = useCallback(async () => {
+    // Revoke the V2 installation binding BEFORE clearing the session
+    // token — otherwise the request has no auth to identify the user.
+    try { await revokeV2Installation(); } catch {}
     try {
       await api.post('/auth/logout');
     } catch {}
