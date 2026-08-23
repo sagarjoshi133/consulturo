@@ -100,20 +100,52 @@ api.interceptors.request.use(async (config) => {
 
 // ─── DR fail-over response interceptor ────────────────────────────────
 // When the primary backend returns a 5xx-class "origin down" error
-// (502/503/504/520-524) or a network error, we probe configured
-// fallback URLs and retry the original request against the first one
-// that responds healthy. The decision sticks for the rest of the
-// session (no per-request re-probing) so latency stays sane.
+// (502/503/504/520-524) or a network error on a CORE INFRASTRUCTURE
+// endpoint (auth/health/session), we probe configured fallback URLs
+// and retry against the first healthy one. The decision sticks for
+// the rest of the session (no per-request re-probing) so latency
+// stays sane.
+//
+// IMPORTANT (Comm-0 fix, Jun-2026): feature-endpoint 5xx responses
+// (push relay not configured, LLM upstream down, Razorpay unavailable,
+// etc.) MUST NOT flip the entire session onto the preview backend.
+// Those endpoints failed for reasons unrelated to backend health, and
+// forcing failover was the root cause of the "Connected to backup
+// server" banner flapping in production. We now only allow failover
+// for a small allowlist of endpoints whose failure genuinely means
+// the primary origin is unreachable.
 //
 // We tag requests with `__drRetried` to prevent infinite retry loops:
 // if the fallback also fails, the original error propagates to the
 // caller.
+const DR_ELIGIBLE_PATH_RES: RegExp[] = [
+  /^\/health(\?|$)/,             // /api/health probe
+  /^\/me(\?|$)/,                 // caller identity — used by AuthProvider on boot
+  /^\/auth\/session(\?|$)/,      // OAuth session exchange
+  /^\/auth\/refresh(\?|$)/,      // silent session refresh
+  /^\/auth\/logout(\?|$)/,       // logout must still work if origin flakes
+  /^\/version(\?|$)/,            // version probe
+];
+
+function _isDrEligiblePath(url: string | undefined): boolean {
+  if (!url) return false;
+  // Strip absolute base if any request was sent with a full URL.
+  const path = url.replace(/^https?:\/\/[^/]+/, '');
+  // baseURL already contains /api, but a few callers prefix it themselves;
+  // normalize both shapes.
+  const rel = path.replace(/^\/api/, '');
+  return DR_ELIGIBLE_PATH_RES.some((re) => re.test(rel));
+}
+
 api.interceptors.response.use(
   (resp) => resp,
   async (error: AxiosError & { config?: AxiosRequestConfig & { __drRetried?: boolean } }) => {
     const cfg = error.config;
     if (!cfg || cfg.__drRetried) return Promise.reject(error);
     if (!isDrClassError(error)) return Promise.reject(error);
+    // ── Comm-0 gate ─────────────────────────────────────────────
+    // Only allow the sticky backup-server switch for true infra paths.
+    if (!_isDrEligiblePath(cfg.url)) return Promise.reject(error);
 
     const winner = await activateFallback();
     if (!winner) return Promise.reject(error);

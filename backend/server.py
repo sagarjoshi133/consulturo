@@ -345,6 +345,20 @@ async def _notification_v2_boot() -> None:
             print("[startup] object storage initialised")
         except Exception as _e:
             print(f"[startup] object storage init failed: {_e}")
+        # ── Comm V2 foundation (Comm-1) ──
+        # Ensure comm_* collection indexes exist + start durable outbox
+        # worker. Additive & idempotent; never crashes boot.
+        try:
+            from migrations.comm_v2 import run_comm_v2_migration
+            res = await run_comm_v2_migration(db)
+            print(f"[startup] comm_v2 migration: {res}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 migration failed: {_e}")
+        try:
+            from services.comm_outbox import start_worker as _start_comm_worker
+            _start_comm_worker()
+        except Exception as _e:
+            print(f"[startup] comm_v2 outbox worker failed to start: {_e}")
 
     _asyncio.get_event_loop().create_task(_run())
 
@@ -3514,6 +3528,14 @@ app.include_router(_wave_more_router)
 # and Performance (upload budget) ───
 from routers.wave_compliance_perf import router as _wcp_router
 app.include_router(_wcp_router)
+
+# ─── Communications V2 (Comm-1 foundation) ───
+# Admin/diagnostics surface: feature flags, durable outbox stats,
+# drain, dead-letter listing/retry. Later phases add /installations,
+# /inbox, /conversations, /broadcasts, /home-notices under the same
+# /api/v2/communications prefix.
+from routers.comm_v2_admin import router as _comm_v2_admin_router
+app.include_router(_comm_v2_admin_router)
 
 
 @app.on_event("startup")

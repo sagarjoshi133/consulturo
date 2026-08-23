@@ -136,33 +136,48 @@ async def register_push(
     if relay_result.get("registered"):
         return {"registered": True, "user_id": uid, "relay": relay_result}
 
-    # ── Phase A: typed non-2xx errors ────────────────────────────────
-    # The token IS mirrored locally (startup/manual resync will forward
-    # it once the relay comes online), but we no longer lie with a 200:
-    # the client surfaces the exact failure in the Notifications Health
-    # panel instead of showing "Registered ✓" while the tray stays empty.
+    # ── Comm-0: honest 200 responses for expected relay-config gaps ──
+    # We used to raise 503/502 here so the client showed accurate error
+    # text — but those DR-class status codes tripped the frontend's
+    # backend-health failover (backend-health.ts), which then flipped
+    # the whole session onto the preview "backup server" and stuck a
+    # sticky red banner in front of users.
+    #
+    # New contract: HTTP is *always* 200 for a registration that reached
+    # us; the body carries the truth via `registered:false, error_code,
+    # mirrored:true, degraded:true`. The Notifications Health panel and
+    # provider both already read this shape.
     reason = relay_result.get("reason")
     if reason == "no_emergent_key":
-        raise HTTPException(status_code=503, detail={
+        return {
+            "registered": False,
+            "user_id": uid,
+            "mirrored": True,
+            "degraded": True,
             "error_code": "relay_not_configured",
             "message": (
-                "Push relay key not configured (preview environment). "
-                "The token was saved and will auto-resync after Publish → Deploy."
+                "Push relay key not configured yet. The token was saved and "
+                "will auto-resync after the next Publish → Deploy."
             ),
-            "mirrored": True,
-        })
+        }
     if reason == "unauthorized":
-        raise HTTPException(status_code=502, detail={
+        return {
+            "registered": False,
+            "user_id": uid,
+            "mirrored": True,
+            "degraded": True,
             "error_code": "relay_unauthorized",
             "message": "The push relay rejected our credentials (HTTP 401). Redeploy to refresh the key.",
-            "mirrored": True,
-        })
-    raise HTTPException(status_code=502, detail={
-        "error_code": "relay_upstream_error",
-        "message": "The push relay could not register this device. It will be retried by the next resync.",
-        "relay_status": relay_result.get("status"),
+        }
+    return {
+        "registered": False,
+        "user_id": uid,
         "mirrored": True,
-    })
+        "degraded": True,
+        "error_code": "relay_upstream_error",
+        "relay_status": relay_result.get("status"),
+        "message": "The push relay could not register this device. It will be retried by the next resync.",
+    }
 
 
 # ── Lightweight diagnostic ─────────────────────────────────────────
