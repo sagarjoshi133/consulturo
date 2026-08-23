@@ -549,6 +549,15 @@ async def create_notification(
         await db.notification_inbox.insert_one(inbox_doc)
     except Exception:
         pass
+    # Comm V2 Comm-3: mirror into comm_inbox_items when the flag is on
+    # (default true during migration). Never block on failure.
+    try:
+        from services.comm_flags import get_flag as _get_flag
+        from services.comm_inbox import mirror_from_legacy as _mirror
+        if await _get_flag(db, "COMMUNICATIONS_V2_MIRROR_LEGACY", True):
+            await _mirror(db, legacy_doc=doc)
+    except Exception:
+        pass
     if push:
         try:
             await push_to_user(user_id, None, title, body, {**(data or {}), "kind": kind})

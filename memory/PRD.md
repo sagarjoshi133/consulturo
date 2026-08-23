@@ -131,3 +131,17 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - **Verified via `tests/smoke_comm2_fcm.py`**: firebase_admin initialises against project `consulturo-87dfa`, OAuth mint succeeds, dry-run against a bogus token returns `category=invalidate code=INVALID_ARGUMENT` (proving real Google traffic), push.send handler idempotent for no-devices case, permanent-error path correctly invalidates the installation.
 - **Emergent legacy relay** retained in parallel — controlled by `COMMUNICATIONS_V2_PUSH_ENABLED` flag (default off). Cutover requires user's physical-device acceptance test.
 - **Blocked on user**: Publish → build APK → install on physical Android → tap Notifications Health "Send test push" to complete acceptance gate.
+
+## Comm-3 (Notification Centre V2) — SHIPPED (Jun 2026)
+- **Backend service** `services/comm_inbox.py`: 7-category taxonomy (appointments / care_updates / reminders / announcements / system / security / marketing); `create_inbox_item` idempotent via unique (user_id, item_type, source_id); action-type ALLOW-LIST (`open_booking / open_prescription / open_document / open_conversation / open_broadcast / open_home / open_security / open_availability / open_video_room / open_notice / none`) — arbitrary URLs are stripped at persistence; cursor pagination (opaque base64 of created_at + id); server-computed unread counts (exact, never derived on client); batch mark-read (explicit ids only — Messages screen can never clear the notification bell); archive.
+- **Endpoints (Comm-3)**:
+  - `GET  /api/v2/communications/me` — per-user effective flag snapshot for the frontend gate.
+  - `GET  /api/v2/communications/inbox` — cursor-paginated list.
+  - `GET  /api/v2/communications/inbox/counts` — exact server-computed unread counts.
+  - `POST /api/v2/communications/inbox/{id}/read`
+  - `POST /api/v2/communications/inbox/read-batch`
+  - `POST /api/v2/communications/inbox/{id}/archive`
+- **Legacy mirror shim**: `services/notifications.py::create_notification` now dual-writes to `comm_inbox_items` when `COMMUNICATIONS_V2_MIRROR_LEGACY` is on (default true). Silent-fail; never blocks legacy path. Personal-message kinds (`personal`, `message`, `chat`, `inbox`) are correctly EXCLUDED — Comm-4 will handle those in `comm_conversations`/`comm_messages`.
+- **Legacy backfill migration** `migrations/comm_v2_inbox_backfill.py`: idempotent, rerunnable copy of `db.notifications` → `comm_inbox_items` with dedupe via `comm_migration_map`. Runs on startup; bails out fast when done. Preserves read/unread state.
+- **Frontend** `src/comm-v2/communications-provider.tsx`: single source of truth for unread counts + refresh. Foreground refresh via `AppState`, 60s periodic tick, and `triggerCommV2Refresh()` external hook wired to push-tap. Flag-gated via `/api/v2/communications/me` (safe no-op when master flag is off).
+- **Verified** (`tests/smoke_comm3_inbox.py` + real-data backfill): 108 legacy rows → 106 mirrored + 2 personal-msgs skipped; idempotent 2nd run = 0 writes; 0 arbitrary-URL action_targets; category coercion, dedupe, cursor pagination, batch read-only-supplied-ids, cross-user isolation, archive-with-include_archived — all pass.

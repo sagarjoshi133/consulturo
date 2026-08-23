@@ -354,6 +354,15 @@ async def _notification_v2_boot() -> None:
             print(f"[startup] comm_v2 migration: {res}")
         except Exception as _e:
             print(f"[startup] comm_v2 migration failed: {_e}")
+        # ── Comm V2 inbox backfill (Comm-3) ──
+        # Rerunnable copy of legacy `notifications` → `comm_inbox_items`.
+        # Bails out fast on subsequent boots via _status marker.
+        try:
+            from migrations.comm_v2_inbox_backfill import run_notifications_backfill
+            res = await run_notifications_backfill(db)
+            print(f"[startup] comm_v2 inbox backfill: {res}")
+        except Exception as _e:
+            print(f"[startup] comm_v2 inbox backfill failed: {_e}")
         try:
             from services.comm_outbox import start_worker as _start_comm_worker
             _start_comm_worker()
@@ -3553,6 +3562,11 @@ app.include_router(_comm_v2_admin_router)
 # Installations register/revoke + owner diagnostics/test-self.
 from routers.comm_v2_push import router as _comm_v2_push_router
 app.include_router(_comm_v2_push_router)
+
+# ─── Communications V2 (Comm-3 Notification Centre) ───
+# Cursor-paginated inbox, exact server counts, batch mark-read.
+from routers.comm_v2_inbox import router as _comm_v2_inbox_router
+app.include_router(_comm_v2_inbox_router)
 
 
 @app.on_event("startup")

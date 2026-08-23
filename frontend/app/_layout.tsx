@@ -61,6 +61,7 @@ import {
   registerV2IosCategories,
 } from '../src/comm-v2/push-channels-v2';
 import { attachV2TokenRotationListener } from '../src/comm-v2/installation';
+import { CommunicationsProvider, triggerCommV2Refresh } from '../src/comm-v2/communications-provider';
 import { initSentry } from '../src/sentry';
 import { initOtaUpdates } from '../src/ota-updates';
 import { COLORS } from '../src/theme';
@@ -198,6 +199,11 @@ function RootNav() {
     const unsub = attachNotificationListeners((data) => {
       const type = data?.type;
       const link = data?.link;
+
+      // Comm V2: every push tap should refresh the inbox counts so
+      // the bell + category badges reflect reality. Silent no-op when
+      // the flag is off.
+      triggerCommV2Refresh();
 
       // ── Video consultation deep-link (Phase 5.13) ─────────────
       // Patient receives `role=patient` + their patient_code/url;
@@ -452,16 +458,18 @@ export default function RootLayout() {
                   <DarkModeProvider>
                     <ToastProvider>
                       <NotificationProvider>
-                        <AppStatusBar />
-                        <RootNav />
-                        {!splashDone ? (
-                          <AnimatedSplash
-                            onFinish={() => {
-                              __splashHasShown = true;
-                              setSplashDone(true);
-                            }}
-                          />
-                        ) : null}
+                        <CommunicationsProvider>
+                          <AppStatusBar />
+                          <RootNav />
+                          {!splashDone ? (
+                            <AnimatedSplash
+                              onFinish={() => {
+                                __splashHasShown = true;
+                                setSplashDone(true);
+                              }}
+                            />
+                          ) : null}
+                        </CommunicationsProvider>
                       </NotificationProvider>
                     </ToastProvider>
                   </DarkModeProvider>
