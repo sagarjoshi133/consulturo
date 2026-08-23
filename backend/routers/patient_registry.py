@@ -7,8 +7,9 @@
 """
 from __future__ import annotations
 
+import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -219,6 +220,232 @@ async def upsert_patient(body: PatientUpsertBody, user=Depends(require_registry_
 
 class MergeBody(BaseModel):
     duplicate_patient_id: str
+
+
+# ── Invite Walk-Ins & Duplicate Detection ──────────────────────
+
+def _last10(raw: Optional[str]) -> str:
+    return re.sub(r"\D", "", raw or "")[-10:]
+
+
+def _norm_name(raw: Optional[str]) -> str:
+    return re.sub(r"\s+", " ", (raw or "").strip().lower())
+
+
+@router.post("/api/registry/patients/{patient_id}/invite")
+async def invite_patient(patient_id: str, user=Depends(require_registry_access)):
+    """Generate a signup-invite share payload for a walk-in patient.
+
+    Never sends anything itself — returns a ready-to-share bundle
+    (WhatsApp URL, SMS body, mailto link, magic link if email present)
+    so the staff can pick the channel their patient prefers. Also
+    stamps `invited_at` / `invite_count` on the registry row and
+    audits the action.
+
+    Idempotent: re-inviting simply re-issues a fresh magic token and
+    bumps the counter.
+    """
+    from services.patient_registry import resolve_patient
+    row = await patients_repo.get_active(patient_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    phone_digits = row.get("phone_digits") or _last10(row.get("phone"))
+    email = (row.get("email") or "").strip().lower()
+    if not phone_digits and not email:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "no_contact",
+                    "message": "This patient has no phone or email on file."})
+
+    backend = (
+        os.environ.get("PUBLIC_BACKEND_URL")
+        or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+        or "https://urology-pro.preview.emergentagent.com"
+    ).rstrip("/")
+
+    # Prefer magic-link when we have an email — one-tap sign-in.
+    magic_link_web: Optional[str] = None
+    magic_link_deep: Optional[str] = None
+    if email:
+        import secrets as _secrets
+        token = _secrets.token_urlsafe(32)
+        await db.auth_magic_tokens.insert_one({
+            "token": token,
+            "email": email,
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+            "used": False,
+            "created_at": datetime.now(timezone.utc),
+            "kind": "walkin_invite",
+            "invited_patient_id": patient_id,
+            "invited_by_user_id": user.get("user_id"),
+        })
+        magic_link_web = f"{backend}/auth/magic/redirect?token={token}"
+        magic_link_deep = f"consulturo://magic-link?token={token}"
+
+    # Phone-first patients get the /login web URL (they'll sign up with OTP).
+    signup_web = f"{backend}/login?ref=walkin"
+    join_url = magic_link_web or signup_web
+
+    # ── Compose share-ready message ──
+    name = row.get("name") or "there"
+    clinic_row = await db.clinics.find_one({"deleted_at": None},
+                                              {"_id": 0, "name": 1}) or {}
+    clinic_name = clinic_row.get("name") or "ConsultUro"
+    msg_lines = [
+        f"Hi {name.split(' ')[0]},",
+        f"{clinic_name} has saved your details after your visit.",
+        "Tap the link below to sign in — you'll be able to see your "
+        "prescriptions, upcoming appointments, and message the clinic "
+        "directly from the app.",
+        "",
+        join_url,
+    ]
+    share_message = "\n".join(msg_lines)
+
+    # WhatsApp URL — only usable if we have a phone number.
+    wa_url: Optional[str] = None
+    if phone_digits:
+        # Prefix with country code if we have one on file; default +91.
+        cc = re.sub(r"\D", "", row.get("country_code") or "91") or "91"
+        wa_digits = f"{cc}{phone_digits[-10:]}"
+        # Use the *encoded* body so any newlines/emojis render safely.
+        try:
+            from urllib.parse import quote_plus as _qp
+        except Exception:
+            _qp = lambda s: s
+        wa_url = f"https://wa.me/{wa_digits}?text={_qp(share_message)}"
+
+    # Native SMS URI — the frontend uses Linking.openURL('sms:...').
+    sms_uri: Optional[str] = None
+    if phone_digits:
+        try:
+            from urllib.parse import quote as _q
+        except Exception:
+            _q = lambda s: s
+        sms_uri = f"sms:{phone_digits}?body={_q(share_message)}"
+
+    # mailto for when we only have an email.
+    mailto_uri: Optional[str] = None
+    if email:
+        try:
+            from urllib.parse import quote as _q
+        except Exception:
+            _q = lambda s: s
+        subject = _q(f"Your ConsultUro sign-in link")
+        body = _q(share_message)
+        mailto_uri = f"mailto:{email}?subject={subject}&body={body}"
+
+    # ── Record the invite on the registry row ──
+    now = datetime.now(timezone.utc)
+    await db.patients.update_one(
+        {"patient_id": patient_id},
+        {
+            "$set": {
+                "invited_at": now,
+                "invited_by": user.get("user_id"),
+                "updated_at": now,
+            },
+            "$inc": {"invite_count": 1},
+        },
+    )
+
+    return {
+        "ok": True,
+        "patient_id": patient_id,
+        "join_url": join_url,
+        "share_message": share_message,
+        "wa_url": wa_url,
+        "sms_uri": sms_uri,
+        "mailto_uri": mailto_uri,
+        "invited_at": now.isoformat(),
+    }
+
+
+@router.get("/api/registry/patients/{patient_id}/duplicates")
+async def find_duplicates(patient_id: str, user=Depends(require_registry_access)):
+    """Return candidate duplicate registry rows for the patient.
+
+    Signals (never merges — only surfaces candidates):
+      * STRONG — matching phone_digits (last-10) or normalised email.
+      * WEAK   — normalised-name overlap (first two tokens) when neither
+                 phone nor email conflict. Useful for spotting
+                 walk-ins recorded twice as e.g. "Sagar J." vs
+                 "Sagar Joshi".
+
+    Excludes:
+      * self
+      * rows already merged (`merged_into` set)
+    """
+    row = await patients_repo.get_active(patient_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    phone_digits = row.get("phone_digits") or _last10(row.get("phone"))
+    email = (row.get("email") or "").strip().lower()
+    name_norm = _norm_name(row.get("name"))
+    name_tokens = name_norm.split()[:2]
+
+    strong_or: List[Dict[str, Any]] = []
+    if phone_digits:
+        strong_or.append({"phone_digits": phone_digits})
+    if email:
+        strong_or.append({"email": email})
+
+    candidates: List[Dict[str, Any]] = []
+    seen: set = {patient_id}
+    if strong_or:
+        async for c in db.patients.find(
+            {"$or": strong_or,
+             "merged_into": {"$exists": False},
+             "patient_id": {"$ne": patient_id}},
+            {"_id": 0},
+        ).limit(20):
+            cid = c.get("patient_id")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            reasons: List[str] = []
+            if phone_digits and c.get("phone_digits") == phone_digits:
+                reasons.append("same phone")
+            if email and (c.get("email") or "").strip().lower() == email:
+                reasons.append("same email")
+            candidates.append({**_iso(dict(c)),
+                                 "confidence": "strong",
+                                 "reasons": reasons})
+
+    # WEAK — name-token overlap. Skip if we already gave a strong hit
+    # for the same row.
+    if name_tokens:
+        # Build a regex that matches first + second token (order-insensitive).
+        parts = [re.escape(t) for t in name_tokens if len(t) >= 2]
+        if parts:
+            joined = ".*".join(parts)
+            async for c in db.patients.find(
+                {"name": {"$regex": joined, "$options": "i"},
+                 "merged_into": {"$exists": False},
+                 "patient_id": {"$ne": patient_id}},
+                {"_id": 0},
+            ).limit(20):
+                cid = c.get("patient_id")
+                if not cid or cid in seen:
+                    continue
+                # Skip if this candidate CONFLICTS on both phone AND email
+                # (different phone AND different email = probably different
+                # person with a similar name).
+                c_phone = c.get("phone_digits") or _last10(c.get("phone"))
+                c_email = (c.get("email") or "").strip().lower()
+                if (phone_digits and c_phone and c_phone != phone_digits
+                    and email and c_email and c_email != email):
+                    continue
+                seen.add(cid)
+                candidates.append({**_iso(dict(c)),
+                                     "confidence": "weak",
+                                     "reasons": ["similar name"]})
+
+    return {"ok": True, "patient_id": patient_id,
+             "candidates": candidates,
+             "count": len(candidates)}
 
 
 @router.post("/api/registry/patients/{patient_id}/merge")

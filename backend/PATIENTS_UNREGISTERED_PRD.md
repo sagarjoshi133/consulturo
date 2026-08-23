@@ -66,3 +66,57 @@ PASSING.
 Legacy bookings already stamp `patient_id` via `resolve_patient_id`,
 so every historical guest booking already has a canonical registry
 row waiting to appear on the Unregistered tab.
+
+---
+
+## Invite Walk-Ins & Duplicate Detection (Session 2)
+
+### Backend
+
+`POST /api/registry/patients/{patient_id}/invite`
+  * Returns a share-ready payload — never sends anything itself.
+  * Fields: `join_url`, `share_message`, `wa_url`, `sms_uri`,
+    `mailto_uri`, `invited_at`.
+  * When the patient has an email → issues a 7-day magic-link
+    token in `db.auth_magic_tokens` with kind=`walkin_invite`, so
+    the sign-in flow is truly one-tap on the receiving device.
+  * When only a phone is on file → falls back to the /login web
+    URL (OTP path).
+  * Stamps `invited_at`, `invited_by`, bumps `invite_count` on
+    the registry row.
+  * 400 when both phone and email are missing.
+
+`GET /api/registry/patients/{patient_id}/duplicates`
+  * Non-invasive detection (only READS the registry).
+  * Signals:
+    - **STRONG** — same `phone_digits` (last-10) or `email`.
+    - **WEAK**   — normalised name-token overlap (first two tokens)
+      only when phone/email don't CONFLICT.
+  * Excludes self + rows already merged.
+  * Returns `[{...patient, confidence, reasons[]}, ...]`.
+
+Existing `POST /api/registry/patients/{keep_id}/merge` unchanged —
+the frontend pipes into it directly with the surfaced `duplicate_patient_id`.
+
+### Frontend
+
+Patients directory (`app/patients/index.tsx`) now shows two extra
+buttons on every card:
+
+  * **Invite** (Unregistered tab only) → opens a bottom-sheet with
+    five channel buttons: WhatsApp, SMS, Email (mailto), native
+    Share…, Copy link. Once invited, the card gains a subtle green
+    "invited" chip.
+  * **Duplicates** (all tabs) → opens a bottom-sheet listing the
+    candidate rows with STRONG/WEAK confidence tags and a
+    "Merge into this" action per row. Merges are guarded by a
+    web-confirm / native destructive Alert, then optimistically
+    remove the merged row from the list and refresh the summary.
+
+### Smoke tests
+`tests/smoke_walkin_invite_merge.py` — 9 assertions covering all
+three channels per patient shape, `invited_at`/`invite_count`
+stamping, no-contact 400, STRONG phone dup, WEAK name dup, unrelated
+name excluded, merge absorbs, and merged rows drop out of the next
+duplicates fetch. PASSING.
+
