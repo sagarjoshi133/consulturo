@@ -132,7 +132,8 @@ api.interceptors.request.use(async (config) => {
 // caller.
 const DR_ELIGIBLE_PATH_RES: RegExp[] = [
   /^\/health(\?|$)/,             // /api/health probe
-  /^\/me(\?|$)/,                 // caller identity — used by AuthProvider on boot
+  /^\/me(\?|$)/,                 // caller identity (short form)
+  /^\/auth\/me(\?|$)/,           // caller identity — used by AuthProvider on boot
   /^\/auth\/session(\?|$)/,      // OAuth session exchange
   /^\/auth\/refresh(\?|$)/,      // silent session refresh
   /^\/auth\/logout(\?|$)/,       // logout must still work if origin flakes
@@ -170,9 +171,21 @@ api.interceptors.response.use(
     const cfg = error.config;
     if (!cfg || cfg.__drRetried) return Promise.reject(error);
     if (!isDrClassError(error)) return Promise.reject(error);
-    // ── Comm-0 gate ─────────────────────────────────────────────
-    // Only allow the sticky backup-server switch for true infra paths.
-    if (!_isDrEligiblePath(cfg.url)) return Promise.reject(error);
+    // ── Comm-0 gate (refined Jun-2026) ───────────────────────────
+    // A 5xx RESPONSE can be an app-logic failure (e.g. push relay not
+    // configured → 503) that does NOT mean the origin is down, so we
+    // still restrict those to the true-infra allowlist to avoid the
+    // old "Connected to backup server" flapping.
+    //
+    // BUT a pure NETWORK/timeout error (no HTTP response at all —
+    // ERR_NETWORK / ECONNABORTED / ETIMEDOUT / DNS failure)
+    // unambiguously means the primary origin is unreachable. In that
+    // case we fail over on ANY path — otherwise a down primary backend
+    // leaves every data screen (Patients, Bookings, …) spinning
+    // forever instead of transparently switching to the healthy
+    // fallback backend.
+    const hasHttpResponse = !!(error as AxiosError).response;
+    if (hasHttpResponse && !_isDrEligiblePath(cfg.url)) return Promise.reject(error);
 
     const winner = await activateFallback();
     if (!winner) return Promise.reject(error);

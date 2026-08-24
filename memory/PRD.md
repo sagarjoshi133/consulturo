@@ -224,3 +224,11 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
   - Frontend: new **"Quarantined email / phone"** section appended to `admin/dup-merge.tsx` (super_owner/primary_owner). Per-row Merge or Restore button. testIDs: `quarantine-row-*`, `quarantine-merge-*`, `quarantine-restore-*`, `quarantine-empty`.
   - Backend verified via curl: list (2 rows), merge (booking re-stamped, stub deleted), restore (phone renamed back), staff-block on DELETE /auth/me (403).
 
+## Installed-app "everything slow / endless loading / Sign Out does nothing" — FIXED (Jun 2026)
+Root cause: the installed APK targets the **production** backend (`urology-pro.emergent.host`) with preview as DR fallback. When production is down/degraded (deploy failing), the client did not fail over for data screens, so Patients/Bookings/Directory spun forever and Sign Out hung.
+- **`src/api.ts`** — DR failover gate refined: a pure NETWORK/timeout error (no HTTP response: ERR_NETWORK/ECONNABORTED/ETIMEDOUT) now triggers failover on ANY path (a down origin should never leave data screens spinning); 5xx RESPONSES still restricted to the true-infra allowlist (keeps the Comm-0 anti-flap behaviour). Added `/auth/me` to the allowlist (the app calls `/auth/me`, not `/me`, so boot failover was previously never eligible).
+- **`src/backend-health.ts`** — new `ensureHealthyBackend(timeoutMs=4000)`: proactive one-shot `/api/health` probe of the primary on boot; if it times out/errors, immediately fails over to a healthy fallback so the first screen loads against a working backend (no 15s stalls). No-op when PRIMARY unset or no fallbacks.
+- **`src/auth.tsx`** — (1) `refresh()` calls `ensureHealthyBackend()` before the first `/auth/me`. (2) **Sign Out is now instant & reliable**: clears local session (`setUser(null)` + removes token) FIRST, then fires `revokeV2Installation()` + `/auth/logout` (5s timeout) in the background — a dead/slow backend can no longer make Sign Out appear to do nothing.
+- NOTE: these are client-side fixes → the installed app needs a **new build (or OTA update)** to pick them up. The deeper fix is getting production deployed successfully (the WAKEUP_ENVIRONMENT infra timeout).
+- Verified in preview: Patients screen loads with data, no boot regression.
+

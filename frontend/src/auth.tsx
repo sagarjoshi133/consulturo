@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
+import { ensureHealthyBackend } from './backend-health';
 import { registerForPushNotifications } from './push';
 import { registerV2Installation, revokeV2Installation } from './comm-v2/installation';
 import { setSentryUser } from './sentry';
@@ -81,6 +82,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         return;
       }
+      // Proactively verify the primary backend is reachable BEFORE the
+      // first authenticated call. If the primary (e.g. production) is
+      // down, this fails over to a healthy fallback within ~4s so the
+      // whole session — identity + every data screen — uses a working
+      // backend instead of stalling on repeated 15s timeouts.
+      try { await ensureHealthyBackend(); } catch {}
       const { data } = await api.get('/auth/me');
       setUser(data);
       // Fire-and-forget push registration once the user is authenticated
@@ -205,14 +212,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    // Revoke the V2 installation binding BEFORE clearing the session
-    // token — otherwise the request has no auth to identify the user.
-    try { await revokeV2Installation(); } catch {}
-    try {
-      await api.post('/auth/logout');
-    } catch {}
-    await AsyncStorage.removeItem('session_token');
+    // Capture the token BEFORE we clear it so the background logout
+    // call can still authenticate itself.
+    let token: string | null = null;
+    try { token = await AsyncStorage.getItem('session_token'); } catch {}
+
+    // Instant, reliable LOCAL sign-out — never block the UI on the
+    // network. If the backend is slow/unreachable the user must still
+    // be able to sign out immediately (previously we awaited the
+    // logout/revoke calls, so a dead backend made "Sign out" appear to
+    // do nothing until the 15s timeout).
     setUser(null);
+    try { await AsyncStorage.removeItem('session_token'); } catch {}
+
+    // Best-effort server-side cleanup in the background. Short timeout
+    // so it can never hang; failures are ignored (the local session is
+    // already gone, which is what matters).
+    (async () => {
+      try { await revokeV2Installation(); } catch {}
+      try {
+        await api.post('/auth/logout', {}, {
+          timeout: 5000,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+      } catch {}
+    })();
   }, []);
 
   return (

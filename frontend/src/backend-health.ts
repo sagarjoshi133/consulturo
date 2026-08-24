@@ -102,6 +102,42 @@ export async function activateFallback(): Promise<string | null> {
   return winner;
 }
 
+/**
+ * Proactive boot-time health check.
+ *
+ * Called once when the app starts (before the first data fetch). If
+ * the PRIMARY backend answers `/api/health` within `timeoutMs` we stay
+ * on it (zero-overhead happy path). If it times out / errors / returns
+ * non-200, we immediately fail over to a healthy fallback so the very
+ * first screen loads against a working backend instead of every
+ * request waiting out the full axios timeout when the primary origin
+ * is down (e.g. a failed/degraded production deploy).
+ *
+ * Safe no-op when PRIMARY is unset (web same-origin) or we've already
+ * failed over.
+ */
+export async function ensureHealthyBackend(timeoutMs = 4000): Promise<void> {
+  if (isOnFallback()) return;
+  if (!PRIMARY) return;
+  if (FALLBACKS.length === 0) return; // nothing to fall over to anyway
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    let ok = false;
+    try {
+      const resp = await fetch(`${PRIMARY}/api/health`, { method: 'GET', signal: ctrl.signal });
+      ok = !!resp && resp.ok;
+    } finally {
+      clearTimeout(t);
+    }
+    if (ok) return; // primary healthy — stay put
+  } catch {
+    // network error / abort → treat primary as down
+  }
+  // Primary unhealthy or unreachable → switch to a fallback if one is up.
+  await activateFallback();
+}
+
 /** For tests / manual reset (e.g. on app reload). */
 export function resetFallback(): void {
   _activeBase = PRIMARY;
