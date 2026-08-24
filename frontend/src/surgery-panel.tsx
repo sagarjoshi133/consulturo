@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { getCached, setCached, hasCached } from './data-cache';
 import {
   View,
   Text,
@@ -134,9 +135,9 @@ const SurgeryRow = React.memo(function SurgeryRow({
 
 export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
   const { isWebDesktop } = useResponsive();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [presets, setPresets] = useState<string[]>([]);
+  const [items, setItems] = useState<any[]>(() => getCached<any[]>('surgeries:items') ?? []);
+  const [loading, setLoading] = useState(() => !hasCached('surgeries:items'));
+  const [presets, setPresets] = useState<string[]>(() => getCached<string[]>('surgeries:presets') ?? []);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SurgeryForm>(EMPTY);
@@ -358,8 +359,10 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
       ]);
       setItems(surgeriesRes.data);
       setPresets(presetsRes.data?.procedures || []);
+      setCached('surgeries:items', surgeriesRes.data);
+      setCached('surgeries:presets', presetsRes.data?.procedures || []);
     } catch {
-      setItems([]);
+      if (!hasCached('surgeries:items')) setItems([]);
     } finally {
       setLoading(false);
     }

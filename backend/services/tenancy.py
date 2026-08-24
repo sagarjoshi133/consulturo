@@ -179,6 +179,7 @@ async def upsert_membership(
     role against `CLINIC_ROLES`."""
     if role not in CLINIC_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid clinic role: {role}")
+    invalidate_tenancy_cache(user_id)
     now = _now_ms()
     existing = await db[MEMBERSHIPS_COLL].find_one(
         {"user_id": user_id, "clinic_id": clinic_id}, {"_id": 0}
@@ -238,16 +239,61 @@ async def get_user_clinics(user_id: str, *, only_active: bool = True) -> List[Di
     return out
 
 
+# ── Per-request tenancy cache ───────────────────────────────────────────
+# resolve_clinic_id runs on EVERY tenant-scoped request and used to cost
+# 1-2 extra Atlas round-trips (membership validation / default-clinic
+# lookup). Memberships change rarely, so a short in-process TTL cache
+# removes that tax. Invalidated on every membership write (see
+# invalidate_tenancy_cache calls in upsert_membership + admin routers).
+import time as _time
+
+_TENANCY_TTL = 60.0
+# ("default", user_id) -> (expiry, clinic_id | None)
+# ("member", user_id, clinic_id) -> (expiry, bool)
+_tenancy_cache: Dict[tuple, tuple] = {}
+
+
+def _tc_get(key: tuple):
+    e = _tenancy_cache.get(key)
+    if not e:
+        return None
+    if e[0] < _time.monotonic():
+        _tenancy_cache.pop(key, None)
+        return None
+    return e[1:]
+
+
+def _tc_put(key: tuple, value) -> None:
+    if len(_tenancy_cache) > 5000:
+        _tenancy_cache.clear()
+    _tenancy_cache[key] = (_time.monotonic() + _TENANCY_TTL, value)
+
+
+def invalidate_tenancy_cache(user_id: Optional[str] = None) -> None:
+    """Drop cached membership state — for one user, or everyone."""
+    if not user_id:
+        _tenancy_cache.clear()
+        return
+    stale = [k for k in _tenancy_cache if len(k) >= 2 and k[1] == user_id]
+    for k in stale:
+        _tenancy_cache.pop(k, None)
+
+
 async def get_default_clinic_id(user: Dict[str, Any]) -> Optional[str]:
     """First active clinic the user belongs to. None for users with no
-    membership (typically `patient` role or a freshly-signed-in user)."""
+    membership (typically `patient` role or a freshly-signed-in user).
+    Cached for 60s per user — this runs on every tenant-scoped request
+    that arrives without an X-Clinic-Id header."""
     uid = (user or {}).get("user_id") or (user or {}).get("id")
     if not uid:
         return None
+    hit = _tc_get(("default", uid))
+    if hit is not None:
+        return hit[0]
     clinics = await get_user_clinics(uid, only_active=True)
-    if not clinics:
-        return None
-    return clinics[0]["clinic"]["clinic_id"]
+    result = clinics[0]["clinic"]["clinic_id"] if clinics else None
+    _tc_put(("default", uid), result)
+    return result
 
 
 # ── Request-time scoping ────────────────────────────────────────────────
@@ -283,11 +329,17 @@ async def resolve_clinic_id(
 
     uid = user.get("user_id") or user.get("id")
     if raw:
-        # Validate membership.
-        m = await db[MEMBERSHIPS_COLL].find_one(
-            {"user_id": uid, "clinic_id": raw, "is_active": True}, {"_id": 1}
-        )
-        if not m:
+        # Validate membership (cached 60s — memberships change rarely).
+        hit = _tc_get(("member", uid, raw))
+        if hit is not None:
+            ok = hit[0]
+        else:
+            m = await db[MEMBERSHIPS_COLL].find_one(
+                {"user_id": uid, "clinic_id": raw, "is_active": True}, {"_id": 1}
+            )
+            ok = bool(m)
+            _tc_put(("member", uid, raw), ok)
+        if not ok:
             raise HTTPException(
                 status_code=403,
                 detail="You are not a member of this clinic.",

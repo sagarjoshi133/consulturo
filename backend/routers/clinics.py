@@ -35,6 +35,7 @@ from services.tenancy import (
     get_clinic_by_id,
     get_clinic_by_slug,
     get_user_clinics,
+    invalidate_tenancy_cache,
     slugify,
     upsert_membership,
 )
@@ -287,6 +288,7 @@ async def remove_member(
         {"user_id": user_id, "clinic_id": clinic_id},
         {"$set": {"is_active": False, "removed_by": _uid(user)}},
     )
+    invalidate_tenancy_cache(user_id)
     await log_action(
         actor=user,
         clinic_id=clinic_id,

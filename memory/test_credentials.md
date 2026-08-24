@@ -119,3 +119,17 @@ After setting the token, reload. Works for `/my-records`, `/my-bookings`, `/dash
 
 ## Refreshed test sessions (2026-06 Phase A)
 - OWNER (primary_owner, sagar.joshi133@gmail.com): Bearer `test_session_1781800271528` (also `test_session_1781009714553`), refreshed +2 days on Phase A session. Mint new via db.user_sessions insert if expired.
+
+## Long-lived seeded test sessions (Jun 2026 — re-seeded after sessions TTL purge)
+Insert-pattern if purged again: upsert into `user_sessions` {session_token, user_id, expires_at: +365d}.
+- `test_session_1781009714553` → user_4775ed40276e (primary_owner, sagar.joshi133@gmail.com)
+- `test_session_1781792149794` → user_4775ed40276e (primary_owner)
+- `test_session_1781800271528` → user_4775ed40276e (primary_owner)
+- `_FUheqDsTzh8q1HO0t7vfrmYaUcBiM1hxK0VffuyZXM` → user_4775ed40276e (primary_owner)
+- `patient_token_1776494002311` / `pat_session_1781803137372` / `test_patient_session_1781495818622` → test-patient-1776494002311 (patient)
+- `sagar_p_session_1781806225518` → user_9a7a0666e873 (patient Sagar P)
+- `doctor_token_1776494002376` → user_5712cb329052 (doctor)
+- `test_demo_session_1781794755284` → demo-prim-1781794755284 (is_demo primary_owner)
+NOTE: backend now has a 30s in-process auth cache (services/auth_cache.py) — after direct DB
+session inserts the token works immediately (cache is lookup-through), but after direct DB
+session DELETES allow ≤30s or restart backend.

@@ -37,6 +37,7 @@ from services.tenancy import (
     MEMBERSHIPS_COLL,
     TENANT_SCOPED_COLLECTIONS,
     get_clinic_by_id,
+    invalidate_tenancy_cache,
 )
 
 router = APIRouter()
@@ -97,6 +98,7 @@ async def soft_delete_clinic(
         {"clinic_id": clinic_id, "is_active": True},
         {"$set": {"is_active": False, "deactivated_at": now_ms, "deactivated_reason": "clinic_archived"}},
     )
+    invalidate_tenancy_cache()
 
     await log_action(
         actor=user,
@@ -141,6 +143,7 @@ async def restore_clinic(
         {"clinic_id": clinic_id, "deactivated_reason": "clinic_archived"},
         {"$set": {"is_active": True}, "$unset": {"deactivated_at": "", "deactivated_reason": ""}},
     )
+    invalidate_tenancy_cache()
     await log_action(
         actor=user,
         clinic_id=clinic_id,

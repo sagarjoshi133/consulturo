@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import { ensureHealthyBackend } from './backend-health';
-import { invalidateCached } from './data-cache';
+import { invalidateCached, hydrateCache, ensureCacheOwner } from './data-cache';
 import { registerForPushNotifications } from './push';
 import { registerV2Installation, revokeV2Installation } from './comm-v2/installation';
 import { setSentryUser } from './sentry';
@@ -83,14 +83,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         return;
       }
-      // Proactively verify the primary backend is reachable BEFORE the
-      // first authenticated call. If the primary (e.g. production) is
-      // down, this fails over to a healthy fallback within ~4s so the
-      // whole session — identity + every data screen — uses a working
-      // backend instead of stalling on repeated 15s timeouts.
-      try { await ensureHealthyBackend(); } catch {}
+      // ── INSTANT BOOT ──────────────────────────────────────────────
+      // Paint the app immediately from the last-known profile + data
+      // cache instead of blocking the whole UI on a network round-trip.
+      // /auth/me still runs below and corrects/updates in background;
+      // a 401/403 signs the user out.
+      try {
+        const cachedRaw = await AsyncStorage.getItem('cached_user');
+        if (cachedRaw) {
+          const cachedUser = JSON.parse(cachedRaw) as User;
+          if (cachedUser?.user_id) {
+            await hydrateCache(); // fast local multiGet — screens paint with data
+            setUser(cachedUser);
+            setLoading(false);
+          }
+        }
+      } catch { /* corrupt cache — fall through to network boot */ }
+      // Health probe runs in the BACKGROUND — it must never delay the
+      // first screen. The axios DR interceptor covers failover for the
+      // /auth/me call itself if the primary is down.
+      ensureHealthyBackend().catch(() => {});
       const { data } = await api.get('/auth/me');
       setUser(data);
+      try {
+        await ensureCacheOwner(data.user_id);
+        await AsyncStorage.setItem('cached_user', JSON.stringify(data));
+      } catch {}
       // Fire-and-forget push registration once the user is authenticated
       registerForPushNotifications().catch(() => {});
       registerV2Installation().catch(() => {});
@@ -105,6 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const status = e?.response?.status;
       if (status === 401 || status === 403) {
         await AsyncStorage.removeItem('session_token').catch(() => {});
+        await AsyncStorage.removeItem('cached_user').catch(() => {});
+        try { invalidateCached(); } catch {}
         setUser(null);
       }
       // On network errors, intentionally DO NOT touch `user` — the
@@ -207,6 +227,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = await api.post('/auth/session', { session_id: sessionId });
     await AsyncStorage.setItem('session_token', data.session_token);
     setUser(data.user);
+    try {
+      await ensureCacheOwner(data.user?.user_id);
+      await AsyncStorage.setItem('cached_user', JSON.stringify(data.user));
+    } catch {}
     registerForPushNotifications().catch(() => {});
     registerV2Installation().catch(() => {});
     return data.user as User;
@@ -226,6 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     try { invalidateCached(); } catch {}
     try { await AsyncStorage.removeItem('session_token'); } catch {}
+    try { await AsyncStorage.removeItem('cached_user'); } catch {}
 
     // Best-effort server-side cleanup in the background. Short timeout
     // so it can never hang; failures are ignored (the local session is

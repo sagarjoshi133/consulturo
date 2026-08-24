@@ -20,6 +20,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../src/api';
+import { getCached, setCached, hasCached } from '../src/data-cache';
 import { useAuth } from '../src/auth';
 import { useToast } from '../src/toast';
 import { useNotifications } from '../src/notifications';
@@ -69,8 +70,8 @@ export default function MyBookings() {
   const toast = useToast();
   const { unread } = useNotifications();
   const { t } = useI18n();
-  const [items, setItems] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Booking[]>(() => getCached<Booking[]>('my-bookings') ?? []);
+  const [loading, setLoading] = useState(() => !hasCached('my-bookings'));
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
 
@@ -104,8 +105,9 @@ export default function MyBookings() {
     try {
       const { data } = await api.get('/bookings/me');
       setItems(data || []);
+      setCached('my-bookings', data || []);
     } catch {
-      setItems([]);
+      if (!hasCached('my-bookings')) setItems([]);
     }
   }, []);
 
@@ -124,7 +126,7 @@ export default function MyBookings() {
   }, [guestPhone]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!(user && hasCached('my-bookings'))) setLoading(true);
     try {
       if (user) {
         await loadAuthenticated();

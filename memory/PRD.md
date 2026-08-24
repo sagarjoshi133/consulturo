@@ -272,3 +272,28 @@ Client-side fix so switching away and back to a tab shows the last-loaded data I
 - Wired into the 3 cached screens, each tracking `updatedAt` (set on successful load): **Dashboard/Today** (under the Today header), **Bookings** (under the toolbar), **Patients** (under the header). Tells staff how fresh the instantly-shown cached data is.
 - Verified on preview: "Updated just now" renders under the Today header; lint clean. Frontend-only → needs a fresh build for the installed app.
 
+
+## Production slowness — FINAL ROOT-CAUSE FIX: per-request auth/tenancy tax (Jun 2026)
+User confirmed slowness persisted post-redeploy on a real APK. Diagnosis: EVERY authenticated
+request paid 3-4 sequential Atlas round-trips BEFORE the endpoint query ran:
+session lookup + user lookup (get_current_user) + membership/default-clinic lookup (resolve_clinic_id).
+Fixes:
+- NEW `/app/backend/services/auth_cache.py`: 30s in-process TTL cache token→user (max 5000 entries).
+- `server.py resolve_session_user()`: single $lookup aggregation (user_sessions ⋈ users) on cache
+  miss = 1 round trip instead of 2; shared by get_current_user AND demo middleware.
+- IMMEDIATE invalidation: logout (invalidate_token), account deletion + PATCH /auth/me +
+  email-verify (invalidate_user). Admin role/permission tweaks propagate within ≤30s TTL.
+- `services/tenancy.py`: 60s TTL cache for membership validation + default clinic;
+  `invalidate_tenancy_cache()` called in upsert_membership, member remove, clinic archive/restore.
+- FRONTEND `data-cache.ts` v2: persists entries to AsyncStorage (`dc:*`, 400KB/key cap),
+  `hydrateCache()` at boot, `ensureCacheOwner(userId)` wipes on account switch, cleared on
+  sign-out/401. Cold app start now paints last-known data instantly.
+- `auth.tsx` INSTANT BOOT: hydrates `cached_user` + data cache from AsyncStorage and renders
+  immediately; /auth/me verifies in background (401/403 → sign-out); ensureHealthyBackend no
+  longer blocks first paint.
+- SWR caching extended to: surgery-panel (surgeries:items/presets), prescriptions panels
+  (rx:items), my-bookings, inbox (inbox:received). Already cached: admin-overview, bookings-all,
+  patients, notes.
+- Testing iteration 26: 17/17 backend pytest (`tests/test_auth_cache_and_tenancy.py`) + frontend
+  smoke PASS. NOTE: many older pytest files contain stale hardcoded session tokens purged by the
+  sessions TTL index — re-seed via user_sessions upsert, not code changes.

@@ -1,0 +1,39 @@
+{
+  "summary": "Auth-cache + tenancy-cache session verified end-to-end. 17/17 backend pytest cases passed against the deployed preview URL, including cache-hit, logout invalidation (no 30s stale window), expired session -> 401, role gates (patient 403 vs owner 200 on /api/admin/users/quarantined-duplicates), PATCH /auth/me freshness (phone reflected immediately), throwaway-patient DELETE /auth/me + immediate 401, owner DELETE /auth/me blocked with 403, and tenant scoping (correct clinic 200, non-member clinic 403) across /api/bookings/all, /api/surgeries, /api/prescriptions, /api/analytics/dashboard. Frontend web preview loads cleanly with an injected session token: dashboard + my-bookings render, cached_user + dc_owner + dc:bookings-all + dc:admin-overview localStorage keys are written by data-cache/auth.tsx (AsyncStorage persistence working), body renders quickly on repeat visit, zero console errors during boot. No React Native / expo-av / deprecated-package issues introduced by this session's changes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_cache_and_tenancy.py",
+    "/app/test_reports/pytest/iteration26_auth_cache.xml"
+  ],
+  "action_items": [
+    "No fixes required for this session's changes — auth cache invalidation on logout / delete / patch is working correctly, tenancy 403 on non-member clinic is enforced, patient/owner role gates hold, PATCH /auth/me reflects instantly.",
+    "OPTIONAL follow-up: only 2 dc:* keys (dc:bookings-all, dc:admin-overview) were observed in localStorage after visiting dashboard + /my-bookings. Keys named my-bookings / inbox:received / rx:items / surgeries:items were NOT seen because the first-run consent modal blocked navigation into those panels during smoke. Main agent may want to manually confirm those SWR keys land in AsyncStorage on a real (post-consent) session — the plumbing is clearly working (dc_owner + two dc: keys present, zero console errors)."
+  ],
+  "critical_code_review_comments": [
+    "auth_cache.py TTL=30s with immediate invalidation on logout / delete / PATCH is a clean design — logout/delete tests confirmed no stale window.",
+    "tenancy._TENANCY_TTL=60s + invalidate_tenancy_cache called from upsert_membership: verified 403 still enforced on non-member clinic header (cache doesn't leak membership).",
+    "invalidate_user() in auth_cache.py does a linear scan of _cache — fine at _MAX_ENTRIES=5000 but worth watching if user count grows; not a bug.",
+    "DELETE /api/auth/me correctly 403s for staff/owner (test_owner_self_delete_is_blocked_403) — good guard rail."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_cache_and_tenancy.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17)",
+    "frontend": "100% smoke (dashboard + my-bookings load, 0 console errors, dc:* + cached_user persisted)"
+  },
+  "seed_data_creation": "Throwaway (user, user_sessions, bookings) rows are created inline per-test and cleaned up in the finally block. NO long-lived seeded tokens were touched — OWNER test_session_1781009714553 and PATIENT patient_token_1776494002311 are intact and still return 200 on /auth/me after the run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable regression file: /app/backend/tests/test_auth_cache_and_tenancy.py — covers auth cache correctness (cache hit, logout invalidation, expired session), role gates, tenancy 403/200, PATCH freshness, and throwaway account deletion. Run with: pytest /app/backend/tests/test_auth_cache_and_tenancy.py -v. Long-lived seeded tokens documented in /app/memory/test_credentials.md and used by the file: OWNER test_session_1781009714553 (user_4775ed40276e, primary_owner) + PATIENT patient_token_1776494002311. Clinic used for tenancy tests: clinic_a97b903f2fb2 (dr-joshi-uro).",
+  "rca_of_issue": "N/A — verification-only session, no regressions found."
+}

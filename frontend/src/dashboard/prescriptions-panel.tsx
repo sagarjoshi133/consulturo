@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import api from '../api';
 import { useAuth } from '../auth';
+import { getCached, setCached, hasCached } from '../data-cache';
 import { COLORS, FONTS, RADIUS } from '../theme';
 import { Skeleton } from '../skeleton';
 import { useToast } from '../toast';
@@ -45,8 +46,8 @@ export default function PrescriptionsPanel() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
   const toast = useToast();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<any[]>(() => getCached<any[]>('rx:items') ?? []);
+  const [loading, setLoading] = useState(() => !hasCached('rx:items'));
   const [search, setSearch] = useState('');
   const [settings, setSettings] = useState<ClinicSettings>({});
   const [busyId, setBusyId] = useState<string>(''); // `${id}:print` | `${id}:pdf` | `${id}:delete`
@@ -59,8 +60,9 @@ export default function PrescriptionsPanel() {
       ]);
       setItems(data);
       setSettings(s);
+      setCached('rx:items', data);
     } catch {
-      setItems([]);
+      if (!hasCached('rx:items')) setItems([]);
     } finally {
       setLoading(false);
     }

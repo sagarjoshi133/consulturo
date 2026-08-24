@@ -279,20 +279,10 @@ async def _try_get_user_from_request(request: Request) -> Optional[Dict[str, Any
                 token = auth.split(" ", 1)[1]
         if not token:
             return None
-        session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-        if not session:
-            return None
-        expires_at = session.get("expires_at")
-        if isinstance(expires_at, str):
-            try:
-                expires_at = datetime.fromisoformat(expires_at)
-            except Exception:
-                expires_at = None
-        if expires_at and expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at and expires_at < datetime.now(timezone.utc):
-            return None
-        return await db.users.find_one({"user_id": session.get("user_id")}, {"_id": 0})
+        # Shares the 30s auth cache + single-round-trip lookup used by
+        # get_current_user (defined later in this module — resolved at
+        # call time, so the forward reference is safe).
+        return await resolve_session_user(token)
     except Exception:
         return None
 
@@ -1569,6 +1559,48 @@ async def get_effective_role(role: str) -> Dict[str, Any]:
 # ============================================================
 
 
+async def resolve_session_user(token: str) -> Optional[Dict[str, Any]]:
+    """Token → user with (a) a 30s in-process cache and (b) a SINGLE
+    Atlas round-trip on cache miss ($lookup joins users onto the
+    session row). Previously this was 2 sequential queries on EVERY
+    request — the dominant per-request latency tax in production.
+    """
+    from services import auth_cache
+    cached = auth_cache.get(token)
+    if cached is not None:
+        return cached
+    rows = await db.user_sessions.aggregate([
+        {"$match": {"session_token": token}},
+        {"$limit": 1},
+        {"$project": {"_id": 0, "user_id": 1, "expires_at": 1}},
+        {"$lookup": {
+            "from": "users",
+            "localField": "user_id",
+            "foreignField": "user_id",
+            "as": "_user",
+            "pipeline": [{"$limit": 1}, {"$project": {"_id": 0}}],
+        }},
+    ]).to_list(1)
+    if not rows:
+        return None
+    session = rows[0]
+    expires_at = session.get("expires_at")
+    if isinstance(expires_at, str):
+        try:
+            expires_at = datetime.fromisoformat(expires_at)
+        except Exception:
+            expires_at = None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        return None
+    users = session.get("_user") or []
+    user = users[0] if users else None
+    if user:
+        auth_cache.put(token, user)
+    return user
+
+
 async def get_current_user(
     request: Request,
     authorization: Optional[str] = Header(None),
@@ -1579,18 +1611,7 @@ async def get_current_user(
         token = authorization.split(" ", 1)[1]
     if not token:
         return None
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
-        return None
-    expires_at = session.get("expires_at")
-    if isinstance(expires_at, str):
-        expires_at = datetime.fromisoformat(expires_at)
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at and expires_at < datetime.now(timezone.utc):
-        return None
-    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    return user
+    return await resolve_session_user(token)
 
 
 async def require_user(user=Depends(get_current_user)) -> Dict[str, Any]:

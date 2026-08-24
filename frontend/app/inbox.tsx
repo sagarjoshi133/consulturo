@@ -43,6 +43,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import api from '../src/api';
+import { getCached, setCached, hasCached } from '../src/data-cache';
 import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
@@ -166,9 +167,9 @@ export default function Inbox() {
   const [cpFilter, setCpFilter] = useState<CounterpartyFilter>('all');
 
   // ── Data state ──
-  const [received, setReceived] = useState<InboxItem[]>([]);
+  const [received, setReceived] = useState<InboxItem[]>(() => getCached<InboxItem[]>('inbox:received') ?? []);
   const [sent, setSent] = useState<InboxItem[]>([]);
-  const [firstLoad, setFirstLoad] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(() => !hasCached('inbox:received'));
   const [refreshing, setRefreshing] = useState(false);
   const [sentLoading, setSentLoading] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
@@ -190,7 +191,9 @@ export default function Inbox() {
     try {
       const { data } = await api.get('/inbox/all');
       const items: InboxItem[] = Array.isArray(data?.items) ? data.items : [];
-      setReceived(items.filter((i) => i.source_type === 'personal'));
+      const personal = items.filter((i) => i.source_type === 'personal');
+      setReceived(personal);
+      setCached('inbox:received', personal);
     } catch {
       setReceived((cur) => cur);
     } finally {

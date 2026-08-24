@@ -16,6 +16,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { parseBackendDate, formatIST } from '../../src/date';
 import api from '../../src/api';
+import { getCached, setCached, hasCached } from '../../src/data-cache';
 import { useAuth } from '../../src/auth';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { PrimaryButton } from '../../src/components';
@@ -38,8 +39,8 @@ export default function PrescriptionsList() {
   // Mirrors backend require_prescriber (capability resolver): owner
   // tier is implicit; team members need the can_prescribe flag.
   const canPrescribe = !!user && (isOwner || !!(user as any).can_prescribe);
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<any[]>(() => getCached<any[]>('rx:items') ?? []);
+  const [loading, setLoading] = useState(() => !hasCached('rx:items'));
   const [refreshing, setRefreshing] = useState(false);
   const [settings, setSettings] = useState<ClinicSettings>({});
   const [busyId, setBusyId] = useState<string>(''); // `${id}:print` | `${id}:pdf` | `${id}:delete`
@@ -57,8 +58,9 @@ export default function PrescriptionsList() {
       ]);
       setItems(data);
       setSettings(s);
+      setCached('rx:items', data);
     } catch {
-      setItems([]);
+      if (!hasCached('rx:items')) setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

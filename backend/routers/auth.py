@@ -523,6 +523,11 @@ async def auth_link_email_verify(request: Request, body: LinkEmailVerifyBody, us
         {"user_id": user["user_id"]},
         {"$set": {"email": email_l, "email_verified_at": datetime.now(timezone.utc)}},
     )
+    try:
+        from services import auth_cache
+        auth_cache.invalidate_user(user["user_id"])
+    except Exception:
+        pass
     return {"ok": True, "email": email_l}
 
 @router.post("/api/auth/logout")
@@ -538,6 +543,11 @@ async def auth_logout(
         token = authorization.split(" ", 1)[1]
     if token:
         await db.user_sessions.delete_one({"session_token": token})
+        try:
+            from services import auth_cache
+            auth_cache.invalidate_token(token)
+        except Exception:
+            pass
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
@@ -648,6 +658,11 @@ async def delete_my_account(user=Depends(require_user)):
         report["purged"]["user_sessions"] = int(sr.deleted_count or 0)
     except Exception:
         pass
+    try:
+        from services import auth_cache
+        auth_cache.invalidate_user(uid)
+    except Exception:
+        pass
 
     # 5) Delete the user document itself.
     try:
@@ -682,4 +697,9 @@ async def update_my_profile(body: MyProfileBody, user=Depends(require_user)):
         updates["phone_digits"] = digits
     if updates:
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": updates})
+        try:
+            from services import auth_cache
+            auth_cache.invalidate_user(user["user_id"])
+        except Exception:
+            pass
     return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
