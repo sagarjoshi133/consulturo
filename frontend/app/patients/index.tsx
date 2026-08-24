@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import api from '../../src/api';
 import { COLORS } from '../../src/theme';
+import { getCached, setCached, hasCached } from '../../src/data-cache';
 
 type Patient = {
   patient_id: string;
@@ -65,17 +66,17 @@ export default function UnregisteredPatientsScreen() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('unregistered');
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Patient[]>(() => getCached<Patient[]>('patients:items:unregistered') ?? []);
+  const [loading, setLoading] = useState(() => !hasCached('patients:items:unregistered'));
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<{
     total: number; registered: number; unregistered: number;
-  } | null>(null);
+  } | null>(() => getCached('patients:summary') ?? null);
   const [analytics, setAnalytics] = useState<{
     total_invited: number; converted_total: number;
     conversion_rate_total: number;
     converted_within_7d: number; converted_within_30d: number;
-  } | null>(null);
+  } | null>(() => getCached('patients:analytics') ?? null);
   const [err, setErr] = useState<string | null>(null);
   // ── Multi-select mode ──
   const [selectMode, setSelectMode] = useState(false);
@@ -93,7 +94,8 @@ export default function UnregisteredPatientsScreen() {
   };
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true);
+    const cacheKey = `patients:items:${tab}`;
+    if (!opts?.silent && !hasCached(cacheKey)) setLoading(true);
     setErr(null);
     try {
       const [listRes, summaryRes, analyticsRes] = await Promise.all([
@@ -103,24 +105,35 @@ export default function UnregisteredPatientsScreen() {
         api.get('/registry/patients/summary').catch(() => ({ data: null })),
         api.get('/registry/invites/analytics').catch(() => ({ data: null })),
       ]);
-      setItems(Array.isArray(listRes?.data?.items) ? listRes.data.items : []);
-      if (summaryRes?.data) setSummary(summaryRes.data);
-      if (analyticsRes?.data) setAnalytics(analyticsRes.data);
+      const list = Array.isArray(listRes?.data?.items) ? listRes.data.items : [];
+      setItems(list);
+      // Only cache the unfiltered list per tab (searches are transient).
+      if (!q.trim()) setCached(cacheKey, list);
+      if (summaryRes?.data) { setSummary(summaryRes.data); setCached('patients:summary', summaryRes.data); }
+      if (analyticsRes?.data) { setAnalytics(analyticsRes.data); setCached('patients:analytics', analyticsRes.data); }
     } catch (e: any) {
       const d = e?.response?.data?.detail;
       const msg = typeof d === 'string' ? d
         : (typeof d === 'object' ? d?.detail || d?.message : null)
           || e?.message || 'Load failed';
       setErr(msg);
-      setItems([]);
+      if (!items.length) setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [tab, q]);
+  }, [tab, q, items.length]);
 
   useEffect(() => {
+    // On tab switch, show any cached list for that tab INSTANTLY, then
+    // refresh quietly in the background (no full-screen spinner).
+    const cacheKey = `patients:items:${tab}`;
+    const hasTabCache = !q.trim() && hasCached(cacheKey);
+    if (hasTabCache) {
+      setItems(getCached<Patient[]>(cacheKey) ?? []);
+      setLoading(false);
+    }
     // Debounce search-query changes.
-    const t = setTimeout(() => { load(); }, q ? 300 : 0);
+    const t = setTimeout(() => { load({ silent: hasTabCache }); }, q ? 300 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, q]);

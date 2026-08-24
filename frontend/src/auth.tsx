@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 import { ensureHealthyBackend } from './backend-health';
+import { invalidateCached } from './data-cache';
 import { registerForPushNotifications } from './push';
 import { registerV2Installation, revokeV2Installation } from './comm-v2/installation';
 import { setSentryUser } from './sentry';
@@ -223,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // logout/revoke calls, so a dead backend made "Sign out" appear to
     // do nothing until the 15s timeout).
     setUser(null);
+    try { invalidateCached(); } catch {}
     try { await AsyncStorage.removeItem('session_token'); } catch {}
 
     // Best-effort server-side cleanup in the background. Short timeout

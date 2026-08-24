@@ -6,6 +6,7 @@ import { format, isToday, parseISO } from 'date-fns';
 import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { usePanelRefresh } from './panel-refresh';
+import { getCached, setCached, hasCached } from './data-cache';
 
 type Stat = {
   key: string;
@@ -29,20 +30,27 @@ export function AdminOverviewPanel({
   onMessagePatient?: (recipient: { user_id: string; name?: string; phone?: string; email?: string; role?: string }) => void;
 }) {
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
-  const [todayBookings, setTodayBookings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const OVERVIEW_CK = 'admin-overview';
+  const _cachedOverview = getCached<{ overview: any; todayBookings: any[] }>(OVERVIEW_CK);
+  const [data, setData] = useState<any>(_cachedOverview?.overview ?? null);
+  const [todayBookings, setTodayBookings] = useState<any[]>(_cachedOverview?.todayBookings ?? []);
+  // Only show the full-screen spinner when we have NOTHING cached yet.
+  // On a tab re-open we render the cached data instantly and refresh
+  // quietly in the background.
+  const [loading, setLoading] = useState(!hasCached(OVERVIEW_CK));
 
   const load = async () => {
-    setLoading(true);
+    if (!hasCached(OVERVIEW_CK)) setLoading(true);
     try {
       const [overview, bookings] = await Promise.all([
         api.get('/analytics/dashboard', { params: { months: 3 } }).then((r) => r.data).catch(() => null),
         api.get('/bookings/all').then((r) => r.data).catch(() => []),
       ]);
-      setData(overview);
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      setTodayBookings(bookings.filter((b: any) => b.booking_date === todayStr));
+      const today = (Array.isArray(bookings) ? bookings : []).filter((b: any) => b.booking_date === todayStr);
+      setData(overview);
+      setTodayBookings(today);
+      setCached(OVERVIEW_CK, { overview, todayBookings: today });
     } finally {
       setLoading(false);
     }

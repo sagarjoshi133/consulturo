@@ -54,6 +54,7 @@ import { DateField, TimeField } from '../date-picker';
 import { displayDate, displayDateLong, display12h, parseUIDate } from '../date';
 import { usePanelRefresh } from '../panel-refresh';
 import { SmartAlerts } from '../dashboard-widgets';
+import { getCached, setCached, hasCached } from '../data-cache';
 import { shouldShowStartCta, isVideoBooking, getConsultationWindow } from '../consultation-window';
 import { styles } from './dashboard-styles';
 
@@ -64,8 +65,8 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
   // pushing a new route, and a right pane renders the detail inline.
   const tp = useTwoPaneLayout();
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<any[]>(() => getCached<any[]>('bookings-all') ?? []);
+  const [loading, setLoading] = useState(!hasCached('bookings-all'));
   const [filter, setFilter] = useState<'requested' | 'all' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled' | 'missed' | 'rejected'>('requested');
   // Phase 5.14 — segregate In-person vs Video bookings via a
   // secondary filter chip row. 'all' shows both.
@@ -106,8 +107,9 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
     try {
       const { data } = await api.get('/bookings/all');
       setItems(data);
+      setCached('bookings-all', data);
     } catch {
-      setItems([]);
+      setItems((prev) => (prev.length ? prev : []));
     } finally {
       setLoading(false);
     }

@@ -258,3 +258,12 @@ User confirmed: even AFTER the index redeploy, every screen still takes ~10-30s 
 - Verified on preview: analytics/dashboard returns identical numbers, all registry endpoints 4-7ms, no startup errors.
 - **REQUIRES REDEPLOY** to take effect on production.
 
+## Tab Caching — stale-while-revalidate (Jun 2026)
+Client-side fix so switching away and back to a tab shows the last-loaded data INSTANTLY instead of a full-screen spinner + refetch every time.
+- **`src/data-cache.ts`** (new) — tiny in-memory session cache: `getCached`/`setCached`/`hasCached`/`invalidateCached`. In-memory only (survives tab switches/navigation, cleared on sign-out; never persists another account's data across launch).
+- **`src/admin-overview-panel.tsx`** (Dashboard/Today) — seeds `data`/`todayBookings` from cache, shows spinner only when nothing is cached, refreshes quietly in the background, writes cache on success (key `admin-overview`).
+- **`src/dashboard/bookings-panel.tsx`** — seeds `items` from cache `bookings-all`, spinner only on first-ever load; keeps prior list on a failed refresh.
+- **`app/patients/index.tsx`** — caches the unfiltered list per tab (`patients:items:{tab}`) + shared `patients:summary` / `patients:analytics`; on tab switch shows cached rows instantly then background-refreshes (searches stay live/uncached).
+- **`src/auth.tsx`** — `signOut()` calls `invalidateCached()` so no stale data leaks between accounts.
+- Verified: Dashboard renders cached Today panel + stats, lint clean (no new issues), no runtime errors. Frontend-only → live on preview now; installed app needs a fresh build.
+
