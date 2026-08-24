@@ -15,6 +15,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import uuid
 import re
+import json
+import asyncio
+import time as _time
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from db import db
 from auth_deps import OWNER_TIER_ROLES, get_current_user, require_staff, require_user
@@ -535,77 +538,105 @@ async def my_bookings(user=Depends(require_user)):
     cursor = db.bookings.find(q, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(length=200)
 
+# Throttle state for the lazy "auto-mark-missed" sweep (see below).
+_LAST_MISSED_SWEEP: Dict[str, float] = {}
+_MISSED_SWEEP_INTERVAL_S = 120.0
+
+
 async def _auto_mark_missed(clinic_filter: Dict[str, Any]) -> int:
     """Self-healing: mark any confirmed booking as `missed` when
     `now > booking_date + 1 day + 1 hour` AND the patient never showed
     up (no completion status was recorded).
 
-    Called lazily from `GET /api/bookings/all` so we don't need a cron
-    daemon. Idempotent: only flips rows currently in `confirmed`. Also
-    fires a push notification to the patient so they know their slot
-    was marked missed.
+    Called lazily from `GET /api/bookings/all`. This endpoint is polled
+    from many screens (dashboard, glance, alerts, 60s poller), so the
+    sweep is:
+      • THROTTLED — runs at most once per _MISSED_SWEEP_INTERVAL_S per
+        clinic filter, so concurrent/repeat polls don't each re-scan.
+      • BULK — flips all due rows in a single update_many (one Atlas
+        round-trip) instead of N per-row updates.
+      • NON-BLOCKING — patient notifications + push (external HTTP) run
+        in a background task so they NEVER add latency to /bookings/all.
+    Idempotent: only flips rows currently in `confirmed`.
 
     Per Dr. Joshi's spec (2026-04-29): grace period = 1 hour past
-    midnight of the appointment day (i.e. missed at 01:00 local the
-    morning AFTER the scheduled date). We treat `booking_date` as a
-    local-date string (YYYY-MM-DD) and use UTC+05:30 (IST) for the
-    clinic's local midnight.
+    midnight of the appointment day (IST).
     """
+    # ── Throttle ──────────────────────────────────────────────────
+    key = json.dumps(clinic_filter, sort_keys=True, default=str)
+    now_mono = _time.monotonic()
+    if now_mono - _LAST_MISSED_SWEEP.get(key, 0.0) < _MISSED_SWEEP_INTERVAL_S:
+        return 0
+    _LAST_MISSED_SWEEP[key] = now_mono
+
     from datetime import time as dtime
     ist = timezone(timedelta(hours=5, minutes=30))
     now_ist = datetime.now(ist)
-    # Cutoff = yesterday (in IST) at 01:00 — bookings ≤ this date haven't
-    # had their 1-hour grace window end yet are excluded.
-    # A booking on 2026-04-28 passes the cutoff on 2026-04-29 01:00 IST.
     cutoff_date = (now_ist - timedelta(hours=25)).date().isoformat()
     q = {
         **clinic_filter,
         "status": "confirmed",
-        # booking_date as string — we can use lexical comparison because
-        # the format is YYYY-MM-DD which sorts correctly.
         "booking_date": {"$lte": cutoff_date},
     }
-    cursor = db.bookings.find(q, {"_id": 0})
-    candidates = await cursor.to_list(length=500)
-    flipped = 0
+    candidates = await db.bookings.find(
+        q, {"_id": 0, "booking_id": 1, "booking_date": 1, "booking_time": 1, "user_id": 1},
+    ).to_list(length=500)
+
+    to_flip: List[Dict[str, Any]] = []
     for b in candidates:
         try:
-            # Build the flip-threshold: booking_date + 1 day + 1 hour IST.
             bd = datetime.strptime(b["booking_date"], "%Y-%m-%d").date()
             threshold = datetime.combine(bd, dtime(1, 0), tzinfo=ist) + timedelta(days=1)
-            if now_ist < threshold:
-                continue  # still inside grace window
-            await db.bookings.update_one(
-                {"booking_id": b["booking_id"], "status": "confirmed"},
-                {"$set": {
-                    "status": "missed",
-                    "missed_at": datetime.now(timezone.utc),
-                    "missed_auto": True,
-                }},
-            )
-            flipped += 1
-            # Fire patient notification (fire-and-forget).
-            try:
-                uid = b.get("user_id")
-                if uid:
-                    await create_notification(
-                        user_id=uid,
-                        title="You missed your appointment",
-                        body=f"Your appointment on {b['booking_date']} at {b.get('booking_time','')} was marked as missed.",
-                        kind="booking_missed",
-                        data={"booking_id": b["booking_id"], "type": "booking_missed"},
-                    )
-                    await push_to_user(
-                        uid,
-                        "Missed appointment",
-                        f"Your appointment on {b['booking_date']} at {b.get('booking_time','')} was marked as missed.",
-                        data={"booking_id": b["booking_id"], "type": "booking_missed"},
-                    )
-            except Exception:
-                pass
+            if now_ist >= threshold:
+                to_flip.append(b)
         except Exception:
             continue
-    return flipped
+    if not to_flip:
+        return 0
+
+    ids = [b["booking_id"] for b in to_flip]
+    # Single bulk flip — one round-trip instead of N per-row updates.
+    try:
+        await db.bookings.update_many(
+            {"booking_id": {"$in": ids}, "status": "confirmed"},
+            {"$set": {
+                "status": "missed",
+                "missed_at": datetime.now(timezone.utc),
+                "missed_auto": True,
+            }},
+        )
+    except Exception:
+        return 0
+
+    # Fire patient notifications + push OFF the request path so a slow
+    # push relay can never make the booking list crawl.
+    async def _notify_missed(rows: List[Dict[str, Any]]) -> None:
+        for b in rows:
+            uid = b.get("user_id")
+            if not uid:
+                continue
+            try:
+                await create_notification(
+                    user_id=uid,
+                    title="You missed your appointment",
+                    body=f"Your appointment on {b['booking_date']} at {b.get('booking_time','')} was marked as missed.",
+                    kind="booking_missed",
+                    data={"booking_id": b["booking_id"], "type": "booking_missed"},
+                )
+                await push_to_user(
+                    uid,
+                    "Missed appointment",
+                    f"Your appointment on {b['booking_date']} at {b.get('booking_time','')} was marked as missed.",
+                    data={"booking_id": b["booking_id"], "type": "booking_missed"},
+                )
+            except Exception:
+                pass
+
+    try:
+        asyncio.create_task(_notify_missed(to_flip))
+    except Exception:
+        pass
+    return len(to_flip)
 
 
 @router.get("/api/bookings/all")

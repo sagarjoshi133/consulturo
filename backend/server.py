@@ -643,6 +643,41 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
                     await db.users.create_index("user_id", name="users_user_id_idx")
                 except Exception as _e2:
                     print(f"[indexes] users_user_id index create warning (skipped): {_e2}")
+
+        # ── DATA-QUERY performance indexes ───────────────────────────
+        # The owner Dashboard, Analytics and Patient screens run many
+        # count_documents() + full find() sweeps filtered on these
+        # fields. Unindexed, each is a COLLECTION SCAN — invisible on the
+        # tiny sandbox DB but seconds-per-call on a production Atlas
+        # cluster with real data + network latency, which is what makes
+        # every list/dashboard screen crawl. All idempotent (skipped if
+        # the named index already exists).
+        _perf_indexes: list = [
+            # collection,          keys,                                  name
+            ("bookings",      [("clinic_id", 1), ("status", 1)],          "bk_clinic_status"),
+            ("bookings",      [("clinic_id", 1), ("created_at", -1)],     "bk_clinic_created"),
+            ("bookings",      [("status", 1)],                            "bk_status"),
+            ("bookings",      [("booking_date", 1)],                      "bk_booking_date"),
+            ("bookings",      [("user_id", 1)],                           "bk_user_id"),
+            ("bookings",      [("mode", 1)],                              "bk_mode"),
+            ("surgeries",     [("clinic_id", 1), ("date", -1)],           "sg_clinic_date"),
+            ("surgeries",     [("clinic_id", 1), ("created_at", -1)],     "sg_clinic_created"),
+            ("prescriptions", [("clinic_id", 1), ("created_at", -1)],     "rx_clinic_created"),
+            ("prescriptions", [("user_id", 1)],                           "rx_user_id"),
+            ("receipts",      [("clinic_id", 1), ("created_at", -1)],     "rc_clinic_created"),
+            ("receipts",      [("user_id", 1)],                           "rc_user_id"),
+            ("patients",      [("phone_digits", 1)],                      "pt_phone_digits"),
+            ("patients",      [("email", 1)],                             "pt_email"),
+            ("patients",      [("merged_into", 1)],                       "pt_merged_into"),
+            ("patients",      [("clinic_id", 1)],                         "pt_clinic_id"),
+            ("notification_inbox", [("user_id", 1), ("created_at", -1)],  "ni_user_created"),
+            ("comm_inbox_items",   [("user_id", 1), ("created_at", -1)],  "ci_user_created"),
+        ]
+        for _coll, _keys, _name in _perf_indexes:
+            try:
+                await db[_coll].create_index(_keys, name=_name)
+            except Exception as _e:
+                print(f"[indexes] {_name} on {_coll} create warning (skipped): {_e}")
     except Exception as e:
         # Index already exists with a different spec, or another race —
         # log and continue. Operators can drop+recreate manually if
