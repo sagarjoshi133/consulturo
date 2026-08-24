@@ -232,3 +232,13 @@ Root cause: the installed APK targets the **production** backend (`urology-pro.e
 - NOTE: these are client-side fixes → the installed app needs a **new build (or OTA update)** to pick them up. The deeper fix is getting production deployed successfully (the WAKEUP_ENVIRONMENT infra timeout).
 - Verified in preview: Patients screen loads with data, no boot regression.
 
+## Production "everything slow / endless loading everywhere" — ROOT CAUSE FIXED (Jun 2026)
+Confirmed the production backend is UP and fast for public routes (`/api/health` → `{"ok":true,"db":"connected"}` 0.8s, `/api/doctor` 0.3s) — it was NOT down. The real cause: **missing MongoDB indexes on the auth hot-path**. Every authenticated request runs `get_current_user` → `db.user_sessions.find_one({session_token})` + `db.users.find_one({user_id})`, and the demo middleware repeats both on writes. The codebase created indexes on `users.email/phone` + tenancy/registry collections but **never on `user_sessions.session_token`, `user_sessions.user_id`, or `users.user_id`**. On the sandbox's tiny local Mongo this is invisible; on the production Atlas cluster (network latency + a `user_sessions` collection that grows on every login and was never pruned) each lookup became a FULL COLLECTION SCAN, so every screen (Dashboard/Today, Patients, Bookings, …) crawled.
+- **`backend/server.py`** `_ensure_unique_indexes_and_cleanup_orphans` (idempotent startup) now also creates:
+  - `sessions_token_unique` — unique index on `user_sessions.session_token` (falls back to non-unique if a legacy dup exists)
+  - `sessions_user_id_idx` — on `user_sessions.user_id`
+  - `sessions_ttl` — TTL index on `user_sessions.expires_at` (expireAfterSeconds=0) so expired sessions auto-purge and the collection stays small
+  - `users_user_id_unique` — unique index on `users.user_id` (falls back to non-unique)
+- Verified on preview: all 4 indexes created, no startup errors, `/auth/me` 4ms, `/analytics/dashboard` 16ms, `/bookings/all` 6ms.
+- **REQUIRES REDEPLOY** so the indexes are built on the production Atlas cluster (created automatically on backend startup; Atlas builds them in the background, does not block the health probe). This is the definitive fix for the production slowness.
+

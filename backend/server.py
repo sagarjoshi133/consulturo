@@ -585,6 +585,64 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
                 )
             except Exception as _e:
                 print(f"[indexes] invites_email_unique create warning (skipped): {_e}")
+
+        # ── HOT-PATH auth indexes (perf-critical) ────────────────────
+        # EVERY authenticated request runs get_current_user, which does
+        #   db.user_sessions.find_one({"session_token": <token>})
+        #   db.users.find_one({"user_id": <uid>})
+        # and the demo middleware repeats both on writes. Without these
+        # indexes each call is a FULL COLLECTION SCAN — on a managed
+        # Atlas cluster (network latency + a user_sessions collection
+        # that grows on every login and is never pruned) this makes the
+        # ENTIRE app crawl (Dashboard, Patients, Bookings, … all spin).
+        # These are idempotent — Mongo skips creation if the named index
+        # already exists.
+        existing_sessions = set()
+        try:
+            async for idx in db.user_sessions.list_indexes():
+                existing_sessions.add(idx.get("name"))
+        except Exception:
+            pass
+        if "sessions_token_unique" not in existing_sessions:
+            try:
+                await db.user_sessions.create_index(
+                    "session_token", unique=True, name="sessions_token_unique",
+                )
+            except Exception as _e:
+                # Fall back to a non-unique index if a legacy duplicate
+                # token somehow exists — the query speed-up is identical.
+                print(f"[indexes] sessions_token_unique unique failed, trying non-unique: {_e}")
+                try:
+                    await db.user_sessions.create_index(
+                        "session_token", name="sessions_token_idx",
+                    )
+                except Exception as _e2:
+                    print(f"[indexes] sessions_token index create warning (skipped): {_e2}")
+        if "sessions_user_id_idx" not in existing_sessions:
+            try:
+                await db.user_sessions.create_index("user_id", name="sessions_user_id_idx")
+            except Exception as _e:
+                print(f"[indexes] sessions_user_id_idx create warning (skipped): {_e}")
+        # TTL: auto-purge expired sessions so the collection stays small
+        # (each login inserts a new row that was never cleaned up before).
+        if "sessions_ttl" not in existing_sessions:
+            try:
+                await db.user_sessions.create_index(
+                    "expires_at", name="sessions_ttl", expireAfterSeconds=0,
+                )
+            except Exception as _e:
+                print(f"[indexes] sessions_ttl create warning (skipped): {_e}")
+        if "users_user_id_unique" not in existing_users:
+            try:
+                await db.users.create_index(
+                    "user_id", unique=True, name="users_user_id_unique",
+                )
+            except Exception as _e:
+                print(f"[indexes] users_user_id_unique unique failed, trying non-unique: {_e}")
+                try:
+                    await db.users.create_index("user_id", name="users_user_id_idx")
+                except Exception as _e2:
+                    print(f"[indexes] users_user_id index create warning (skipped): {_e2}")
     except Exception as e:
         # Index already exists with a different spec, or another race —
         # log and continue. Operators can drop+recreate manually if
