@@ -205,3 +205,13 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - **Design tokens** (`src/comm-v2/ui-tokens.ts`) — shared muted-clinical palette, category & state labels, relative time formatter, chip/card/empty styles. Every V2 screen inherits the same look.
 - **Owner entry point** — the More tab now shows a "Communications V2 (preview)" tile under Admin (owner-only) that opens `/comm-v2`.
 - **Verified**: hub loads, renders "Canary not active" panel correctly for unauthenticated sessions, layout is functional at 390×844 viewport. Existing legacy screens untouched — cutover happens in Comm-8/9.
+
+## Deploy-Readiness Hardening — SHIPPED (Jun 2026)
+- **DB_NAME fail-fast** — removed hardcoded `"consulturo"` fallback from both `backend/server.py` and `backend/db.py`; startup now raises RuntimeError if `DB_NAME` env var is unset. Deploy pipeline supplies it explicitly.
+- **Frontend api.ts localhost literal removed** — `frontend/src/api.ts` no longer ships `http://localhost:8001`; on web, defaults to `window.location.origin` so same-origin deploys and local Metro dev both work (Metro proxies `/api/*` to :8001).
+- **MongoDB unique-index resilience** — `_ensure_unique_indexes_and_cleanup_orphans` in `backend/server.py` now (a) runs a pre-index dedup that quarantines duplicate `email` / `phone` values on `users` (renames field on duplicate rows so the partial index skips them, never deletes rows) and (b) wraps each `create_index` in its own try/except so one bad row cannot crash startup.
+- **Bloat pruning** — uninstalled unused packages `pydocket`, `spotipy`, `fakeredis`, `burner-redis`, `redis` and re-froze `backend/requirements.txt` (240 lines, down from 245). Removed transitive `google-cloud-firestore==2.27.0` line (still pulled in by `firebase_admin` at install time — never imported in code).
+- **`.gitignore` fix** — corrected `test_credentials.md` path (was `/app/memory/…` which never matched the repo-relative path; now `/memory/test_credentials.md` + `memory/test_credentials.md`).
+- **Health probes** — `GET /`, `GET /healthz`, `GET /readyz` all return 200 for K8s.
+- **`deployment_agent` verdict**: `warn` (no BLOCKERs; remaining WARNs are user-owned iOS `GoogleService-Info.plist` + eas.json policy note + Apple Store account-deletion flow — none block K8s deploy).
+

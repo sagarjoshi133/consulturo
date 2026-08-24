@@ -8,19 +8,16 @@ import {
   isOnFallback,
 } from './backend-health';
 
-// PROD_FALLBACK is the always-on Emergent deployment URL used when
+// PROD_FALLBACK is the always-on production backend URL used when
 // EXPO_PUBLIC_BACKEND_URL is not set (e.g., APK builds where EAS env
-// vars were dropped). It is sourced from an env var first so that the
-// production / staging / preview deployments can each ship with their
-// own backend URL without code changes; if even that is missing we
-// fall back to a sane literal so APKs never end up pointing at
-// localhost. The preview URL was retired in v1.0.9 — it auto-sleeps
-// and caused 502 / Network Errors on Google Sign-In, prescription PDF,
-// share, etc. for installed APK users.
+// vars were dropped). Sourced from EXPO_PUBLIC_PROD_FALLBACK_URL or
+// the first entry of EXPO_PUBLIC_BACKEND_FALLBACKS. If neither is
+// configured the app cannot reach the backend — we surface a clear
+// error to the developer instead of shipping a stale literal.
 const PROD_FALLBACK =
   process.env.EXPO_PUBLIC_PROD_FALLBACK_URL ||
   process.env.EXPO_PUBLIC_BACKEND_FALLBACKS?.split(',')[0]?.trim() ||
-  'https://urology-pro.emergent.host';
+  '';
 // On web, only use localhost when explicitly running `expo start` on
 // the developer's own machine (hostname === 'localhost' or '127.0.0.1').
 // Any other web origin (Vercel, custom domain) must hit the live
@@ -28,15 +25,30 @@ const PROD_FALLBACK =
 // build time. This prevents a recurrence of the "Network Error /
 // timeout 15000ms" bug on consulturo.vercel.app where the bundled web
 // app was attempting to reach localhost:8001 from the user's browser.
+//
+// NOTE: we intentionally do NOT ship a hardcoded `http://localhost:...`
+// literal — even on `localhost` the local Metro dev server proxies
+// `/api/*` to the backend, so using `window.location.origin` works
+// both in local dev and in same-origin web deployments.
 function webDefaultBackend(): string {
   if (typeof window === 'undefined') return PROD_FALLBACK;
-  const host = window.location?.hostname || '';
-  if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8001';
+  const origin = window.location?.origin;
+  if (typeof origin === 'string' && origin) {
+    return origin;
+  }
   return PROD_FALLBACK;
 }
 const BACKEND_URL =
   process.env.EXPO_PUBLIC_BACKEND_URL ||
   (Platform.OS === 'web' ? webDefaultBackend() : PROD_FALLBACK);
+
+if (!BACKEND_URL) {
+  console.error(
+    '[api] EXPO_PUBLIC_BACKEND_URL is not set and no fallback configured. '
+    + 'Set EXPO_PUBLIC_BACKEND_URL or EXPO_PUBLIC_PROD_FALLBACK_URL / '
+    + 'EXPO_PUBLIC_BACKEND_FALLBACKS at build time.',
+  );
+}
 
 // Initial /api base — may be swapped at runtime when DR fail-over kicks
 // in (see ./backend-health.ts). We never mutate axios.defaults.baseURL

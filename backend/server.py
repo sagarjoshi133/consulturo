@@ -38,7 +38,15 @@ if _SENTRY_DSN:
     )
 
 MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ.get("DB_NAME", "consulturo")
+# DB_NAME MUST be provided by the environment. We deliberately do
+# NOT ship a hardcoded fallback so a deploy that forgot to set it
+# fails fast instead of silently booting against the wrong database.
+DB_NAME = os.environ.get("DB_NAME")
+if not DB_NAME:
+    raise RuntimeError(
+        "DB_NAME env var is required. Set DB_NAME in the deployment "
+        "environment (or in backend/.env for local dev)."
+    )
 EMERGENT_AUTH_URL = os.environ.get(
     "EMERGENT_AUTH_URL",
     "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
@@ -147,6 +155,31 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 app = FastAPI(title="ConsultUro API", version="1.1.0")
+
+
+# ── K8s health probes ───────────────────────────────────────────
+# The cluster's readiness / liveness probes hit `/` (and often `/healthz`)
+# on the container port BEFORE any ingress path rewriting takes effect.
+# Without a root route the probes 404 forever and the pod is never
+# marked ready — that's exactly the deploy-timeout failure we saw in
+# the previous rollout logs. Keep these dead-simple: no DB call, no
+# auth, no logging — they must respond in < 5 ms so K8s never times
+# them out during a slow post-boot backfill.
+@app.get("/", include_in_schema=False)
+async def _root_probe():
+    return {"ok": True, "service": "consulturo-api",
+             "hint": "API routes live under /api/*"}
+
+
+@app.get("/healthz", include_in_schema=False)
+async def _healthz_probe():
+    return {"ok": True}
+
+
+@app.get("/readyz", include_in_schema=False)
+async def _readyz_probe():
+    return {"ok": True}
+
 
 # ---------- Rate limiting (slowapi) ----------
 # Protect sensitive endpoints from abuse / brute-force without changing UX
@@ -470,6 +503,53 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
     blog-perm / dashboard-perm endpoints (now patched to upsert=False)
     and showed up as "ghost" duplicate Primary Owners in the UI.
     """
+    # ------------------------------------------------------------------
+    # Step 1: Pre-index dedup — MongoDB refuses to build a unique index
+    # if duplicates already exist in the collection. Historically, older
+    # code paths could create two `users` rows with the same email
+    # (case-insensitive) or the same phone. Before we attempt to create
+    # the unique index, sweep those duplicates: KEEP the OLDEST row
+    # (smallest _id) unchanged, and NULL-OUT the field on the others so
+    # the partial index skips them. We never delete rows here — the
+    # duplicate accounts are quarantined for operator review via the
+    # admin dedupe tool.
+    # ------------------------------------------------------------------
+    async def _dedupe_field(field: str, label: str) -> None:
+        try:
+            pipeline = [
+                {"$match": {field: {"$type": "string", "$gt": ""}}},
+                {"$group": {
+                    "_id": {"$toLower": f"${field}"},
+                    "ids": {"$push": "$_id"},
+                    "count": {"$sum": 1},
+                }},
+                {"$match": {"count": {"$gt": 1}}},
+            ]
+            dup_groups = await db.users.aggregate(pipeline).to_list(length=None)
+            total_quarantined = 0
+            for grp in dup_groups:
+                ids = grp.get("ids") or []
+                if len(ids) < 2:
+                    continue
+                # KEEP the first (oldest) _id, quarantine the rest by
+                # renaming their field so the partial unique index skips
+                # them (the partial filter requires $type:"string").
+                keep, *dups = sorted(ids, key=lambda x: str(x))
+                for dup_id in dups:
+                    await db.users.update_one(
+                        {"_id": dup_id},
+                        {"$rename": {field: f"{field}_dup_quarantine"}},
+                    )
+                    total_quarantined += 1
+            if total_quarantined:
+                print(f"[indexes] quarantined {total_quarantined} duplicate "
+                      f"{label} value(s) on users collection before unique index build.")
+        except Exception as _e:
+            print(f"[indexes] dedupe scan for users.{field} failed (continuing): {_e}")
+
+    await _dedupe_field("email", "email")
+    await _dedupe_field("phone", "phone")
+
     try:
         # Skip create_index calls when an index with the desired name
         # already exists — MongoDB raises IndexOptionsConflict on
@@ -482,30 +562,40 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
         async for idx in db.team_invites.list_indexes():
             existing_invites.add(idx.get("name"))
         if "users_email_unique" not in existing_users:
-            await db.users.create_index(
-                "email", unique=True, name="users_email_unique",
-                partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
-            )
+            try:
+                await db.users.create_index(
+                    "email", unique=True, name="users_email_unique",
+                    partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
+                )
+            except Exception as _e:
+                print(f"[indexes] users_email_unique create warning (skipped): {_e}")
         if "users_phone_unique" not in existing_users:
-            await db.users.create_index(
-                "phone", unique=True, name="users_phone_unique",
-                partialFilterExpression={"phone": {"$gt": "", "$type": "string"}},
-            )
+            try:
+                await db.users.create_index(
+                    "phone", unique=True, name="users_phone_unique",
+                    partialFilterExpression={"phone": {"$gt": "", "$type": "string"}},
+                )
+            except Exception as _e:
+                print(f"[indexes] users_phone_unique create warning (skipped): {_e}")
         if not (existing_invites & {"invites_email_unique", "team_invites_email_unique"}):
-            await db.team_invites.create_index(
-                "email", unique=True, name="invites_email_unique",
-                partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
-            )
+            try:
+                await db.team_invites.create_index(
+                    "email", unique=True, name="invites_email_unique",
+                    partialFilterExpression={"email": {"$gt": "", "$type": "string"}},
+                )
+            except Exception as _e:
+                print(f"[indexes] invites_email_unique create warning (skipped): {_e}")
     except Exception as e:
         # Index already exists with a different spec, or another race —
         # log and continue. Operators can drop+recreate manually if
         # this ever surfaces.
         print(f"[indexes] ensure_unique_indexes warning: {e}")
 
-    # Orphan-invite sweep — only delete rows that are clearly stubs
-    # (no role, not flagged as demo, and the email already maps to a
-    # live user). Conservative on purpose: never delete rows with
-    # role/is_demo/name set, even if the user already exists.
+    # Orphan-invite sweep (Comm-9 hardened) — NEVER auto-deletes rows
+    # on startup. The deploy pipeline runs against production data, so
+    # we only LOG candidates and let owners clean them up via the
+    # admin tools. This prevents accidental data loss during a routine
+    # restart / rollout.
     try:
         emails_with_user = set()
         async for u in db.users.find({}, {"email": 1, "_id": 0}):
@@ -513,7 +603,7 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
             if em:
                 emails_with_user.add(em)
         if emails_with_user:
-            res = await db.team_invites.delete_many({
+            candidates = await db.team_invites.count_documents({
                 "email": {"$in": list(emails_with_user)},
                 "$and": [
                     {"$or": [{"role": {"$exists": False}}, {"role": None}, {"role": ""}]},
@@ -521,10 +611,11 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
                     {"$or": [{"name": {"$exists": False}}, {"name": None}, {"name": ""}]},
                 ],
             })
-            if getattr(res, "deleted_count", 0):
-                print(f"[cleanup] orphan team_invites removed: {res.deleted_count}")
+            if candidates:
+                print(f"[cleanup] {candidates} orphan team_invite stub(s) detected "
+                        f"(not auto-deleted; use admin tools).")
     except Exception as e:
-        print(f"[cleanup] orphan team_invites sweep failed: {e}")
+        print(f"[cleanup] orphan team_invites scan failed: {e}")
 
 
 @app.on_event("startup")

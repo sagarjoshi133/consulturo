@@ -23,8 +23,8 @@
  */
 import { AxiosError } from 'axios';
 
-const PRIMARY = (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://urology-pro.emergent.host').replace(/\/$/, '');
-const FALLBACKS = (process.env.EXPO_PUBLIC_BACKEND_FALLBACKS || 'https://urology-pro.preview.emergentagent.com')
+const PRIMARY = (process.env.EXPO_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+const FALLBACKS = (process.env.EXPO_PUBLIC_BACKEND_FALLBACKS || '')
   .split(',')
   .map((s) => s.trim().replace(/\/$/, ''))
   .filter(Boolean);
