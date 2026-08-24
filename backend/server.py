@@ -317,6 +317,33 @@ async def demo_readonly_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Slow-request diagnostic logging ──────────────────────────────────
+# Logs any request slower than the threshold with its method/path/status
+# and server-side duration. Near-zero overhead (just a perf_counter
+# delta). Purpose: on the deployed K8s backend we cannot attach a
+# profiler, so this surfaces exactly which endpoint is slow against the
+# production Atlas cluster (visible via the deploy log viewer). If NO
+# lines appear while the app feels slow, the bottleneck is client/network
+# side, not the backend.
+import time as _time_mod  # noqa: E402
+
+_SLOW_REQUEST_MS = float(os.environ.get("SLOW_REQUEST_MS", "800"))
+
+
+@app.middleware("http")
+async def _slow_request_logger(request: Request, call_next):
+    _start = _time_mod.perf_counter()
+    response = await call_next(request)
+    try:
+        _dur_ms = (_time_mod.perf_counter() - _start) * 1000.0
+        if _dur_ms >= _SLOW_REQUEST_MS:
+            print(f"[SLOW] {request.method} {request.url.path} "
+                  f"{_dur_ms:.0f}ms status={getattr(response, 'status_code', '?')}")
+    except Exception:
+        pass
+    return response
+
+
 # Self-heal: re-forward all mirrored native device tokens to the
 # Emergent push relay on boot. Devices that registered while
 # EMERGENT_PUSH_KEY was still "placeholder" never reached the relay;

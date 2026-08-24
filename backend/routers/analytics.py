@@ -53,62 +53,70 @@ async def analytics_dashboard(
     # their default clinic, so `base` will contain {"clinic_id": ...}.
     base = tenant_filter(user, clinic_id, allow_global=True)
 
-    # --- totals ---
-    total_bookings = await db.bookings.count_documents(base)
-    total_surgeries = await db.surgeries.count_documents(base)
-    total_rx = await db.prescriptions.count_documents(base)
-    total_patients = await db.patients.count_documents(base)
-    confirmed_bookings = await db.bookings.count_documents(_merge(base, {"status": "confirmed"}))
-    pending_bookings = await db.bookings.count_documents(_merge(base, {"status": "requested"}))
-    cancelled_bookings = await db.bookings.count_documents(_merge(base, {"status": "cancelled"}))
-    # Extended status counters for the "Booking status breakdown" chart
-    # that sits below Consultation Mode on the Analytics panel.
-    completed_bookings = await db.bookings.count_documents(_merge(base, {"status": "completed"}))
-    rejected_bookings = await db.bookings.count_documents(_merge(base, {"status": "rejected"}))
-    missed_bookings = await db.bookings.count_documents(_merge(base, {"status": "missed"}))
-    # "Rescheduled" is not a terminal status in this app — it's tracked
-    # via a dedicated `rescheduled_at` timestamp on the booking doc.
-    rescheduled_bookings = await db.bookings.count_documents(
-        _merge(base, {"rescheduled_at": {"$exists": True}})
-    )
+    # ── PERF: single pass per collection ─────────────────────────────
+    # This endpoint previously fired ~19 separate DB operations (14
+    # count_documents + 5 full cursor sweeps, several of them scanning
+    # the SAME collection twice). On the sandbox (0ms latency) that was
+    # invisible; on a production Atlas cluster (~0.5s round-trip) it
+    # compounded into the 10-30s "everything loads forever" the owner
+    # dashboard/Today tab suffered. We now stream each collection ONCE
+    # with a tiny projection and compute every counter in Python — the
+    # exact same numbers, but ~3 round-trips instead of ~19.
 
-    # --- monthly bookings from booking_date (string YYYY-MM-DD) ---
+    # --- bookings: one pass → totals, status, mode, rescheduled,
+    #     monthly (N months) and daily (14 days) ---
     monthly_bookings = {k: 0 for k in month_keys}
-    async for b in db.bookings.find(base, {"_id": 0, "booking_date": 1, "created_at": 1}):
-        key = _month_bucket(b.get("booking_date") or b.get("created_at") or "")
-        if key in monthly_bookings:
-            monthly_bookings[key] += 1
-
-    # --- monthly surgeries (from surgery date field, YYYY-MM-DD) ---
-    monthly_surgeries = {k: 0 for k in month_keys}
-    async for s in db.surgeries.find(base, {"_id": 0, "date": 1, "created_at": 1}):
-        key = _month_bucket(s.get("date") or s.get("created_at") or "")
-        if key in monthly_surgeries:
-            monthly_surgeries[key] += 1
-
-    # --- monthly prescriptions ---
-    monthly_rx = {k: 0 for k in month_keys}
-    async for r in db.prescriptions.find(base, {"_id": 0, "created_at": 1}):
-        key = _month_bucket(r.get("created_at") or "")
-        if key in monthly_rx:
-            monthly_rx[key] += 1
-
-    # --- daily bookings (last 14 days) ---
     daily_bookings = {k: 0 for k in day_keys}
-    async for b in db.bookings.find(base, {"_id": 0, "booking_date": 1}):
+    status_counts: Dict[str, int] = {}
+    mode_online = mode_offline = 0
+    rescheduled_bookings = 0
+    total_bookings = 0
+    async for b in db.bookings.find(
+        base,
+        {"_id": 0, "status": 1, "mode": 1, "booking_date": 1,
+         "created_at": 1, "rescheduled_at": 1},
+    ):
+        total_bookings += 1
+        st = (b.get("status") or "").strip()
+        if st:
+            status_counts[st] = status_counts.get(st, 0) + 1
+        md = (b.get("mode") or "").strip()
+        if md == "online":
+            mode_online += 1
+        elif md == "offline":
+            mode_offline += 1
+        if "rescheduled_at" in b:
+            rescheduled_bookings += 1
+        mkey = _month_bucket(b.get("booking_date") or b.get("created_at") or "")
+        if mkey in monthly_bookings:
+            monthly_bookings[mkey] += 1
         d = (b.get("booking_date") or "")[:10]
         if d in daily_bookings:
             daily_bookings[d] += 1
 
-    # --- mode breakdown ---
-    mode_online = await db.bookings.count_documents(_merge(base, {"mode": "online"}))
-    mode_offline = await db.bookings.count_documents(_merge(base, {"mode": "offline"}))
+    confirmed_bookings = status_counts.get("confirmed", 0)
+    pending_bookings = status_counts.get("requested", 0)
+    cancelled_bookings = status_counts.get("cancelled", 0)
+    completed_bookings = status_counts.get("completed", 0)
+    rejected_bookings = status_counts.get("rejected", 0)
+    missed_bookings = status_counts.get("missed", 0)
 
-    # --- top diagnoses (surgeries.diagnosis) ---
+    # --- surgeries: one pass → total, monthly, top diagnoses /
+    #     referrers / surgery names ---
+    monthly_surgeries = {k: 0 for k in month_keys}
     diag_counter: Dict[str, int] = {}
     referrer_counter: Dict[str, int] = {}
     surgery_name_counter: Dict[str, int] = {}
-    async for s in db.surgeries.find(base, {"_id": 0, "diagnosis": 1, "referred_by": 1, "surgery_name": 1}):
+    total_surgeries = 0
+    async for s in db.surgeries.find(
+        base,
+        {"_id": 0, "date": 1, "created_at": 1, "diagnosis": 1,
+         "referred_by": 1, "surgery_name": 1},
+    ):
+        total_surgeries += 1
+        key = _month_bucket(s.get("date") or s.get("created_at") or "")
+        if key in monthly_surgeries:
+            monthly_surgeries[key] += 1
         d = (s.get("diagnosis") or "").strip()
         if d:
             diag_counter[d] = diag_counter.get(d, 0) + 1
@@ -118,6 +126,18 @@ async def analytics_dashboard(
         n = (s.get("surgery_name") or "").strip()
         if n:
             surgery_name_counter[n] = surgery_name_counter.get(n, 0) + 1
+
+    # --- prescriptions: one pass → total + monthly ---
+    monthly_rx = {k: 0 for k in month_keys}
+    total_rx = 0
+    async for r in db.prescriptions.find(base, {"_id": 0, "created_at": 1}):
+        total_rx += 1
+        key = _month_bucket(r.get("created_at") or "")
+        if key in monthly_rx:
+            monthly_rx[key] += 1
+
+    # --- patients: single count ---
+    total_patients = await db.patients.count_documents(base)
 
     def _top(counter: Dict[str, int], limit: int = 8):
         items = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)[:limit]

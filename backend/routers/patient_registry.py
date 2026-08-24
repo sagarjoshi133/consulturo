@@ -35,6 +35,40 @@ _ACTIVITY_SORT = {
     "receipts": ("created_at", -1),
 }
 
+# ── Registered-set cache ─────────────────────────────────────────────
+# The Patients screen opens THREE endpoints at once (search list,
+# /summary badges, /invites/analytics) and each previously streamed the
+# ENTIRE users collection to work out which registry rows have an
+# account. On a production Atlas cluster (~0.5s round-trips + real user
+# volume) that tripled a multi-second scan on every screen open. We now
+# compute the registered phone/email sets ONCE and cache them briefly so
+# the three parallel calls (and rapid tab re-opens) reuse one sweep.
+import time as _time
+_REG_SET_TTL_S = 30.0
+_reg_set_cache: Dict[str, Any] = {"at": 0.0, "phones": set(), "emails": set()}
+
+
+async def _get_registered_sets() -> tuple:
+    """Return (registered_phones:set, registered_emails:set), cached for
+    _REG_SET_TTL_S seconds to avoid re-scanning `users` on every call."""
+    now = _time.monotonic()
+    if now - _reg_set_cache["at"] < _REG_SET_TTL_S and _reg_set_cache["phones"] is not None:
+        return _reg_set_cache["phones"], _reg_set_cache["emails"]
+    phones: set = set()
+    emails: set = set()
+    async for u in db.users.find(
+        {"role": {"$in": ["patient", None]}},
+        {"_id": 0, "phone": 1, "email": 1},
+    ):
+        ph = re.sub(r"\D", "", u.get("phone") or "")
+        if ph:
+            phones.add(ph[-10:])
+        em = (u.get("email") or "").strip().lower()
+        if em:
+            emails.add(em)
+    _reg_set_cache.update({"at": now, "phones": phones, "emails": emails})
+    return phones, emails
+
 
 def _iso(row: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in list(row.items()):
@@ -85,19 +119,9 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
     # normalised phone (last-10 digits) OR email. This runs as a fast
     # $in filter after we materialise the set of patient user IDs.
     if status in ("registered", "unregistered"):
-        # Collect the set of phone_digits / emails that ARE registered.
-        registered_phones: set = set()
-        registered_emails: set = set()
-        async for u in db.users.find(
-            {"role": {"$in": ["patient", None]}},
-            {"_id": 0, "phone": 1, "email": 1},
-        ):
-            ph = re.sub(r"\D", "", u.get("phone") or "")
-            if ph:
-                registered_phones.add(ph[-10:])
-            em = (u.get("email") or "").strip().lower()
-            if em:
-                registered_emails.add(em)
+        # Collect the set of phone_digits / emails that ARE registered
+        # (cached — shared with /summary and rapid tab re-opens).
+        registered_phones, registered_emails = await _get_registered_sets()
         if status == "registered":
             flt.setdefault("$and", [])
             flt["$and"].append({
@@ -122,21 +146,12 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
 async def registry_summary(user=Depends(require_registry_access)):
     """One-shot counts for tab badges: total, registered, unregistered.
 
-    Cheap enough to hit on every screen open — uses a single sweep of
-    `db.users` to build the registered set, then two count_documents.
+    Cheap enough to hit on every screen open — uses a single (cached)
+    sweep of `db.users` to build the registered set, then two counts.
     """
-    registered_phones: List[str] = []
-    registered_emails: List[str] = []
-    async for u in db.users.find(
-        {"role": {"$in": ["patient", None]}},
-        {"_id": 0, "phone": 1, "email": 1},
-    ):
-        ph = re.sub(r"\D", "", u.get("phone") or "")
-        if ph:
-            registered_phones.append(ph[-10:])
-        em = (u.get("email") or "").strip().lower()
-        if em:
-            registered_emails.append(em)
+    reg_phones, reg_emails = await _get_registered_sets()
+    registered_phones = list(reg_phones)
+    registered_emails = list(reg_emails)
     total = await db.patients.count_documents({"merged_into": {"$exists": False}})
     registered = await db.patients.count_documents({
         "merged_into": {"$exists": False},

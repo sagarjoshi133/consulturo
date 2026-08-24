@@ -250,3 +250,11 @@ Follow-up after the app was still slow post auth-index fix. Verified production 
 - Verified on preview: all indexes created, no startup errors, `/bookings/all` 19ms, `/analytics/dashboard` 26ms, `/registry/patients` 9ms, `/summary` 6ms, `/invites/analytics` 5ms.
 - **REQUIRES REDEPLOY** — indexes build on production Atlas at startup and the new sweep code ships; both take effect only after redeploy.
 
+## Production slowness — ROUND-TRIP REDUCTION (the real cause: ~0.5s Atlas latency × many sequential queries) (Jun 2026)
+User confirmed: even AFTER the index redeploy, every screen still takes ~10-30s to load on the installed APK (both WiFi + mobile data), eventually loading (not hanging). Diagnosis: production has a real ~0.5s round-trip baseline (even the trivial `/api/health` takes 0.55s), so the hot endpoints' HIGH NUMBER OF SEQUENTIAL DB OPERATIONS — not scan cost — is the bottleneck. Indexes fix scan time, not round-trip count. Fixes (all collapse round-trips):
+- **`routers/analytics.py` `/api/analytics/dashboard`** (powers Dashboard/Today) — was ~19 sequential DB ops (14 `count_documents` + 5 full sweeps, several scanning the same collection twice). Rewritten to ONE streaming pass per collection computing every counter in Python (exact same output): now **3 sweeps + 1 count**. Preserves `_month_bucket`/`$exists` semantics.
+- **`routers/patient_registry.py`** — the Patients screen opens 3 endpoints at once (search + `/summary` + `/invites/analytics`) that each streamed the ENTIRE `users` collection. Added a shared 30s in-memory cache (`_get_registered_sets`) so the parallel calls + rapid tab re-opens reuse ONE user sweep instead of three.
+- **`server.py`** — added a `[SLOW]` request logger (logs any request ≥ SLOW_REQUEST_MS, default 800ms) so future production slowness can be pinpointed to the exact endpoint from the deploy logs.
+- Verified on preview: analytics/dashboard returns identical numbers, all registry endpoints 4-7ms, no startup errors.
+- **REQUIRES REDEPLOY** to take effect on production.
+
