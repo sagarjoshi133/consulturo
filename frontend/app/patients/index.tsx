@@ -22,6 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import api from '../../src/api';
 import { COLORS } from '../../src/theme';
 import { getCached, setCached, hasCached } from '../../src/data-cache';
+import { UpdatedHint } from '../../src/updated-hint';
 
 type Patient = {
   patient_id: string;
@@ -77,6 +78,7 @@ export default function UnregisteredPatientsScreen() {
     conversion_rate_total: number;
     converted_within_7d: number; converted_within_30d: number;
   } | null>(() => getCached('patients:analytics') ?? null);
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [err, setErr] = useState<string | null>(null);
   // ── Multi-select mode ──
   const [selectMode, setSelectMode] = useState(false);
@@ -111,6 +113,7 @@ export default function UnregisteredPatientsScreen() {
       if (!q.trim()) setCached(cacheKey, list);
       if (summaryRes?.data) { setSummary(summaryRes.data); setCached('patients:summary', summaryRes.data); }
       if (analyticsRes?.data) { setAnalytics(analyticsRes.data); setCached('patients:analytics', analyticsRes.data); }
+      setUpdatedAt(Date.now());
     } catch (e: any) {
       const d = e?.response?.data?.detail;
       const msg = typeof d === 'string' ? d
@@ -333,6 +336,10 @@ export default function UnregisteredPatientsScreen() {
           <View style={{ width: 60 }} />
         )}
       </View>
+
+      {updatedAt > 0 && !selectMode ? (
+        <UpdatedHint at={updatedAt} style={styles.updatedHint} />
+      ) : null}
 
       {/* Analytics tile (owner-only insight; hidden when empty) */}
       {analytics && analytics.total_invited > 0 && !selectMode ? (
@@ -824,6 +831,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   headerBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  updatedHint: { textAlign: 'center', paddingTop: 6, paddingBottom: 2 },
   headerTitle: {
     flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700',
     color: COLORS.textPrimary,

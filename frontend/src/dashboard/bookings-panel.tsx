@@ -55,6 +55,7 @@ import { displayDate, displayDateLong, display12h, parseUIDate } from '../date';
 import { usePanelRefresh } from '../panel-refresh';
 import { SmartAlerts } from '../dashboard-widgets';
 import { getCached, setCached, hasCached } from '../data-cache';
+import { UpdatedHint } from '../updated-hint';
 import { shouldShowStartCta, isVideoBooking, getConsultationWindow } from '../consultation-window';
 import { styles } from './dashboard-styles';
 
@@ -67,6 +68,7 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>(() => getCached<any[]>('bookings-all') ?? []);
   const [loading, setLoading] = useState(!hasCached('bookings-all'));
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [filter, setFilter] = useState<'requested' | 'all' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled' | 'missed' | 'rejected'>('requested');
   // Phase 5.14 — segregate In-person vs Video bookings via a
   // secondary filter chip row. 'all' shows both.
@@ -108,6 +110,7 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
       const { data } = await api.get('/bookings/all');
       setItems(data);
       setCached('bookings-all', data);
+      setUpdatedAt(Date.now());
     } catch {
       setItems((prev) => (prev.length ? prev : []));
     } finally {
@@ -590,6 +593,8 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
           )}
         </TouchableOpacity>
       </View>
+
+      <UpdatedHint at={updatedAt} style={{ marginBottom: 6, marginLeft: 4 }} />
 
       {/* ── View popup ─────────────────────────────────────────────────── */}
       {showViewMenu && (

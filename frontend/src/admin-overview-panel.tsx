@@ -7,6 +7,7 @@ import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { usePanelRefresh } from './panel-refresh';
 import { getCached, setCached, hasCached } from './data-cache';
+import { UpdatedHint } from './updated-hint';
 
 type Stat = {
   key: string;
@@ -38,6 +39,7 @@ export function AdminOverviewPanel({
   // On a tab re-open we render the cached data instantly and refresh
   // quietly in the background.
   const [loading, setLoading] = useState(!hasCached(OVERVIEW_CK));
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
 
   const load = async () => {
     if (!hasCached(OVERVIEW_CK)) setLoading(true);
@@ -51,6 +53,7 @@ export function AdminOverviewPanel({
       setData(overview);
       setTodayBookings(today);
       setCached(OVERVIEW_CK, { overview, todayBookings: today });
+      setUpdatedAt(Date.now());
     } finally {
       setLoading(false);
     }
@@ -145,6 +148,7 @@ export function AdminOverviewPanel({
           <Ionicons name="refresh" size={16} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
+      <UpdatedHint at={updatedAt} style={styles.updatedHint} />
       <View style={styles.statsGrid}>
         {stats.map((s) => (
           <TouchableOpacity
@@ -352,6 +356,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   todayTitle: { marginTop: 0, marginBottom: 0, flex: 1 },
+  updatedHint: { marginTop: -6, marginBottom: 10 },
   todayRefresh: {
     width: 34, height: 34, borderRadius: 17,
     alignItems: 'center', justifyContent: 'center',

@@ -267,3 +267,8 @@ Client-side fix so switching away and back to a tab shows the last-loaded data I
 - **`src/auth.tsx`** — `signOut()` calls `invalidateCached()` so no stale data leaks between accounts.
 - Verified: Dashboard renders cached Today panel + stats, lint clean (no new issues), no runtime errors. Frontend-only → live on preview now; installed app needs a fresh build.
 
+## Pull-to-Refresh Hint — "Updated just now" freshness line (Jun 2026)
+- **`src/updated-hint.tsx`** (new) — `<UpdatedHint at={ts}/>` + `timeAgo()` helper. Subtle grey line that self-updates every 30s ("just now" → "N min ago" → "N hr ago").
+- Wired into the 3 cached screens, each tracking `updatedAt` (set on successful load): **Dashboard/Today** (under the Today header), **Bookings** (under the toolbar), **Patients** (under the header). Tells staff how fresh the instantly-shown cached data is.
+- Verified on preview: "Updated just now" renders under the Today header; lint clean. Frontend-only → needs a fresh build for the installed app.
+
