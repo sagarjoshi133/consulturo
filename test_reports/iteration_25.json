@@ -1,0 +1,38 @@
+{
+  "summary": "Independently verified both features end-to-end. Backend: 10/10 pytest cases passed for account-deletion role gating (patient=200, staff/owner=403, no-auth=401, second call=401) and quarantined-duplicates flow (list, restore, merge, conflicts). Bookings for the deleted patient were correctly anonymised (patient_name='Deleted patient', deleted_account:true, user_id:null). Merge re-stamped the seeded booking onto the canonical q_can user before deleting the stub, and restore on q_orph renamed phone_dup_quarantine back to phone. Frontend: On /profile (patient session tpat_tok) the 'Delete my account' button with testID profile-delete-account is present in the Danger zone; tapping it opens the confirm modal with testIDs delete-confirm-input and delete-confirm-btn — typing DELETE enables the destructive Delete button. On /admin/dup-merge (owner session owner_tok) the 'Quarantined email / phone' section renders with testIDs quarantine-row-q_quar (Merge button quarantine-merge-q_quar visible) and quarantine-row-q_orph (Restore button quarantine-restore-q_orph visible), and the section header + explainer copy render correctly. Seeded test data cleaned up; owner user_4775ed40276e preserved (only its temp session token removed).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "profile.tsx delete-account confirmation modal",
+        "issue": "Modal renders raw i18n keys ('profile.deleteAccount', 'profile.deleteBody', 'profile.deleteConfirm') instead of English strings. The `t('profile.deleteAccount') || 'Delete my account'` fallback pattern doesn't kick in because the i18n library returns the raw key (truthy) when a translation is missing, so the `||` fallback never fires. Add the keys to /app/frontend/src/i18n/*.json OR change the pattern to `t('profile.deleteAccount', 'Delete my account')` if the lib supports positional defaults.",
+        "testID": "delete-confirm-btn",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_account_delete_and_quarantine.py",
+    "/app/test_reports/pytest/account_delete_quarantine.xml"
+  ],
+  "action_items": [
+    "Add English strings for keys: profile.deleteAccount, profile.deleteBody, profile.deleteConfirm, profile.deleting, profile.deleteFailed, profile.deleteFailedTitle to the i18n bundle (or use positional default form). Currently raw keys leak into the confirm modal UI.",
+    "(Optional polish) The delete confirmation modal header currently reads 'profile.deleteAccount' — same root cause as above."
+  ],
+  "critical_code_review_comments": [
+    "auth.py DELETE /api/auth/me correctly gates on role=='patient', anonymises clinical rows (bookings/prescriptions/surgeries/receipts) with deleted_account:true & user_id:null, hard-deletes personal collections + conversations, and audits into audit_log — spec-compliant with Apple Guideline 5.1.1(v).",
+    "admin_users.py resolve_quarantine correctly enforces 'merge requires canonical' (409) and 'restore forbidden if canonical exists' (409); action re-stamps all _USER_ID_COLLECTIONS then deletes the stub. Nicely idempotent and audit-logged."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_account_delete_and_quarantine.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "95%" },
+  "seed_data_creation": "Seeded t_pat + booking + session tpat_tok, owner_tok on user_4775ed40276e, q_can/q_quar/q_orph + one booking for q_quar. All cleaned up post-test; only owner user preserved.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints (DELETE /api/auth/me, GET /api/admin/users/quarantined-duplicates, POST /api/admin/users/resolve-quarantine) are verified. If re-running, re-seed via the mongosh snippet in the review_request; the pytest file consumes tpat_tok and owner_tok. Frontend testIDs confirmed: profile-delete-account, delete-confirm-input, delete-confirm-btn, quarantine-row-<uid>, quarantine-merge-<uid>, quarantine-restore-<uid>, quarantine-empty.",
+  "rca_of_issue": "Only issue found is cosmetic: missing i18n strings for the delete-account confirmation copy. Root cause in profile.tsx lines 502, 517, 520, 549 — pattern `t('key') || 'fallback'` fails when i18n lib returns the key itself for unknown keys. Fix by adding the missing keys to the locale bundle or using the lib's positional default parameter."
+}

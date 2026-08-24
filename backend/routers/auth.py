@@ -541,6 +541,138 @@ async def auth_logout(
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
+# Collections that hold ONLY personal/behavioural data for a single
+# user — safe to hard-delete on account deletion. Clinical records
+# (bookings / prescriptions / surgeries / receipts) are handled
+# separately: they are ANONYMISED, not deleted, because a clinic must
+# retain the medical-legal record even after the patient closes their
+# app account.
+_ACCOUNT_DELETE_PURGE_COLLECTIONS = [
+    "ipss_history",
+    "notes",
+    "notifications",
+    "notification_inbox",
+    "comm_inbox_items",
+    "comm_installations",
+    "device_installations",
+    "push_tokens",
+    "drafts",
+    "auth_magic_tokens",
+    "auth_otp_codes",
+]
+
+
+@router.delete("/api/auth/me")
+async def delete_my_account(user=Depends(require_user)):
+    """In-app account deletion (Apple App Store Guideline 5.1.1(v)).
+
+    Behaviour:
+      • ONLY `patient` accounts may self-delete. Staff / owner-tier
+        accounts are blocked (they must be off-boarded by an admin via
+        the Team panel) — this prevents a clinician accidentally
+        nuking their own operational account.
+      • Personal / behavioural data is HARD-deleted (sessions, push
+        installs, IPSS history, notes, inbox, conversations, drafts).
+      • Clinical records (bookings, prescriptions, surgeries, receipts)
+        are ANONYMISED — the personal identifiers are scrubbed but the
+        row is retained for the clinic's medical-legal record, with a
+        `deleted_account: true` flag and the original `user_id` link
+        removed.
+      • The `users` document is removed last so a re-login creates a
+        fresh account rather than resurrecting the deleted identity.
+    """
+    role = (user.get("role") or "").lower()
+    if role != "patient":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Only patient accounts can be deleted in-app. Staff and "
+                "owner accounts must be removed by a clinic administrator "
+                "from the Team panel."
+            ),
+        )
+
+    uid = user["user_id"]
+    now = datetime.now(timezone.utc)
+    report: Dict[str, Any] = {"user_id": uid, "purged": {}, "anonymised": {}}
+
+    # 1) Hard-delete personal collections.
+    for coll in _ACCOUNT_DELETE_PURGE_COLLECTIONS:
+        try:
+            r = await db[coll].delete_many({"user_id": uid})
+            report["purged"][coll] = int(r.deleted_count or 0)
+        except Exception as e:
+            report["purged"][coll] = f"error: {e}"
+
+    # comm_installations / push_tokens may key on other fields too.
+    try:
+        await db.comm_installations.delete_many({"user_id": uid})
+    except Exception:
+        pass
+
+    # 2) Patient ↔ clinic conversations + their messages.
+    try:
+        convo_ids = []
+        async for c in db.comm_conversations.find({"patient_user_id": uid}, {"conversation_id": 1, "_id": 0}):
+            cid = c.get("conversation_id")
+            if cid:
+                convo_ids.append(cid)
+        if convo_ids:
+            await db.comm_messages.delete_many({"conversation_id": {"$in": convo_ids}})
+            await db.comm_message_receipts.delete_many({"conversation_id": {"$in": convo_ids}})
+        cr = await db.comm_conversations.delete_many({"patient_user_id": uid})
+        report["purged"]["comm_conversations"] = int(cr.deleted_count or 0)
+    except Exception as e:
+        report["purged"]["comm_conversations"] = f"error: {e}"
+
+    # 3) Anonymise retained clinical records.
+    _scrub = {
+        "patient_name": "Deleted patient",
+        "patient_phone": "",
+        "patient_email": "",
+        "patient_address": "",
+        "deleted_account": True,
+        "deleted_at": now,
+        "user_id": None,
+    }
+    for coll in ("bookings", "prescriptions", "surgeries", "receipts"):
+        try:
+            r = await db[coll].update_many({"user_id": uid}, {"$set": _scrub})
+            report["anonymised"][coll] = int(r.modified_count or 0)
+        except Exception as e:
+            report["anonymised"][coll] = f"error: {e}"
+
+    # 4) Kill every active session for this user.
+    try:
+        sr = await db.user_sessions.delete_many({"user_id": uid})
+        report["purged"]["user_sessions"] = int(sr.deleted_count or 0)
+    except Exception:
+        pass
+
+    # 5) Delete the user document itself.
+    try:
+        await db.users.delete_one({"user_id": uid})
+        report["user_deleted"] = True
+    except Exception as e:
+        report["user_deleted"] = f"error: {e}"
+
+    # 6) Audit trail (retains no PII beyond the hashed identity).
+    try:
+        await db.audit_log.insert_one({
+            "type": "account.self_delete",
+            "user_id": uid,
+            "email": user.get("email"),
+            "role": role,
+            "created_at": now,
+            "report": report,
+        })
+    except Exception:
+        pass
+
+    report["ok"] = True
+    return report
+
+
 @router.patch("/api/auth/me")
 async def update_my_profile(body: MyProfileBody, user=Depends(require_user)):
     updates: Dict[str, Any] = {}

@@ -215,3 +215,12 @@ User-approved scope: NO PostgreSQL swap (managed environment is Mongo-only); rep
 - **Health probes** — `GET /`, `GET /healthz`, `GET /readyz` all return 200 for K8s.
 - **`deployment_agent` verdict**: `warn` (no BLOCKERs; remaining WARNs are user-owned iOS `GoogleService-Info.plist` + eas.json policy note + Apple Store account-deletion flow — none block K8s deploy).
 
+## Account Deletion + Duplicate Review Tool — SHIPPED (Jun 2026)
+- **Account Deletion (Apple App Store Guideline 5.1.1(v))** — new `DELETE /api/auth/me` (routers/auth.py). PATIENT accounts only (staff/owner get 403 → must be off-boarded from Team panel). Hard-deletes personal data (user_sessions, push/comm installations, ipss_history, notes, notification/comm inbox, patient↔clinic conversations+messages, drafts) and ANONYMISES retained clinical records (bookings/prescriptions/surgeries/receipts → patient PII scrubbed, `deleted_account:true`, `user_id:null`), then deletes the users doc. Audit row `account.self_delete`.
+  - Frontend: Profile → Danger zone shows a red **"Delete my account"** button (patients only), opening a type-to-confirm ("DELETE") modal; on success signs out and routes to `/signed-out`. testIDs: `profile-delete-account`, `delete-confirm-input`, `delete-confirm-btn`.
+- **Duplicate Review Tool (quarantined emails/phones)** — the startup dedup renames duplicate `email`/`phone` → `email_dup_quarantine`/`phone_dup_quarantine`. Two new owner-only endpoints (routers/admin_users.py):
+  - `GET /api/admin/users/quarantined-duplicates` — lists each quarantined row with its activity counts and the canonical live account holding the value (`canonical_exists`).
+  - `POST /api/admin/users/resolve-quarantine` `{quarantined_user_id, action:"merge"|"restore"}` — **merge** re-stamps activity onto the canonical account then deletes the stub; **restore** (only when no live holder) renames `*_dup_quarantine` back to the real field. Audit row `users.resolve_quarantine`.
+  - Frontend: new **"Quarantined email / phone"** section appended to `admin/dup-merge.tsx` (super_owner/primary_owner). Per-row Merge or Restore button. testIDs: `quarantine-row-*`, `quarantine-merge-*`, `quarantine-restore-*`, `quarantine-empty`.
+  - Backend verified via curl: list (2 rows), merge (booking re-stamped, stub deleted), restore (phone renamed back), staff-block on DELETE /auth/me (403).
+

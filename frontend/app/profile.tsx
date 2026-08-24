@@ -61,6 +61,9 @@ export default function ProfileScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [pushEnabled, setPushEnabled] = useState(true);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const u: any = user || {};
   const isStaff = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'].includes(u.role);
@@ -214,6 +217,24 @@ export default function ProfileScreen() {
           { text: t('profile.signOut') || 'Sign Out', style: 'destructive', onPress: doSignOut },
         ],
       );
+    }
+  };
+
+  const doDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await api.delete('/auth/me');
+      setDeleteModal(false);
+      await signOut();
+      try { router.replace('/signed-out' as any); } catch {}
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || (t('profile.deleteFailed') || 'Could not delete your account. Please try again.');
+      setDeleting(false);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert(msg);
+      } else {
+        Alert.alert(t('profile.deleteFailedTitle') || 'Delete failed', msg);
+      }
     }
   };
 
@@ -469,8 +490,69 @@ export default function ProfileScreen() {
           <Text style={styles.signOutText}>{t('profile.signOut') || 'Sign out'}</Text>
         </TouchableOpacity>
 
+        {/* Delete account — patients only (Apple App Store 5.1.1(v)) */}
+        {!isStaff && (
+          <TouchableOpacity
+            onPress={() => { setDeleteConfirmText(''); setDeleteModal(true); }}
+            style={styles.deleteBtn}
+            testID="profile-delete-account"
+            activeOpacity={0.85}
+          >
+            <Ionicons name="trash-outline" size={18} color={COLORS.danger || '#D64545'} />
+            <Text style={styles.deleteBtnText}>{t('profile.deleteAccount') || 'Delete my account'}</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.versionTxt}>{t('profile.versionFooter') || 'ConsultUro v1.0.6 · © Dr. Sagar Joshi'}</Text>
       </Animated.ScrollView>
+
+      {/* Delete-account confirmation modal */}
+      <Modal visible={deleteModal} transparent animationType="fade" onRequestClose={() => !deleting && setDeleteModal(false)}>
+        <View style={styles.delOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
+            <View style={styles.delCard}>
+              <View style={styles.delIconWrap}>
+                <Ionicons name="warning" size={26} color={COLORS.danger || '#D64545'} />
+              </View>
+              <Text style={styles.delTitle}>{t('profile.deleteAccount') || 'Delete my account'}</Text>
+              <Text style={styles.delBody}>
+                {t('profile.deleteBody') ||
+                  'This permanently deletes your ConsultUro account and personal data (bookings history in your app, IPSS scores, notes and messages). This cannot be undone.\n\nType DELETE below to confirm.'}
+              </Text>
+              <TextInput
+                value={deleteConfirmText}
+                onChangeText={setDeleteConfirmText}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                placeholder="DELETE"
+                placeholderTextColor={COLORS.textDisabled}
+                style={styles.delInput}
+                testID="delete-confirm-input"
+                editable={!deleting}
+              />
+              <View style={styles.delActions}>
+                <TouchableOpacity
+                  style={[styles.delCancel]}
+                  onPress={() => setDeleteModal(false)}
+                  disabled={deleting}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.delCancelText}>{t('profile.cancel') || 'Cancel'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.delConfirm, (deleteConfirmText.trim().toUpperCase() !== 'DELETE' || deleting) && { opacity: 0.5 }]}
+                  onPress={doDeleteAccount}
+                  disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || deleting}
+                  testID="delete-confirm-btn"
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.delConfirmText}>{deleting ? (t('profile.deleting') || 'Deleting…') : (t('profile.deleteConfirm') || 'Delete')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       {/* ─── Floating header ───
           Absolutely positioned, animated height. Contains both the
@@ -888,6 +970,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent + '08',
   },
   signOutText: { ...FONTS.bodyMedium, color: COLORS.accent, fontSize: 14 },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginTop: 12, paddingVertical: 12, paddingHorizontal: 18,
+  },
+  deleteBtnText: { ...FONTS.bodyMedium, color: COLORS.danger || '#D64545', fontSize: 13 },
+
+  // Delete-account modal
+  delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  delCard: { width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 20, padding: 22, alignItems: 'center' },
+  delIconWrap: { width: 54, height: 54, borderRadius: 27, backgroundColor: (COLORS.danger || '#D64545') + '14', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  delTitle: { ...FONTS.h3, color: COLORS.textPrimary, fontSize: 18, marginBottom: 8, textAlign: 'center' },
+  delBody: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 14 },
+  delInput: { width: '100%', backgroundColor: COLORS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 15, color: COLORS.textPrimary, textAlign: 'center', letterSpacing: 2, marginBottom: 16 },
+  delActions: { flexDirection: 'row', gap: 10, width: '100%' },
+  delCancel: { flex: 1, paddingVertical: 13, borderRadius: RADIUS.pill, borderWidth: 1.5, borderColor: COLORS.border, alignItems: 'center' },
+  delCancelText: { ...FONTS.bodyMedium, color: COLORS.textSecondary, fontSize: 14 },
+  delConfirm: { flex: 1, paddingVertical: 13, borderRadius: RADIUS.pill, backgroundColor: COLORS.danger || '#D64545', alignItems: 'center' },
+  delConfirmText: { ...FONTS.bodyMedium, color: '#fff', fontSize: 14 },
   versionTxt: { ...FONTS.body, color: COLORS.textDisabled, textAlign: 'center', marginTop: 18, fontSize: 11 },
 
   // Sheet (email link)

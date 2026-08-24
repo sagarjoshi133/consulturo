@@ -53,6 +53,18 @@ type MergeReport = {
   ok?: boolean;
 };
 
+type QuarantineRow = {
+  quarantined_user_id: string;
+  quarantined_name?: string;
+  quarantined_role?: string;
+  quarantined_created_at?: string;
+  field: 'email' | 'phone';
+  value: string;
+  activity: Record<string, number>;
+  canonical: { user_id: string; name?: string; email?: string; phone?: string; role?: string } | null;
+  canonical_exists: boolean;
+};
+
 export default function DupMerge() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -70,6 +82,8 @@ export default function DupMerge() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [reports, setReports] = useState<Record<string, MergeReport>>({});
+  const [qrows, setQrows] = useState<QuarantineRow[]>([]);
+  const [qBusyId, setQBusyId] = useState<string>('');
 
   const load = useCallback(async () => {
     if (!canMerge) {
@@ -78,11 +92,16 @@ export default function DupMerge() {
     }
     setLoading(true);
     try {
-      const r = await api.get('/admin/users/find-duplicates');
-      setRows(Array.isArray(r.data?.duplicates) ? r.data.duplicates : []);
+      const [dupRes, qRes] = await Promise.all([
+        api.get('/admin/users/find-duplicates'),
+        api.get('/admin/users/quarantined-duplicates').catch(() => ({ data: { quarantined: [] } })),
+      ]);
+      setRows(Array.isArray(dupRes.data?.duplicates) ? dupRes.data.duplicates : []);
+      setQrows(Array.isArray(qRes.data?.quarantined) ? qRes.data.quarantined : []);
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Could not scan for duplicates');
       setRows([]);
+      setQrows([]);
     } finally {
       setLoading(false);
     }
@@ -111,6 +130,38 @@ export default function DupMerge() {
       setMergingEmail('');
     }
   }, [toast, load]);
+
+  const resolveQuarantine = useCallback(async (row: QuarantineRow, action: 'merge' | 'restore') => {
+    setQBusyId(row.quarantined_user_id);
+    try {
+      await api.post('/admin/users/resolve-quarantine', {
+        quarantined_user_id: row.quarantined_user_id,
+        action,
+      });
+      toast.success(action === 'merge' ? 'Merged into the live account' : 'Value restored to this account');
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Could not resolve');
+    } finally {
+      setQBusyId('');
+    }
+  }, [toast, load]);
+
+  const confirmResolve = (row: QuarantineRow, action: 'merge' | 'restore') => {
+    const msg =
+      action === 'merge'
+        ? `Merge this quarantined account's data into the live account holding "${row.value}"?\n\n· Bookings, prescriptions, push tokens and notes are re-stamped onto the live account.\n· This quarantined account is then deleted.\n\nLogged in the audit trail. Cannot be undone.`
+        : `Restore "${row.value}" onto this account?\n\nNo live account currently holds this value, so it can be safely given back. Logged in the audit trail.`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) resolveQuarantine(row, action);
+    } else {
+      Alert.alert(action === 'merge' ? 'Merge quarantined account?' : 'Restore value?', msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: action === 'merge' ? 'Merge' : 'Restore', style: 'destructive', onPress: () => resolveQuarantine(row, action) },
+      ]);
+    }
+  };
+
 
   const confirmMerge = (row: DupRow) => {
     const msg =
@@ -329,6 +380,94 @@ export default function DupMerge() {
             })}
           </>
         )}
+
+        {/* ── Quarantined duplicates ── */}
+        <View style={styles.qSectionHead}>
+          <MaterialCommunityIcons name="shield-alert-outline" size={16} color={COLORS.warning} />
+          <Text style={styles.qSectionTitle}>Quarantined email / phone</Text>
+        </View>
+        <Text style={styles.qExplainer}>
+          When two accounts shared an email or phone, the newer one&apos;s value was
+          auto-quarantined so the unique index could build (no data was deleted).
+          Merge it into the live account, or restore the value if the live account
+          no longer uses it.
+        </Text>
+
+        {qrows.length === 0 ? (
+          <View style={styles.qEmpty} testID="quarantine-empty">
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+            <Text style={styles.qEmptyText}>No quarantined values — nothing to review.</Text>
+          </View>
+        ) : (
+          qrows.map((q) => {
+            const busy = qBusyId === q.quarantined_user_id;
+            const act = q.activity || {};
+            return (
+              <View key={q.quarantined_user_id} style={styles.qCard} testID={`quarantine-row-${q.quarantined_user_id}`}>
+                <View style={styles.cardHead}>
+                  <MaterialCommunityIcons name={q.field === 'email' ? 'email-alert-outline' : 'phone-alert-outline'} size={18} color={COLORS.warning} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardEmail} numberOfLines={1}>{q.value}</Text>
+                    <Text style={styles.cardMeta}>
+                      Quarantined {q.field} · {q.quarantined_name || '(no name)'} · {(q.quarantined_role || 'patient')}
+                    </Text>
+                  </View>
+                  <View style={styles.qBadge}>
+                    <Text style={styles.qBadgeText}>{q.field.toUpperCase()}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.namesBox}>
+                  <View style={styles.nameRow}>
+                    <Ionicons name="person-remove" size={14} color={COLORS.warning} />
+                    <Text style={styles.nameText} numberOfLines={1}>Quarantined acct</Text>
+                    <Text style={styles.uidText} numberOfLines={1}>{(q.quarantined_user_id || '').slice(0, 14)}…</Text>
+                  </View>
+                  <View style={styles.nameRow}>
+                    <Ionicons name="stats-chart" size={13} color={COLORS.textSecondary} />
+                    <Text style={styles.nameText} numberOfLines={1}>
+                      {`bookings ${act.bookings || 0} · rx ${act.prescriptions || 0} · tokens ${act.push_tokens || 0} · notes ${act.notes || 0}`}
+                    </Text>
+                  </View>
+                  {q.canonical ? (
+                    <View style={styles.nameRow}>
+                      <Ionicons name="person-circle" size={14} color={COLORS.success} />
+                      <Text style={styles.nameText} numberOfLines={1}>Live: {q.canonical.name || '(no name)'}</Text>
+                      <Text style={styles.uidText} numberOfLines={1}>{(q.canonical.user_id || '').slice(0, 14)}…</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.nameRow}>
+                      <Ionicons name="alert-circle" size={14} color={COLORS.textDisabled} />
+                      <Text style={styles.nameText} numberOfLines={1}>No live account holds this value</Text>
+                    </View>
+                  )}
+                </View>
+
+                {q.canonical_exists ? (
+                  <TouchableOpacity
+                    onPress={() => confirmResolve(q, 'merge')}
+                    style={[styles.mergeBtn, busy && styles.mergeBtnBusy]}
+                    disabled={busy}
+                    testID={`quarantine-merge-${q.quarantined_user_id}`}
+                  >
+                    {busy ? <ActivityIndicator color="#fff" size="small" /> : <MaterialCommunityIcons name="account-multiple-check" size={16} color="#fff" />}
+                    <Text style={styles.mergeBtnText}>{busy ? 'Working…' : 'Merge into live account'}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => confirmResolve(q, 'restore')}
+                    style={[styles.restoreBtn, busy && styles.mergeBtnBusy]}
+                    disabled={busy}
+                    testID={`quarantine-restore-${q.quarantined_user_id}`}
+                  >
+                    {busy ? <ActivityIndicator color="#fff" size="small" /> : <MaterialCommunityIcons name="restore" size={16} color="#fff" />}
+                    <Text style={styles.mergeBtnText}>{busy ? 'Working…' : 'Restore value to this account'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -397,4 +536,14 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyTitle: { ...FONTS.h2, color: COLORS.textPrimary, marginTop: 14 },
   emptySub: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 6 },
+
+  qSectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 26, marginBottom: 6 },
+  qSectionTitle: { ...FONTS.h3, color: COLORS.textPrimary, fontSize: 15 },
+  qExplainer: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 12 },
+  qEmpty: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, backgroundColor: COLORS.success + '08', borderColor: COLORS.success + '30', borderWidth: 1, borderRadius: RADIUS.md },
+  qEmptyText: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, flex: 1 },
+  qCard: { backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 14, borderWidth: 1, borderColor: COLORS.warning + '40', marginBottom: 12 },
+  qBadge: { backgroundColor: COLORS.warning + '14', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  qBadgeText: { ...FONTS.label, color: COLORS.warning, fontSize: 10 },
+  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: COLORS.primary, borderRadius: RADIUS.pill },
 });
