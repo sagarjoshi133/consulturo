@@ -24,6 +24,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import api from '../api';
 import { useAuth } from '../auth';
 import { getCached, setCached, hasCached } from '../data-cache';
+import { fetchPaged } from '../progressive-fetch';
 import { COLORS, FONTS, RADIUS } from '../theme';
 import { Skeleton } from '../skeleton';
 import { useToast } from '../toast';
@@ -54,13 +55,17 @@ export default function PrescriptionsPanel() {
 
   const load = useCallback(async () => {
     try {
-      const [{ data }, s] = await Promise.all([
-        api.get('/prescriptions'),
-        loadClinicSettings(),
-      ]);
-      setItems(data);
-      setSettings(s);
-      setCached('rx:items', data);
+      const settingsPromise = loadClinicSettings();
+      await fetchPaged<any>('/prescriptions', {
+        pageSize: 150,
+        max: 500,
+        onPage: (rows, done) => {
+          setItems(rows);
+          setLoading(false);
+          if (done) setCached('rx:items', rows);
+        },
+      });
+      setSettings(await settingsPromise);
     } catch {
       if (!hasCached('rx:items')) setItems([]);
     } finally {

@@ -318,3 +318,30 @@ NEXT STEP (waiting on user): redeploy → open production app via Expo Go QR (no
   slow rows on staff endpoints w/ large KB ⇒ paginate/project heavy endpoints
   (/api/surgeries currently returns up to 5000 full docs, /bookings/all + /prescriptions 500).
   fast rows ⇒ APK/runtime issue on device.
+
+## Phase E — Clinical Core (encounters + AI dictation + diagnosis registry) — SHIPPED (Jun 2026)
+Backend `/app/backend/routers/encounters.py` (registered in server.py; indexes enc_clinic_created,
+enc_phone, dxr_clinic_label):
+- POST/GET(list paginated {items,total,has_more})/GET-id/PATCH/DELETE /api/encounters — clinic-scoped
+  on EVERY route via _scoped_find (tester-flagged gap fixed). Delete: owner-tier or author only.
+- POST /api/encounters/{id}/link-rx — two-way encounter↔prescription linkage.
+- GET /api/diagnoses?q= — clinic diagnosis registry typeahead, auto-learned from saved encounters
+  (usage_count ranking).
+- POST /api/ai/encounter-dictation — Whisper-1 → Claude Sonnet 4.5 → SOAP JSON
+  (chief_complaint/subjective/objective/assessment/plan/diagnoses). Reuses wave3 helpers.
+Frontend: app/encounters/{index,new,[id]}.tsx. New/edit form: patient autofill by phone, vitals row,
+SOAP inputs, diagnosis chips w/ typeahead, Dictate button (VoiceDictationSheet generalized with
+upload/title/subtitle/example props; uploadDictation() extracted in src/wave3/api.ts).
+Detail: sections, Create-Rx button → /prescriptions/new?encounterId= (prefills patient+complaint+
+diagnosis+plan; links back after save). Entry: More tab → Practice → "Encounters".
+
+## Trim Heavy Screens — progressive pagination — SHIPPED (Jun 2026)
+Backend: limit/skip(+q) on GET /api/surgeries (search: name/phone/surgery_name/hospital/diagnosis),
+GET /api/prescriptions (name/phone/diagnosis), GET /api/bookings/all (+status; auto-missed sweep
+runs on UNfiltered scope). Defaults unchanged → responses stay plain arrays (backward compat).
+Frontend `src/progressive-fetch.ts` fetchPaged(): renders after EVERY 200-row page. Wired into
+surgery-panel, dashboard prescriptions-panel, prescriptions/index, bookings-panel,
+consultations-panel (now server-filtered status=confirmed). Dashboard pending badge poll now
+requests only status=requested&limit=200.
+Testing: iteration 27 — 22/22 backend pytest + full frontend flow PASS
+(tests/test_encounters_phase_e.py; re-run green after tenancy hardening).

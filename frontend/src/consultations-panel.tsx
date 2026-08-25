@@ -28,6 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { addDays, format, isSameDay, parseISO, startOfDay } from 'date-fns';
 import api from './api';
+import { fetchPaged } from './progressive-fetch';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { usePanelRefresh } from './panel-refresh';
 import { displayDateLong, display12h } from './date';
@@ -99,7 +100,10 @@ export function ConsultationsPanel({
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { data } = await api.get('/bookings/all');
+      const data = await fetchPaged<Booking>('/bookings/all', {
+        pageSize: 200,
+        params: { status: 'confirmed' },
+      });
       const todayStr = format(startOfDay(new Date()), 'yyyy-MM-dd');
       // Only upcoming confirmed (today or later).
       const filtered: Booking[] = (Array.isArray(data) ? data : [])

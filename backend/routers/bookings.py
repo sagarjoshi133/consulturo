@@ -640,19 +640,31 @@ async def _auto_mark_missed(clinic_filter: Dict[str, Any]) -> int:
 
 
 @router.get("/api/bookings/all")
-async def all_bookings(request: Request, user=Depends(require_staff)):
+async def all_bookings(
+    request: Request,
+    user=Depends(require_staff),
+    limit: int = 500,
+    skip: int = 0,
+    status: Optional[str] = None,
+):
     # Phase E — scope to the current clinic (X-Clinic-Id header). For
     # super_owner without a header, returns ALL clinics' bookings.
     clinic_id = await resolve_clinic_id(request, user)
     q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
     # Self-healing: sweep stale confirmed bookings → missed. Lazy job,
     # so the admin dashboard is always up-to-date without a cron.
+    # NOTE: runs on the UNFILTERED tenant scope — a `status` query param
+    # must not pollute the sweep criteria.
     try:
-        await _auto_mark_missed(q)
+        await _auto_mark_missed(dict(q))
     except Exception:
         pass  # never let the sweep break the listing
-    cursor = db.bookings.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=500)
+    if status:
+        q["status"] = status
+    limit = max(1, min(int(limit or 500), 500))
+    skip = max(0, int(skip or 0))
+    cursor = db.bookings.find(q, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit)
+    return await cursor.to_list(length=limit)
 
 
 @router.get("/api/bookings/pending-payments")

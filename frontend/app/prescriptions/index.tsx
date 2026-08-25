@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { parseBackendDate, formatIST } from '../../src/date';
 import api from '../../src/api';
 import { getCached, setCached, hasCached } from '../../src/data-cache';
+import { fetchPaged } from '../../src/progressive-fetch';
 import { useAuth } from '../../src/auth';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { PrimaryButton } from '../../src/components';
@@ -52,13 +53,17 @@ export default function PrescriptionsList() {
       return;
     }
     try {
-      const [{ data }, s] = await Promise.all([
-        api.get('/prescriptions'),
-        loadClinicSettings(),
-      ]);
-      setItems(data);
-      setSettings(s);
-      setCached('rx:items', data);
+      const settingsPromise = loadClinicSettings();
+      await fetchPaged<any>('/prescriptions', {
+        pageSize: 150,
+        max: 500,
+        onPage: (rows, done) => {
+          setItems(rows);
+          setLoading(false);
+          if (done) setCached('rx:items', rows);
+        },
+      });
+      setSettings(await settingsPromise);
     } catch {
       if (!hasCached('rx:items')) setItems([]);
     } finally {

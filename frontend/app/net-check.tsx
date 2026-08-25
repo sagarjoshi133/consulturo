@@ -27,6 +27,9 @@ import { getActiveBase, isOnFallback } from '../src/backend-health';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { goBackSafe } from '../src/nav';
 
+const TEXT = COLORS.textPrimary;
+const BG = COLORS.bg;
+
 type RowResult = {
   label: string;
   ms: number;
@@ -127,7 +130,7 @@ export default function NetCheckScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => goBackSafe(router)} style={styles.backBtn} testID="netcheck-back">
-          <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+          <Ionicons name="arrow-back" size={22} color={TEXT} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Connection Diagnostics</Text>
       </View>
@@ -203,7 +206,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.background },
+  safe: { flex: 1, backgroundColor: BG },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -212,7 +215,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backBtn: { padding: 4 },
-  headerTitle: { fontSize: 18, fontFamily: FONTS?.semiBold || undefined, fontWeight: '600', color: COLORS.text },
+  headerTitle: { fontSize: 18, fontFamily: FONTS?.semiBold || undefined, fontWeight: '600', color: TEXT },
   body: { padding: 16, paddingBottom: 48, gap: 16 },
   card: {
     backgroundColor: '#fff',
@@ -224,7 +227,7 @@ const styles = StyleSheet.create({
   },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   infoLabel: { color: COLORS.textSecondary || '#667', fontSize: 13 },
-  infoValue: { color: COLORS.text, fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  infoValue: { color: TEXT, fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   runBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,7 +239,7 @@ const styles = StyleSheet.create({
   },
   runText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  resultLabel: { flex: 1, color: COLORS.text, fontSize: 13 },
+  resultLabel: { flex: 1, color: TEXT, fontSize: 13 },
   resultMs: { fontSize: 13, fontWeight: '700', minWidth: 70, textAlign: 'right' },
   resultMeta: { fontSize: 11, color: COLORS.textDisabled || '#99A', minWidth: 86, textAlign: 'right' },
   verdictCard: {

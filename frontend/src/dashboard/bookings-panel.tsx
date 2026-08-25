@@ -55,6 +55,7 @@ import { displayDate, displayDateLong, display12h, parseUIDate } from '../date';
 import { usePanelRefresh } from '../panel-refresh';
 import { SmartAlerts } from '../dashboard-widgets';
 import { getCached, setCached, hasCached } from '../data-cache';
+import { fetchPaged } from '../progressive-fetch';
 import { UpdatedHint } from '../updated-hint';
 import { shouldShowStartCta, isVideoBooking, getConsultationWindow } from '../consultation-window';
 import { styles } from './dashboard-styles';
@@ -107,10 +108,17 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/bookings/all');
-      setItems(data);
-      setCached('bookings-all', data);
-      setUpdatedAt(Date.now());
+      await fetchPaged<any>('/bookings/all', {
+        pageSize: 200,
+        onPage: (rows, done) => {
+          setItems(rows);
+          setLoading(false);
+          if (done) {
+            setCached('bookings-all', rows);
+            setUpdatedAt(Date.now());
+          }
+        },
+      });
     } catch {
       setItems((prev) => (prev.length ? prev : []));
     } finally {

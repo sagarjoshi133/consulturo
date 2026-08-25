@@ -247,8 +247,8 @@ function DashboardImpl() {
     let cancelled = false;
     const fetchCount = async () => {
       try {
-        const { data } = await api.get('/bookings/all');
-        if (!cancelled) setPendingCount(data.filter((b: any) => b.status === 'requested').length);
+        const { data } = await api.get('/bookings/all', { params: { status: 'requested', limit: 200 } });
+        if (!cancelled) setPendingCount(Array.isArray(data) ? data.length : 0);
       } catch {}
     };
     fetchCount();

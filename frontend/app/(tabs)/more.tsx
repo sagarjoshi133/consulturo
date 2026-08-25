@@ -326,6 +326,14 @@ export default function More() {
           color: P_CLINICAL,
         },
         {
+          icon: 'clipboard',
+          label: t('more.encounters') || 'Encounters',
+          sub: t('more.encountersSub') || 'Clinical notes · AI dictation · diagnoses',
+          route: '/encounters' as any,
+          testID: 'more-encounters',
+          color: P_CLINICAL,
+        },
+        {
           icon: 'document-text',
           label: t('more.prescriptions') || 'Prescriptions',
           sub: t('more.prescriptionsSub') || 'Compose & history',

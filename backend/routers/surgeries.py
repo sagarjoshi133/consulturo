@@ -114,12 +114,32 @@ async def create_surgery(request: Request, body: SurgeryBody, user=Depends(requi
     return doc
 
 @router.get("/api/surgeries")
-async def list_surgeries(request: Request, user=Depends(require_staff)):
+async def list_surgeries(
+    request: Request,
+    user=Depends(require_staff),
+    limit: int = 5000,
+    skip: int = 0,
+    q: str = "",
+):
     # Phase E — scope by current clinic.
     clinic_id = await resolve_clinic_id(request, user)
-    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
-    cursor = db.surgeries.find(q, {"_id": 0}).sort("date", -1)
-    return await cursor.to_list(length=5000)
+    filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    # Optional server-side search so paginated clients can search the
+    # WHOLE logbook without downloading it.
+    if q.strip():
+        import re as _re
+        rx = {"$regex": _re.escape(q.strip()), "$options": "i"}
+        filt["$or"] = [
+            {"patient_name": rx},
+            {"patient_phone": rx},
+            {"surgery_name": rx},
+            {"hospital": rx},
+            {"diagnosis": rx},
+        ]
+    limit = max(1, min(int(limit or 5000), 5000))
+    skip = max(0, int(skip or 0))
+    cursor = db.surgeries.find(filt, {"_id": 0}).sort("date", -1).skip(skip).limit(limit)
+    return await cursor.to_list(length=limit)
 
 @router.get("/api/surgeries/export.csv")
 async def export_surgeries_csv(user=Depends(require_can_manage_surgeries)):

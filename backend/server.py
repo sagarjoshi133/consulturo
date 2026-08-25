@@ -695,6 +695,10 @@ async def _ensure_unique_indexes_and_cleanup_orphans() -> None:
             ("patients",      [("merged_into", 1)],                       "pt_merged_into"),
             ("patients",      [("clinic_id", 1)],                         "pt_clinic_id"),
             ("notification_inbox", [("user_id", 1), ("created_at", -1)],  "ni_user_created"),
+            # Phase E — Clinical Core
+            ("encounters",    [("clinic_id", 1), ("created_at", -1)],     "enc_clinic_created"),
+            ("encounters",    [("patient_phone", 1)],                     "enc_phone"),
+            ("diagnosis_registry", [("clinic_id", 1), ("label_lower", 1)], "dxr_clinic_label"),
             ("comm_inbox_items",   [("user_id", 1), ("created_at", -1)],  "ci_user_created"),
         ]
         for _coll, _keys, _name in _perf_indexes:
@@ -3867,6 +3871,11 @@ app.include_router(_comm_v2_notices_router)
 # taps (pick → approve → send).
 from routers.comm_v2_broadcast_templates import router as _comm_v2_bcast_tpl_router
 app.include_router(_comm_v2_bcast_tpl_router)
+
+
+# ─── Phase E — Clinical Core: encounters + diagnosis registry ───
+from routers.encounters import router as _encounters_router
+app.include_router(_encounters_router)
 
 
 @app.on_event("startup")

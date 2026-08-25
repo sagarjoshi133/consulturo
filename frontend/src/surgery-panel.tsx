@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { getCached, setCached, hasCached } from './data-cache';
+import { fetchPaged } from './progressive-fetch';
 import {
   View,
   Text,
@@ -353,13 +354,17 @@ export function SurgeriesPanel({ autoOpen = 0 }: { autoOpen?: number } = {}) {
 
   const load = useCallback(async () => {
     try {
-      const [surgeriesRes, presetsRes] = await Promise.all([
-        api.get('/surgeries'),
-        api.get('/surgeries/presets').catch(() => ({ data: { procedures: [] } })),
-      ]);
-      setItems(surgeriesRes.data);
+      const presetsPromise = api.get('/surgeries/presets').catch(() => ({ data: { procedures: [] } }));
+      await fetchPaged<any>('/surgeries', {
+        pageSize: 200,
+        onPage: (rows, done) => {
+          setItems(rows);
+          setLoading(false);
+          if (done) setCached('surgeries:items', rows);
+        },
+      });
+      const presetsRes = await presetsPromise;
       setPresets(presetsRes.data?.procedures || []);
-      setCached('surgeries:items', surgeriesRes.data);
       setCached('surgeries:presets', presetsRes.data?.procedures || []);
     } catch {
       if (!hasCached('surgeries:items')) setItems([]);

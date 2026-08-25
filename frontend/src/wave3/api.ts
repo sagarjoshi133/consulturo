@@ -35,10 +35,11 @@ export type VoiceToRxResult = {
  * `audioUri` should be a local file URI from expo-audio or a Blob URL
  * on the web.
  */
-export async function voiceToRx(
+export async function uploadDictation<T = any>(
+  endpoint: string,
   audioUri: string,
   options: { language?: string; filename?: string } = {},
-): Promise<VoiceToRxResult> {
+): Promise<T> {
   const language = options.language || 'en';
   const filename = options.filename || `dictation.m4a`;
   const ext = filename.split('.').pop() || 'm4a';
@@ -67,11 +68,18 @@ export async function voiceToRx(
   }
   form.append('language', language);
 
-  const { data } = await api.post('/ai/voice-to-rx', form, {
+  const { data } = await api.post(endpoint, form, {
     timeout: 60_000,
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return data as VoiceToRxResult;
+  return data as T;
+}
+
+export async function voiceToRx(
+  audioUri: string,
+  options: { language?: string; filename?: string } = {},
+): Promise<VoiceToRxResult> {
+  return uploadDictation<VoiceToRxResult>('/ai/voice-to-rx', audioUri, options);
 }
 
 // ── N · AI Patient Gist ────────────────────────────────────────────

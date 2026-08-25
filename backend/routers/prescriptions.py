@@ -252,12 +252,28 @@ async def my_prescriptions(user=Depends(require_user)):
     return await cursor.to_list(length=200)
 
 @router.get("/api/prescriptions")
-async def list_prescriptions(request: Request, user=Depends(require_staff)):
+async def list_prescriptions(
+    request: Request,
+    user=Depends(require_staff),
+    limit: int = 500,
+    skip: int = 0,
+    q: str = "",
+):
     # Phase E — scope by current clinic.
     clinic_id = await resolve_clinic_id(request, user)
-    q: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
-    cursor = db.prescriptions.find(q, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(length=500)
+    filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    if q.strip():
+        import re as _re
+        rx = {"$regex": _re.escape(q.strip()), "$options": "i"}
+        filt["$or"] = [
+            {"patient_name": rx},
+            {"patient_phone": rx},
+            {"diagnosis": rx},
+        ]
+    limit = max(1, min(int(limit or 500), 500))
+    skip = max(0, int(skip or 0))
+    cursor = db.prescriptions.find(filt, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit)
+    return await cursor.to_list(length=limit)
 
 @router.get("/api/prescriptions/{prescription_id}")
 async def get_prescription(prescription_id: str, user=Depends(require_user)):

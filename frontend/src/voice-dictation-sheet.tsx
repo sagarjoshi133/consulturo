@@ -36,12 +36,17 @@ import { voiceToRx, VoiceToRxResult } from './wave3/api';
 type Props = {
   visible: boolean;
   onClose: () => void;
-  onResult: (r: VoiceToRxResult) => void;
+  onResult: (r: any) => void;
+  /** Custom uploader — defaults to the Voice→Rx endpoint. */
+  upload?: (uri: string, filename: string) => Promise<any>;
+  title?: string;
+  subtitle?: string;
+  example?: string;
 };
 
 type Stage = 'idle' | 'permission' | 'recording' | 'uploading' | 'success' | 'error';
 
-export function VoiceDictationSheet({ visible, onClose, onResult }: Props) {
+export function VoiceDictationSheet({ visible, onClose, onResult, upload, title, subtitle, example }: Props) {
   const insets = useSafeAreaInsets();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder);
@@ -121,7 +126,9 @@ export function VoiceDictationSheet({ visible, onClose, onResult }: Props) {
       if (!uri) throw new Error('Recording produced no audio');
       const ext = (uri.split('.').pop() || 'm4a').split('?')[0];
       const filename = `dictation_${Date.now()}.${ext}`;
-      const result = await voiceToRx(uri, { filename });
+      const result = upload
+        ? await upload(uri, filename)
+        : await voiceToRx(uri, { filename });
       haptics.success();
       setStage('success');
       onResult(result);
@@ -158,9 +165,9 @@ export function VoiceDictationSheet({ visible, onClose, onResult }: Props) {
             <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
               <View style={styles.handle} />
 
-              <Text style={styles.title}>Voice → Rx</Text>
+              <Text style={styles.title}>{title || 'Voice → Rx'}</Text>
               <Text style={styles.subtitle}>
-                Dictate the prescription out loud. We&apos;ll fill the form for you.
+                {subtitle || "Dictate the prescription out loud. We'll fill the form for you."}
               </Text>
 
               {stage === 'idle' ? (
@@ -168,8 +175,7 @@ export function VoiceDictationSheet({ visible, onClose, onResult }: Props) {
                   <View style={styles.tipsCard}>
                     <Text style={styles.tipsTitle}>Speak naturally — example</Text>
                     <Text style={styles.tipsText}>
-                      &quot;Diagnosis: BPH with LUTS. Start Tab Tamsulosin 0.4 mg once at bedtime
-                      for 30 days. Advise plenty of fluids and avoid evening caffeine. Review after 4 weeks.&quot;
+                      {example || '"Diagnosis: BPH with LUTS. Start Tab Tamsulosin 0.4 mg once at bedtime for 30 days. Advise plenty of fluids and avoid evening caffeine. Review after 4 weeks."'}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={startRecording} style={styles.bigBtn} testID="v2rx-start" activeOpacity={0.85}>

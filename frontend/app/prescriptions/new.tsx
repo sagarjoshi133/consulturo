@@ -79,9 +79,10 @@ export default function NewPrescription() {
   const __darkBg = useScreenBg();
   const router = useRouter();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ rxId?: string; view?: string; bookingId?: string; prefill?: string }>();
+  const params = useLocalSearchParams<{ rxId?: string; view?: string; bookingId?: string; prefill?: string; encounterId?: string }>();
   const editId = (params.rxId || params.view || '') as string;
   const bookingId = (params.bookingId || '') as string;
+  const encounterId = (params.encounterId || '') as string;
   const wantRxDraftPrefill = (params.prefill || '') === 'rx_draft';
   const isEdit = !!editId;
   const isFromBooking = !!bookingId && !isEdit;
@@ -417,6 +418,32 @@ export default function NewPrescription() {
     return () => clearTimeout(t);
   }, [phone]); // eslint-disable-line
 
+  // ── Phase E — Encounter prefill ───────────────────────────────────
+  // Navigated from an Encounter detail via ?encounterId=enc_xxx: pull
+  // the encounter and prefill patient identity + complaint + diagnosis.
+  useEffect(() => {
+    if (!encounterId || isEdit) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/encounters/${encounterId}`);
+        if (cancelled || !data) return;
+        if (data.patient_name) setPatientName(data.patient_name);
+        if (data.patient_phone) setPhone(data.patient_phone);
+        if (data.patient_age) setAge(data.patient_age);
+        if (data.patient_sex) setGender(data.patient_sex as any);
+        if (data.chief_complaint) setComplaints(data.chief_complaint);
+        if (Array.isArray(data.diagnoses) && data.diagnoses.length) {
+          setDiagnosis(data.diagnoses.join(', '));
+        } else if (data.assessment) {
+          setDiagnosis(data.assessment);
+        }
+        if (data.plan) setAdvice((cur: string) => cur || data.plan);
+      } catch { /* silent — encounter prefill is best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [encounterId, isEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const addMed = () => setMeds([...meds, { ...EMPTY_MED }]);
   const removeMed = (i: number) => setMeds(meds.filter((_, idx) => idx !== i));
   const updateMed = (i: number, k: keyof Med, v: string) => {
@@ -635,6 +662,10 @@ export default function NewPrescription() {
       if (data?.status) setStatus(data.status);
       // Offline draft is now obsolete — the server has a copy.
       if (bookingId) clearRxDraft(bookingId).catch(() => {});
+      // Phase E — two-way link back to the source encounter.
+      if (encounterId && !isEdit && data?.prescription_id) {
+        api.post(`/encounters/${encounterId}/link-rx`, { prescription_id: data.prescription_id }).catch(() => {});
+      }
       // Tell the unsaved-form guard that the user is allowed to leave.
       guard.bypass();
       haptics.success();
