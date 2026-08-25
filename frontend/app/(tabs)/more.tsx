@@ -225,6 +225,7 @@ export default function More() {
       items: [
         { icon: 'person-circle', label: t('more.profile') || 'Profile', sub: t('more.profileSub') || 'Email, phone, name', route: '/profile', testID: 'more-profile' },
         { icon: 'shield-checkmark', label: t('more.privacy'), route: '/privacy', testID: 'more-privacy' },
+        { icon: 'speedometer', label: t('more.netCheck') || 'Connection Diagnostics', sub: t('more.netCheckSub') || 'Test app-to-server speed', route: '/net-check', testID: 'more-netcheck' },
         { icon: 'log-out-outline', label: t('common.signOut'), action: confirmAndLogout, testID: 'more-logout' },
       ],
     });
@@ -233,6 +234,7 @@ export default function More() {
       title: t('more.sectionAccount') || 'Account',
       items: [
         { icon: 'log-in', label: t('common.signIn'), sub: 'Email, phone or Google', action: goSignIn, testID: 'more-signin' },
+        { icon: 'speedometer', label: t('more.netCheck') || 'Connection Diagnostics', sub: t('more.netCheckSub') || 'Test app-to-server speed', route: '/net-check', testID: 'more-netcheck-guest' },
       ],
     });
   }

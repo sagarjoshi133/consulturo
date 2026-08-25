@@ -297,3 +297,24 @@ Fixes:
 - Testing iteration 26: 17/17 backend pytest (`tests/test_auth_cache_and_tenancy.py`) + frontend
   smoke PASS. NOTE: many older pytest files contain stale hardcoded session tokens purged by the
   sessions TTL index — re-seed via user_sessions upsert, not code changes.
+
+## Production slowness — EVIDENCE-BASED DIAGNOSIS ROUND (Jun 2026, cont.)
+User reports slowness persists on a freshly built APK, on EVERY tab tap mid-session.
+Measured PRODUCTION backend directly from the dev container:
+  /api/health 130-460ms · /api/blog (139KB real DB payload) 0.5-0.9s (gzip via Cloudflare→35KB)
+  auth lookup ~170ms → SERVER IS FAST. Bottleneck must be device-side (network path from
+  user's phone, payload transfer size, or stale APK).
+Shipped this round:
+- NEW `/app/frontend/app/net-check.tsx` — "Connection Diagnostics" screen: shows active backend
+  URL, fallback status, app version; "Run speed test" measures health x3, /auth/me, /bookings/me,
+  /blog + staff-only heavy endpoints (/bookings/all, /analytics/dashboard, /registry/patients,
+  /surgeries, /prescriptions, /inbox/all) with ms + KB per row and a plain-language verdict.
+  Linked from: More tab (Account section, all roles incl. signed-out), Profile screen, Help screen.
+- server.py slow-logger now includes response SIZE and logs `[BIG]` for any response >300KB even
+  when fast — so deploy logs reveal oversized payloads (mobile transfer time is invisible to
+  server-side timing alone).
+NEXT STEP (waiting on user): redeploy → open production app via Expo Go QR (no APK build needed)
+→ More → Connection Diagnostics → Run speed test → screenshot. Verdict decides next fix:
+  slow rows on staff endpoints w/ large KB ⇒ paginate/project heavy endpoints
+  (/api/surgeries currently returns up to 5000 full docs, /bookings/all + /prescriptions 500).
+  fast rows ⇒ APK/runtime issue on device.

@@ -326,9 +326,16 @@ async def _slow_request_logger(request: Request, call_next):
     response = await call_next(request)
     try:
         _dur_ms = (_time_mod.perf_counter() - _start) * 1000.0
+        _size = response.headers.get("content-length") or "?"
         if _dur_ms >= _SLOW_REQUEST_MS:
             print(f"[SLOW] {request.method} {request.url.path} "
-                  f"{_dur_ms:.0f}ms status={getattr(response, 'status_code', '?')}")
+                  f"{_dur_ms:.0f}ms size={_size}B status={getattr(response, 'status_code', '?')}")
+        # Flag big payloads even when the server was fast — on mobile
+        # networks the TRANSFER of a large body is the slow part, which
+        # server-side timing alone can't see.
+        elif _size not in ("?",) and _size.isdigit() and int(_size) > 300_000:
+            print(f"[BIG] {request.method} {request.url.path} "
+                  f"{_dur_ms:.0f}ms size={_size}B status={getattr(response, 'status_code', '?')}")
     except Exception:
         pass
     return response

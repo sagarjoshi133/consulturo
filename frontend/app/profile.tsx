@@ -388,6 +388,17 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           )}
 
+          <TouchableOpacity style={[styles.row, styles.divider]} onPress={() => router.push('/net-check' as any)} activeOpacity={0.78} testID="profile-netcheck">
+            <View style={[styles.iconWrap, { backgroundColor: COLORS.primary + '18' }]}>
+              <Ionicons name="speedometer" size={18} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>{t('profile.rowNetCheck') || 'Connection Diagnostics'}</Text>
+              <Text style={styles.rowSub}>{t('profile.rowNetCheckSub') || 'Test app-to-server speed'}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
+          </TouchableOpacity>
+
           <TouchableOpacity style={[styles.row, styles.divider]} onPress={() => router.push('/privacy' as any)} activeOpacity={0.78}>
             <View style={[styles.iconWrap, { backgroundColor: COLORS.textSecondary + '18' }]}>
               <Ionicons name="shield-checkmark" size={18} color={COLORS.textSecondary} />

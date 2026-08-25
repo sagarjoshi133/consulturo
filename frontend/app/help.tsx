@@ -131,6 +131,11 @@ export default function HelpScreen() {
         <InfoRow icon="location-outline" label="Address" value={c?.clinic_address || '—'} onPress={map} multiline />
 
         <Text style={styles.sectionLabel}>Legal</Text>
+        <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/net-check' as any)} testID="help-netcheck">
+          <Ionicons name="speedometer-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.linkText}>Connection Diagnostics</Text>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textDisabled} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/privacy' as any)} testID="help-privacy">
           <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.primary} />
           <Text style={styles.linkText}>Privacy Policy</Text>
