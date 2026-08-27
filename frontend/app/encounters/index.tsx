@@ -48,6 +48,7 @@ export default function EncountersScreen() {
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
+  const [dueToday, setDueToday] = useState(0);
 
   const load = useCallback(async (query: string, skip = 0, append = false) => {
     try {
@@ -68,6 +69,15 @@ export default function EncountersScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(q); }, [load])); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // How many follow-ups are due today (for the header badge).
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    api.get('/encounters/followups', { params: { scope: 'today' } })
+      .then((r) => { if (alive) setDueToday(r.data?.count || 0); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []));
 
   // Debounced server-side search
   useEffect(() => {
@@ -129,6 +139,11 @@ export default function EncountersScreen() {
         >
           <Ionicons name="calendar" size={15} color="#B45309" />
           <Text style={styles.fuHeaderText}>Follow-ups</Text>
+          {dueToday > 0 && (
+            <View style={styles.fuBadge} testID="enc-fu-badge">
+              <Text style={styles.fuBadgeText}>{dueToday}</Text>
+            </View>
+          )}
         </TouchableOpacity>
         <Text style={styles.count}>{total ? `${total}` : ''}</Text>
       </View>
@@ -197,6 +212,11 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 6,
   },
   fuHeaderText: { ...FONTS.bodyMedium, fontSize: 12, color: '#92400E' },
+  fuBadge: {
+    minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5,
+    backgroundColor: '#B45309', alignItems: 'center', justifyContent: 'center',
+  },
+  fuBadgeText: { color: '#fff', fontSize: 11, fontFamily: 'Manrope_700Bold' },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: COLORS.surface, marginHorizontal: 16, borderRadius: RADIUS.md,

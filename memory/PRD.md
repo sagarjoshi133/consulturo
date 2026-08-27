@@ -425,3 +425,7 @@ GET /api/encounters/followups?scope=done → completed follow-ups sorted by foll
 re-arms reminder if date still future. Frontend: /encounters/followups now has a 3rd "Done" tab
 showing completed rows with a green "done on <date>" badge + a "Reopen" action. Verified:
 curl (done list/reopen round-trip) + screenshots.
+
+## Follow-up Count Badge — SHIPPED (Jun 2026)
+Encounters list header "Follow-ups" button now shows a small count badge of follow-ups due today
+(fetched via /encounters/followups?scope=today on focus). Verified: badge shows "1" with one due.
