@@ -36,6 +36,7 @@ export function AdminOverviewPanel({
   const [data, setData] = useState<any>(_cachedOverview?.overview ?? null);
   const [todayBookings, setTodayBookings] = useState<any[]>(_cachedOverview?.todayBookings ?? []);
   const [followups, setFollowups] = useState<any[]>(_cachedOverview?.followups ?? []);
+  const [overdue, setOverdue] = useState<number>(0);
   // Only show the full-screen spinner when we have NOTHING cached yet.
   // On a tab re-open we render the cached data instantly and refresh
   // quietly in the background.
@@ -51,11 +52,14 @@ export function AdminOverviewPanel({
       ]);
       const fu = await api.get('/encounters/followups', { params: { scope: 'today' } })
         .then((r) => r.data?.items || []).catch(() => []);
+      const od = await api.get('/encounters/followups', { params: { scope: 'overdue' } })
+        .then((r) => r.data?.count || 0).catch(() => 0);
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const today = (Array.isArray(bookings) ? bookings : []).filter((b: any) => b.booking_date === todayStr);
       setData(overview);
       setTodayBookings(today);
       setFollowups(fu);
+      setOverdue(od);
       setCached(OVERVIEW_CK, { overview, todayBookings: today, followups: fu });
       setUpdatedAt(Date.now());
     } finally {
@@ -170,6 +174,24 @@ export function AdminOverviewPanel({
           </TouchableOpacity>
         ))}
       </View>
+
+      {overdue > 0 && (
+        <TouchableOpacity
+          style={styles.overdueAlert}
+          activeOpacity={0.85}
+          onPress={() => router.push('/encounters/followups?scope=overdue' as any)}
+          testID="overview-overdue-alert"
+        >
+          <Ionicons name="alert-circle" size={20} color="#B91C1C" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.overdueTitle}>
+              {overdue} overdue follow-up{overdue > 1 ? 's' : ''}
+            </Text>
+            <Text style={styles.overdueSub}>Past their date and not yet completed — tap to review</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#B91C1C" />
+        </TouchableOpacity>
+      )}
 
       {followups.length > 0 && (
         <>
@@ -445,6 +467,13 @@ const styles = StyleSheet.create({
   bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
   followupRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBEB', padding: 13, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: '#FDE68A' },
   followupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 8 },
+  overdueAlert: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14,
+    backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', borderWidth: 1,
+    borderRadius: RADIUS.md, padding: 13,
+  },
+  overdueTitle: { ...FONTS.bodyMedium, fontSize: 14, color: '#991B1B' },
+  overdueSub: { ...FONTS.body, fontSize: 12, color: '#B91C1C', marginTop: 1 },
   followupCount: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 7, backgroundColor: '#B45309', alignItems: 'center', justifyContent: 'center' },
   followupCountText: { color: '#fff', fontSize: 12, fontFamily: 'Manrope_700Bold' },
   followupName: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.textPrimary },

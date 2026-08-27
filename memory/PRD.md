@@ -433,3 +433,17 @@ Encounters list header "Follow-ups" button now shows a small count badge of foll
 ## Dashboard Follow-up Count — SHIPPED (Jun 2026)
 AdminOverviewPanel "Follow-ups due today" section header now shows a count pill (followups.length)
 next to the title, visible on the Today tab (default dashboard landing). Verified via screenshot.
+
+## Overdue Follow-ups — SHIPPED (Jun 2026)
+GET /api/encounters/followups?scope=overdue → follow_up_date < today(IST), not done, oldest first.
+followups.tsx: 4th "Overdue" tab (red), red badge on rows, screen accepts ?scope= param.
+Dashboard (AdminOverviewPanel): red "N overdue follow-ups" alert (fetches scope=overdue count)
+linking to /encounters/followups?scope=overdue. Verified curl + screenshots.
+
+## Patient E2E QA sweep (iteration 30) — findings + fixes
+- Backend 19/19 pytest pass; patient scoping clean; auth/me, bookings, records, IPSS OK.
+- FIXED (HIGH): profile.tsx used 4 undefined i18n keys (rowAppearance/Sub, rowNetCheck/Sub) →
+  raw keys shown. Added to en/hi/gu. Verified: no raw keys, "Appearance"/"Connection Diagnostics" render.
+- NON-ISSUE (web-only): desktop-UA browser at narrow width shows the web sidebar (isUaDesktopHint) —
+  a Playwright artifact; real installed phone (Platform.OS!=web) always renders mobile UI.
+- LOW: /api/inbox + /api/messaging/permissions 404 for patients but screens handle gracefully.

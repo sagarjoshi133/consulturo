@@ -258,6 +258,17 @@ async def list_followups(
     filt["follow_up_done"] = {"$ne": True}
     if scope == "today":
         filt["follow_up_date"] = today
+    elif scope == "overdue":
+        # Past-due follow-ups that were never completed. Oldest first so
+        # the most-overdue patients surface at the top.
+        filt["follow_up_date"] = {"$lt": today, "$ne": None}
+        items = await (
+            db.encounters.find(filt, proj)
+            .sort("follow_up_date", 1)
+            .limit(limit)
+            .to_list(length=limit)
+        )
+        return {"items": items, "today": today, "count": len(items)}
     else:
         filt["follow_up_date"] = {"$gte": today}
     items = await (

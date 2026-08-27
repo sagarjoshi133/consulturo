@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import api from '../../src/api';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { goBackSafe } from '../../src/nav';
@@ -25,7 +25,7 @@ type Row = {
   follow_up_done_at?: string;
 };
 
-type Scope = 'upcoming' | 'today' | 'done';
+type Scope = 'upcoming' | 'today' | 'done' | 'overdue';
 
 function fmtDate(v?: string): string {
   if (!v) return '';
@@ -45,9 +45,14 @@ function fmtDoneAt(v?: string): string {
 
 export default function FollowupsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ scope?: string }>();
+  const initialScope: Scope =
+    params.scope === 'overdue' || params.scope === 'today' || params.scope === 'done'
+      ? (params.scope as Scope)
+      : 'upcoming';
   const [items, setItems] = useState<Row[]>([]);
   const [today, setToday] = useState('');
-  const [scope, setScope] = useState<Scope>('upcoming');
+  const [scope, setScope] = useState<Scope>(initialScope);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState('');
@@ -123,6 +128,7 @@ export default function FollowupsScreen() {
   const renderItem = ({ item }: { item: Row }) => {
     const isToday = item.follow_up_date === today;
     const isDone = scope === 'done';
+    const isOverdue = scope === 'overdue';
     return (
       <TouchableOpacity
         style={styles.card}
@@ -137,6 +143,13 @@ export default function FollowupsScreen() {
               <Ionicons name="checkmark" size={12} color="#15803D" />
               <Text style={[styles.dateBadgeText, { color: '#15803D' }]}>
                 {fmtDoneAt(item.follow_up_done_at) || 'Done'}
+              </Text>
+            </View>
+          ) : isOverdue ? (
+            <View style={[styles.dateBadge, styles.dateBadgeOverdue]}>
+              <Ionicons name="alert-circle" size={12} color="#B91C1C" />
+              <Text style={[styles.dateBadgeText, { color: '#B91C1C' }]}>
+                {fmtDate(item.follow_up_date)}
               </Text>
             </View>
           ) : (
@@ -198,16 +211,16 @@ export default function FollowupsScreen() {
         <Text style={styles.headerTitle}>Follow-ups</Text>
       </View>
 
-      <View style={styles.tabs}>
-        {(['today', 'upcoming', 'done'] as const).map((sc) => (
+      <View style={styles.tabsWrap}>
+        {(['overdue', 'today', 'upcoming', 'done'] as const).map((sc) => (
           <TouchableOpacity
             key={sc}
-            style={[styles.tab, scope === sc && styles.tabActive]}
+            style={[styles.tab, scope === sc && styles.tabActive, sc === 'overdue' && scope === sc && styles.tabActiveOverdue]}
             onPress={() => setScope(sc)}
             testID={`fu-tab-${sc}`}
           >
             <Text style={[styles.tabText, scope === sc && styles.tabTextActive]}>
-              {sc === 'today' ? 'Today' : sc === 'upcoming' ? 'Upcoming' : 'Done'}
+              {sc === 'today' ? 'Today' : sc === 'upcoming' ? 'Upcoming' : sc === 'done' ? 'Done' : 'Overdue'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -230,6 +243,7 @@ export default function FollowupsScreen() {
               <Text style={styles.emptyText}>
                 {scope === 'today' ? 'No follow-ups scheduled for today.'
                   : scope === 'done' ? 'No completed follow-ups yet.'
+                  : scope === 'overdue' ? 'No overdue follow-ups — you\'re all caught up.'
                   : 'No upcoming follow-ups.'}
               </Text>
             </View>
@@ -311,12 +325,13 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
   backBtn: { padding: 4 },
   headerTitle: { ...FONTS.h2, fontSize: 19, color: COLORS.textPrimary },
-  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  tabsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   tab: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.pill,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.pill,
     backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
   tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  tabActiveOverdue: { backgroundColor: '#B91C1C', borderColor: '#B91C1C' },
   tabText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textSecondary },
   tabTextActive: { color: '#fff' },
   center: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 10 },
@@ -336,6 +351,7 @@ const styles = StyleSheet.create({
   },
   dateBadgeToday: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
   dateBadgeDone: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC', flexDirection: 'row', alignItems: 'center', gap: 3 },
+  dateBadgeOverdue: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', flexDirection: 'row', alignItems: 'center', gap: 3 },
   dateBadgeText: { ...FONTS.bodyMedium, fontSize: 11.5, color: COLORS.textSecondary },
   dateBadgeTextToday: { color: '#92400E' },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
