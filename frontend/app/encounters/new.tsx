@@ -57,6 +57,8 @@ export default function EncounterFormScreen() {
   const [dxInput, setDxInput] = useState('');
   const [dxSuggestions, setDxSuggestions] = useState<string[]>([]);
   const [followUp, setFollowUp] = useState<string>('');
+  const [pastVisit, setPastVisit] = useState<any | null>(null);
+  const [completing, setCompleting] = useState(false);
 
   // Load existing encounter for edit mode.
   useEffect(() => {
@@ -142,12 +144,37 @@ export default function EncounterFormScreen() {
     }
   }, []);
 
-  const save = useCallback(async () => {
+  // Past-visit context (create mode) — surface the patient's most recent
+  // encounter so the doctor starts with continuity.
+  useEffect(() => {
+    if (isEdit) return;
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.length < 10) return;
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await api.get('/encounters', { params: { patient_phone: digits, limit: 1 } });
+        const last = (data?.items || [])[0];
+        if (!last) { if (alive) setPastVisit(null); return; }
+        // Fetch full detail for assessment/plan (not in the list projection).
+        try {
+          const det = await api.get(`/encounters/${last.encounter_id}`);
+          if (alive) setPastVisit(det.data || last);
+        } catch {
+          if (alive) setPastVisit(last);
+        }
+      } catch { if (alive) setPastVisit(null); }
+    })();
+    return () => { alive = false; };
+  }, [phone, isEdit]);
+
+  const save = useCallback(async (opts?: { complete?: boolean }) => {
     if (!name.trim()) {
       Alert.alert('Missing info', 'Patient name is required.');
       return;
     }
-    setSaving(true);
+    const doComplete = !!opts?.complete;
+    if (doComplete) setCompleting(true); else setSaving(true);
     try {
       const body = {
         patient_name: name.trim(),
@@ -170,6 +197,13 @@ export default function EncounterFormScreen() {
       const { data } = isEdit
         ? await api.patch(`/encounters/${editId}`, body)
         : await api.post('/encounters', body);
+      // Complete Visit: also close the linked appointment.
+      if (doComplete && bookingId) {
+        try {
+          await api.patch(`/bookings/${bookingId}`, { status: 'completed' });
+          invalidateCached('bookings:');
+        } catch { /* encounter still saved; ignore booking failure */ }
+      }
       invalidateCached('encounters:');
       haptics.success();
       router.replace(`/encounters/${data.encounter_id}` as any);
@@ -179,6 +213,7 @@ export default function EncounterFormScreen() {
       else Alert.alert('Save failed', String(msg));
     } finally {
       setSaving(false);
+      setCompleting(false);
     }
   }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router, bookingId, patientUserId]);
 
@@ -206,6 +241,31 @@ export default function EncounterFormScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          {!isEdit && pastVisit && (
+            <View style={styles.pastCard} testID="encform-past-visit">
+              <View style={styles.pastHead}>
+                <Ionicons name="time-outline" size={15} color={COLORS.primaryDark} />
+                <Text style={styles.pastTitle}>
+                  Last visit{pastVisit.created_at ? ` · ${String(pastVisit.created_at).slice(0, 10)}` : ''}
+                </Text>
+              </View>
+              {!!pastVisit.chief_complaint && (
+                <Text style={styles.pastLine}><Text style={styles.pastLabel}>Complaint: </Text>{pastVisit.chief_complaint}</Text>
+              )}
+              {Array.isArray(pastVisit.diagnoses) && pastVisit.diagnoses.length > 0 && (
+                <Text style={styles.pastLine}><Text style={styles.pastLabel}>Diagnosis: </Text>{pastVisit.diagnoses.join(', ')}</Text>
+              )}
+              {!!(pastVisit.assessment || pastVisit.plan) && (
+                <Text style={styles.pastLine} numberOfLines={3}>
+                  <Text style={styles.pastLabel}>Plan: </Text>{pastVisit.plan || pastVisit.assessment}
+                </Text>
+              )}
+              {!!pastVisit.follow_up_date && (
+                <Text style={styles.pastLine}><Text style={styles.pastLabel}>Follow-up set: </Text>{pastVisit.follow_up_date}</Text>
+              )}
+            </View>
+          )}
+
           <Text style={styles.section}>Patient</Text>
           <View style={styles.rowWrap}>
             <TextInput style={[styles.input, { flex: 1.2 }]} placeholder="Phone" placeholderTextColor={COLORS.textDisabled} keyboardType="phone-pad" value={phone} onChangeText={setPhone} testID="encform-phone" />
@@ -309,18 +369,30 @@ export default function EncounterFormScreen() {
             testID="encform-fu-input"
           />
           {!!followUp && (
-            <Text style={styles.fuHint}>Patient will be listed under Follow-ups on {followUp}. You'll get a reminder that morning.</Text>
+            <Text style={styles.fuHint}>Patient will be listed under Follow-ups on {followUp}. You{'\u2019'}ll get a reminder that morning.</Text>
           )}
 
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-            onPress={save}
-            disabled={saving}
+            onPress={() => save()}
+            disabled={saving || completing}
             testID="encform-save"
           >
             {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark" size={20} color="#fff" />}
             <Text style={styles.saveText}>{isEdit ? 'Save changes' : 'Save encounter'}</Text>
           </TouchableOpacity>
+
+          {!isEdit && !!bookingId && (
+            <TouchableOpacity
+              style={[styles.completeBtn, completing && { opacity: 0.6 }]}
+              onPress={() => save({ complete: true })}
+              disabled={saving || completing}
+              testID="encform-complete-visit"
+            >
+              {completing ? <ActivityIndicator color={COLORS.primary} /> : <Ionicons name="checkmark-done" size={20} color={COLORS.primary} />}
+              <Text style={styles.completeText}>Save & complete visit</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -402,4 +474,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 15, marginTop: 22,
   },
   saveText: { ...FONTS.bodyMedium, color: '#fff', fontSize: 15 },
+  completeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.primary + '12', borderWidth: 1, borderColor: COLORS.primary + '40',
+    borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 12,
+  },
+  completeText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 15 },
+  pastCard: {
+    backgroundColor: COLORS.primary + '0D', borderWidth: 1, borderColor: COLORS.primary + '2A',
+    borderRadius: RADIUS.md, padding: 12, marginBottom: 16, gap: 4,
+  },
+  pastHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  pastTitle: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primaryDark },
+  pastLine: { ...FONTS.body, fontSize: 12.5, color: COLORS.textPrimary, lineHeight: 18 },
+  pastLabel: { ...FONTS.bodyMedium, color: COLORS.textSecondary },
 });

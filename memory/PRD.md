@@ -473,3 +473,13 @@ Wired the clinical chain Appointment → Encounter → Prescription → patient 
 - patient-db/[phone].tsx: new collapsible "Encounters" section listing the patient's visit notes
   (?patient_phone=) so staff see per-patient history. Encounters remain STAFF-ONLY (patients don't see them).
 Verified: curl (all 3 link filters) + screenshot (Visit-recorded chip on booking detail).
+
+## Reason Auto-Fill (past-visit context) + Complete Visit — SHIPPED (Jun 2026)
+encounters/new.tsx (create mode):
+- Past-visit context card: fetches the patient's most recent encounter (?patient_phone=, then GET
+  detail) and shows Last visit date, Complaint, Diagnosis, Plan, and Follow-up — so doctors start
+  with continuity. (Booking reason→chief_complaint prefill was already in place.)
+- "Save & complete visit" button (shown only when opened from a booking): saves the encounter AND
+  PATCHes the linked booking status→'completed' in one tap; invalidates bookings + encounters cache.
+  Regular "Save encounter" leaves booking status untouched.
+Verified: screenshot (context card + prefilled fields + button) + curl (PATCH status→completed).
