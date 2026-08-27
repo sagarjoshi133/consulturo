@@ -511,3 +511,39 @@ encounters/[id].tsx:
   follow-up date pulled from loadClinicSettings()/encounter.
 Verified: screenshot (both buttons render) + interactive web test — tap triggers render/pdf, PDF
 download, then confirm dialog "Open WhatsApp chat with <patient>?", 0 console errors.
+
+## Web sidebar parity + Connectivity RCA (Jun 2026)
+web-shell.tsx (desktop sidebar) was missing several items present in the mobile More tab.
+Added for parity: Encounters (Practice), Dup-Merge Accounts (super_owner), Rx Templates (prescribers),
+Analytics Dashboard + Communications V2 (owner), Invite a Friend (Explore), Help + Connection
+Diagnostics (App), Privacy + Terms (About). Encounters verified visible in Practice section.
+
+Connectivity RCA (production APK v1.0.33, /net-check screenshot: ALL endpoints timeout(20s)):
+- Production backend https://urology-pro.emergent.host is HEALTHY — curl to /api/health returns
+  200 {"ok":true,"db":"connected"} in ~0.18s (HTTP/2, server: cloudflare, via: 1.1 google).
+  Fallback https://urology-pro.preview.emergentagent.com also 200 in ~0.2s.
+- The diagnostics screen uses a RAW fetch() (no axios/interceptors/AsyncStorage) to /api/health and
+  still times out at 20s → app networking code is NOT at fault; the device cannot complete an HTTPS
+  connection to Cloudflare's edge on that network at that moment (DNS/TLS/route/captive-portal/ISP).
+- Both primary + fallback are on the SAME Cloudflare edge (104.18.x), so DR failover cannot rescue a
+  Cloudflare-path failure. Not a code bug — needs device/network confirmation (WiFi vs mobile data).
+
+## FIX: Production Android APK "can't reach server" — Expo SDK 54 Hermes networking bug (Jun 2026)
+Symptom: APK v1.0.33 /net-check showed ALL endpoints timeout(20s), on every network/location, while
+the production backend was 100% healthy (curl /api/health → 200 in ~0.18s). Even the diagnostics
+screen's BARE fetch() hung → not app-logic, not the network.
+Root cause: Documented Expo SDK 54 regression — Hermes/New-Architecture Android `fetch()` hangs/fails
+in production builds while working in Expo Go/web (github.com/expo/expo/issues/40061). Affects fetch
+and anything on it (boot health probes in backend-health.ts, expo-auth-session, diagnostics, uploads).
+axios is unaffected (RN axios uses its own XHR adapter).
+Fixes applied:
+1. `yarn expo install --fix` → expo 54.0.35→54.0.37 (+ expo-constants 18.0.14, expo-file-system
+   19.0.24, expo-updates 29.0.20) which ship the official networking race-condition fixes.
+2. Added Android-only XMLHttpRequest fetch polyfill (src/net/fetch-polyfill.ts) that replaces the
+   broken Hermes global.fetch with an XHR-backed impl (different, working RN network stack). Installed
+   FIRST via new custom entry: index.js imports src/net/install (side-effect) BEFORE expo-router/entry.
+   package.json main changed expo-router/entry → index.js. iOS/web keep native fetch (no-op there).
+VALIDATION: Cannot be tested in Expo Go/web preview (bug is production-build-only). User MUST redeploy
++ generate a fresh APK, then re-run Connection Diagnostics — pings should now turn green.
+Escalation if still failing after rebuild: set app.json newArchEnabled:false (New-Arch is the root
+trigger) — bigger change, kept as fallback.

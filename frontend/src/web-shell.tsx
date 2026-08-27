@@ -270,6 +270,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   // are cleanly split). They should NOT see clinical Dashboard tabs.
   if (isSuperOwner) {
     items.push({ label: 'Platform Administration', icon: 'shield-checkmark', route: '/permission-manager', ownerOnly: true, section: SEC_ADMIN });
+    items.push({ label: 'Dup-Merge Accounts', icon: 'git-merge', route: '/admin/dup-merge', ownerOnly: true });
     items.push({ label: 'Analytics', icon: 'analytics', route: '/admin/primary-owner-analytics', ownerOnly: true });
     items.push({ label: 'Audit Log', icon: 'time', route: '/admin/audit-log', ownerOnly: true });
     items.push({ label: 'Backups', icon: 'cloud-upload', route: '/dashboard?tab=backups', ownerOnly: true });
@@ -291,6 +292,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   // Practice (would duplicate per user "without any duplications").
   if (isStaff && !isSuperOwner) {
     items.push({ label: t('more.consults')      || 'Consults',       icon: 'medkit',         route: '/dashboard?tab=consultations', staffOnly: true, section: SEC_PRAC });
+    items.push({ label: t('more.encounters')    || 'Encounters',     icon: 'clipboard',      route: '/encounters', staffOnly: true });
     items.push({ label: t('more.prescriptions') || 'Prescriptions',  icon: 'document-text',  route: '/dashboard?tab=prescriptions', staffOnly: true });
     items.push({ label: 'Consents',                                   icon: 'document-text-outline', route: '/consents', staffOnly: true });
     items.push({ label: 'OT Schedule',                                icon: 'calendar-number', route: '/ot-calendar', staffOnly: true });
@@ -366,6 +368,19 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     if (canCreateBlog) {
       items.push({ label: t('more.createBlog') || 'Blog', icon: 'newspaper', route: '/admin/blog', staffOnly: true });
     }
+    // 10b. Rx Templates — any prescriber (doctor / owner / partner).
+    if (tier?.canPrescribe) {
+      items.push({ label: 'Rx Templates', icon: 'flash', route: '/admin/rx-templates', staffOnly: true });
+    }
+    // 10c. Clinical Analytics Dashboard — owner-only (distinct from the
+    //      dashboard Analytics tab above; mirrors the More-tab entry).
+    if (isOwner) {
+      items.push({ label: 'Analytics Dashboard', icon: 'stats-chart', route: '/admin/analytics-dashboard', ownerOnly: true });
+    }
+    // 10d. Communications V2 (owner canary preview).
+    if (isOwner) {
+      items.push({ label: 'Communications V2', icon: 'sparkles', route: '/comm-v2', ownerOnly: true });
+    }
     // 11. App stability log
     if (isOwner || isFullAccess) {
       items.push({ label: 'App stability log', icon: 'pulse', route: '/admin-crash-log', staffOnly: true });
@@ -403,6 +418,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
   items.push({ label: t('more.education') || 'Patient Education', icon: 'book',       route: '/education' });
   items.push({ label: t('more.blog')      || 'Blog',              icon: 'newspaper',  route: '/blog' });
   items.push({ label: t('more.videos')    || 'Videos',            icon: 'play-circle', route: '/videos' });
+  items.push({ label: 'Invite a Friend',                           icon: 'gift',        route: '/refer' });
 
   // ── APP — desktop View-mode toggle ─────────────────────────────────
   const modeLabel: Record<ForceView, string> = {
@@ -418,6 +434,10 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     pill: modeLabel[forceMode],
     section: SEC_APP,
   });
+  // Help & Connection Diagnostics — mirror the More-tab App section so
+  // desktop users can reach support + the network self-test too.
+  items.push({ label: t('more.helpContact') || 'Help', icon: 'help-buoy', route: '/help' });
+  items.push({ label: t('more.netCheck') || 'Connection Diagnostics', icon: 'speedometer', route: '/net-check' });
 
   // ── ABOUT (last) ───────────────────────────────────────────────────
   // Super-owner shouldn't see "About Doctor" — they're not running a
@@ -426,6 +446,8 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
     items.push({ label: t('more.aboutDoctor') || 'About Doctor', icon: 'person-circle', route: '/about', section: SEC_ABOUT });
   }
   items.push({ label: t('more.aboutApp')    || 'About App',    icon: 'information-circle', route: '/about-app', section: isSuperOwner ? SEC_ABOUT : undefined });
+  items.push({ label: t('more.privacy') || 'Privacy', icon: 'shield-checkmark', route: '/privacy' });
+  items.push({ label: t('more.terms') || 'Terms', icon: 'document-text', route: '/terms' });
 
   // Active route detection — match exact OR prefix for nested routes.
   // Special handling for `/dashboard?tab=X` — only highlights the
