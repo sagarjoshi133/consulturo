@@ -36,7 +36,7 @@ export type AutoWaContext = {
   /** Country code from clinic_settings, e.g. "+91". */
   countryCode?: string | null;
   /** What kind of document was just generated. */
-  docKind: 'rx' | 'discharge' | 'medcert';
+  docKind: 'rx' | 'discharge' | 'medcert' | 'visit';
   /** Optional follow-up date / next visit (DD-MM-YYYY) shown in msg. */
   followUpDate?: string | null;
   /** Optional clinic / doctor name signature for the message body. */
@@ -67,6 +67,12 @@ export function buildWaMessage(ctx: AutoWaContext): string {
       return (
         `Hi ${first}, your medical certificate from ${doc} is ready 📄\n\n` +
         `Please find the attached PDF for your records.${followUp}\n\n` +
+        `— ConsultUro`
+      );
+    case 'visit':
+      return (
+        `Hi ${first}, here's your visit summary from ${doc} 🩺\n\n` +
+        `Please keep the attached PDF for your records. Reach out if you have any questions.${followUp}\n\n` +
         `— ConsultUro`
       );
   }

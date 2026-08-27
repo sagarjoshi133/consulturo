@@ -499,3 +499,15 @@ encounters/[id].tsx (Encounter detail):
   chips, diagnoses, SOAP sections, follow-up, verify QR + signature footer + ConsultUro stamp.
 Verified: testing_agent iteration_31 (tap-fill correctness, editable/clearable, PDF export triggers
 render/pdf + download with 0 console errors, detail-screen regression clean).
+
+## Send Visit Summary to WhatsApp — SHIPPED (Jun 2026)
+encounters/[id].tsx:
+- Green "Send to WhatsApp" button (testID encdet-whatsapp-btn) below the Export PDF action.
+- Reuses existing sharePdfThenWhatsApp (src/whatsapp-pdf.ts): renders the visit-summary PDF, shares
+  it via OS share sheet (WhatsApp attaches the real file), then prompts to open the patient's chat
+  with a pre-filled note. Guards: no phone on file → friendly alert; skips prompt if
+  whatsapp_auto_prompt_enabled is false.
+- Added new docKind 'visit' + message template to buildWaMessage. Country code + doctor name +
+  follow-up date pulled from loadClinicSettings()/encounter.
+Verified: screenshot (both buttons render) + interactive web test — tap triggers render/pdf, PDF
+download, then confirm dialog "Open WhatsApp chat with <patient>?", 0 console errors.

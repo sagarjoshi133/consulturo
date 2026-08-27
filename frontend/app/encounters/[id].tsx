@@ -15,8 +15,10 @@ import api from '../../src/api';
 import { invalidateCached } from '../../src/data-cache';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { goBackSafe } from '../../src/nav';
-import { buildEncounterSummaryHtml } from '../../src/encounter-pdf';
+import { buildEncounterHtml } from '../../src/encounter-pdf';
+import { loadClinicSettings } from '../../src/rx-pdf';
 import { sharePdfFromHtml } from '../../src/pdf-share';
+import { sharePdfThenWhatsApp } from '../../src/whatsapp-pdf';
 
 function fmtDateTime(v?: string): string {
   if (!v) return '';
@@ -34,6 +36,7 @@ export default function EncounterDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -77,7 +80,7 @@ export default function EncounterDetailScreen() {
     if (!enc) return;
     setExporting(true);
     try {
-      const html = await buildEncounterSummaryHtml(enc);
+      const html = await buildEncounterHtml(enc, await loadClinicSettings());
       const safeName = String(enc.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
       const filename = `Visit-Summary-${safeName || 'Patient'}-${String(enc.encounter_id).slice(0, 8)}`;
       await sharePdfFromHtml(html, filename, `Visit Summary — ${enc.patient_name || ''}`.trim());
@@ -87,6 +90,38 @@ export default function EncounterDetailScreen() {
       else Alert.alert('Export failed', String(msg));
     } finally {
       setExporting(false);
+    }
+  }, [enc]);
+
+  const sendWhatsApp = useCallback(async () => {
+    if (!enc) return;
+    if (!String(enc.patient_phone || '').replace(/\D/g, '')) {
+      const msg = 'No phone number on file for this patient.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Cannot send', msg);
+      return;
+    }
+    setSendingWa(true);
+    try {
+      const settings = await loadClinicSettings();
+      const html = await buildEncounterHtml(enc, settings);
+      const safeName = String(enc.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+      const filename = `Visit-Summary-${safeName || 'Patient'}-${String(enc.encounter_id).slice(0, 8)}`;
+      await sharePdfThenWhatsApp(html, filename, `Visit Summary — ${enc.patient_name || ''}`.trim(), {
+        patientName: enc.patient_name,
+        patientPhone: enc.patient_phone,
+        countryCode: settings.country_code || '+91',
+        docKind: 'visit',
+        followUpDate: enc.follow_up_date || null,
+        doctorName: settings.doctor_name || enc.created_by_name || null,
+        enabled: settings.whatsapp_auto_prompt_enabled !== false,
+      });
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || 'Could not share to WhatsApp';
+      if (Platform.OS === 'web') window.alert(String(msg));
+      else Alert.alert('Share failed', String(msg));
+    } finally {
+      setSendingWa(false);
     }
   }, [enc]);
 
@@ -192,6 +227,16 @@ export default function EncounterDetailScreen() {
           <Text style={styles.exportBtnText}>Export Visit Summary PDF</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.waBtn}
+          onPress={sendWhatsApp}
+          disabled={sendingWa}
+          testID="encdet-whatsapp-btn"
+        >
+          {sendingWa ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="logo-whatsapp" size={18} color="#fff" />}
+          <Text style={styles.waBtnText}>Send to WhatsApp</Text>
+        </TouchableOpacity>
+
 
         {enc.prescription_id ? (
           <TouchableOpacity
@@ -268,4 +313,9 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 6,
   },
   exportBtnText: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.primary },
+  waBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#25D366', borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 10,
+  },
+  waBtnText: { ...FONTS.bodyMedium, fontSize: 14, color: '#fff' },
 });
