@@ -400,3 +400,15 @@ Feature already exists end-to-end: admin/announcements.tsx form has Start/End da
 (ISODateField), backend routers/announcements.py public feed filters on start_at/end_at
 (auto show/hide). Verified: future-start and past-end announcements are correctly hidden.
 Location for owner: More → Administration → Announcements.
+
+## Announcement Preview — SHIPPED (Jun 2026)
+admin/announcements.tsx editor now shows a "Live preview" card at the top rendering the current
+draft exactly as the banner will look (src/announcements/preview-card.tsx, mirrors banner.tsx),
+with an EN/HI/GU language toggle. No fetch; updates live as the owner edits.
+
+## Follow-up Done — SHIPPED (Jun 2026)
+POST /api/encounters/{id}/followup/done (staff) sets follow_up_done=true (+done_at, notified=true)
+— encounter is RETAINED, just drops off the Follow-ups list + dashboard today card
+(list query filters follow_up_done != true). Rescheduling (PATCH follow_up_date) re-opens it
+(follow_up_done=false). Frontend: "Mark done" button (optimistic removal) beside Reschedule on
+/encounters/followups. Verified: curl (done/hidden/retained/reopen) + screenshots.

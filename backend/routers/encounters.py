@@ -241,6 +241,7 @@ async def list_followups(
     from datetime import timedelta as _td
     ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
     today = ist_now.strftime("%Y-%m-%d")
+    filt["follow_up_done"] = {"$ne": True}
     if scope == "today":
         filt["follow_up_date"] = today
     else:
@@ -254,6 +255,27 @@ async def list_followups(
         .to_list(length=limit)
     )
     return {"items": items, "today": today, "count": len(items)}
+
+
+@router.post("/api/encounters/{encounter_id}/followup/done")
+async def complete_followup(encounter_id: str, request: Request, user=Depends(require_staff)):
+    """Mark a follow-up complete — it drops off the Follow-ups list but
+    the encounter itself is retained (nothing is deleted)."""
+    clinic_id = await resolve_clinic_id(request, user)
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["encounter_id"] = encounter_id
+    existing = await db.encounters.find_one(filt, {"_id": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+    await db.encounters.update_one(
+        {"_id": existing["_id"]},
+        {"$set": {
+            "follow_up_done": True,
+            "follow_up_done_at": datetime.now(timezone.utc),
+            "follow_up_notified": True,  # suppress any pending reminder
+        }},
+    )
+    return {"ok": True, "encounter_id": encounter_id, "follow_up_done": True}
 
 
 async def scan_and_fire_encounter_followups(now: datetime) -> None:
@@ -320,8 +342,10 @@ async def update_encounter(
         fu_str, fu_at = _parse_follow_up(body.follow_up_date)
         updates["follow_up_date"] = fu_str
         updates["follow_up_at"] = fu_at
-        # Changing/clearing the date re-arms the reminder.
+        # Changing/clearing the date re-arms the reminder and re-opens a
+        # previously-completed follow-up.
         updates["follow_up_notified"] = False
+        updates["follow_up_done"] = False
     if not updates:
         raise HTTPException(400, detail="Nothing to update")
     updates["updated_at"] = datetime.now(timezone.utc)

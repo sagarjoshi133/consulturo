@@ -85,6 +85,19 @@ export default function FollowupsScreen() {
     }
   }, [rescheduling, scope, load]);
 
+  const markDone = useCallback(async (row: Row) => {
+    // optimistic: drop from the list immediately
+    setItems((prev) => prev.filter((r) => r.encounter_id !== row.encounter_id));
+    try {
+      await api.post(`/encounters/${row.encounter_id}/followup/done`);
+    } catch {
+      await load(scope); // restore on failure
+      const msg = 'Could not mark it done. Please try again.';
+      if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.alert(msg); }
+      else Alert.alert('Error', msg);
+    }
+  }, [scope, load]);
+
   const renderItem = ({ item }: { item: Row }) => {
     const isToday = item.follow_up_date === today;
     return (
@@ -109,14 +122,24 @@ export default function FollowupsScreen() {
             <View key={d} style={styles.dxChip}><Text style={styles.dxChipText}>{d}</Text></View>
           ))}
         </View>
-        <TouchableOpacity
-          style={styles.rescheduleBtn}
-          onPress={() => openReschedule(item)}
-          testID={`fu-reschedule-${item.encounter_id}`}
-        >
-          <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-          <Text style={styles.rescheduleText}>Reschedule</Text>
-        </TouchableOpacity>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.rescheduleBtn}
+            onPress={() => openReschedule(item)}
+            testID={`fu-reschedule-${item.encounter_id}`}
+          >
+            <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
+            <Text style={styles.rescheduleText}>Reschedule</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.doneBtn}
+            onPress={() => markDone(item)}
+            testID={`fu-done-${item.encounter_id}`}
+          >
+            <Ionicons name="checkmark-circle-outline" size={14} color="#15803D" />
+            <Text style={styles.doneText}>Mark done</Text>
+          </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -276,6 +299,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '12',
   },
   rescheduleText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primary },
+  actionsRow: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' },
+  doneBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS.pill,
+    backgroundColor: '#DCFCE7',
+  },
+  doneText: { ...FONTS.bodyMedium, fontSize: 12.5, color: '#15803D' },
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34, gap: 12 },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 4 },

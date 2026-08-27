@@ -22,6 +22,7 @@ import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useToast } from '../../src/toast';
 import { confirmAction, infoAlert } from '../../src/cross-alert';
 import { ISODateField } from '../../src/date-picker';
+import AnnouncementPreviewCard from '../../src/announcements/preview-card';
 import {
   VARIANT_META,
   type Announcement,
@@ -58,6 +59,7 @@ export default function AnnouncementsAdmin() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Announcement> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [previewLang, setPreviewLang] = useState<'en' | 'hi' | 'gu'>('en');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,6 +264,23 @@ export default function AnnouncementsAdmin() {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              <Text style={styles.sectionLabel}>Live preview</Text>
+              <AnnouncementPreviewCard draft={editing as any} lang={(previewLang as any)} />
+              <View style={styles.previewLangRow}>
+                {(['en', 'hi', 'gu'] as const).map((lg) => (
+                  <TouchableOpacity
+                    key={lg}
+                    onPress={() => setPreviewLang(lg)}
+                    style={[styles.previewLangChip, previewLang === lg && styles.previewLangChipOn]}
+                    testID={`ann-preview-lang-${lg}`}
+                  >
+                    <Text style={[styles.previewLangText, previewLang === lg && { color: '#fff' }]}>
+                      {lg === 'en' ? 'English' : lg === 'hi' ? 'हिन्दी' : 'ગુજરાતી'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text style={styles.sectionLabel}>Variant</Text>
               <View style={styles.chipRow}>
                 {(['info', 'success', 'warning', 'festive'] as AnnouncementVariant[]).map((v) => {
@@ -513,6 +532,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  previewLangRow: { flexDirection: 'row', gap: 6, marginTop: 8, marginBottom: 4 },
+  previewLangChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.pill,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border,
+  },
+  previewLangChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  previewLangText: { ...FONTS.bodyMedium, fontSize: 12, color: COLORS.textSecondary },
   variantChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 6,
