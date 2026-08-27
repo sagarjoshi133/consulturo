@@ -6,7 +6,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList,
-  ActivityIndicator, StyleSheet, RefreshControl,
+  ActivityIndicator, StyleSheet, RefreshControl, Modal, TextInput, Alert, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +41,9 @@ export default function FollowupsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState('');
+  const [rescheduling, setRescheduling] = useState<Row | null>(null);
+  const [newDate, setNewDate] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (sc: 'upcoming' | 'today') => {
     try {
@@ -59,6 +62,28 @@ export default function FollowupsScreen() {
   useFocusEffect(useCallback(() => { load(scope); }, [load, scope]));
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(scope); }, [scope, load]);
+
+  const openReschedule = useCallback((row: Row) => {
+    setNewDate(row.follow_up_date || '');
+    setRescheduling(row);
+  }, []);
+
+  const saveReschedule = useCallback(async (dateStr: string | null) => {
+    if (!rescheduling) return;
+    setSaving(true);
+    try {
+      await api.patch(`/encounters/${rescheduling.encounter_id}`, { follow_up_date: dateStr || null });
+      setRescheduling(null);
+      setNewDate('');
+      await load(scope);
+    } catch {
+      const msg = 'Could not update the follow-up. Please try again.';
+      if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.alert(msg); }
+      else Alert.alert('Error', msg);
+    } finally {
+      setSaving(false);
+    }
+  }, [rescheduling, scope, load]);
 
   const renderItem = ({ item }: { item: Row }) => {
     const isToday = item.follow_up_date === today;
@@ -84,6 +109,14 @@ export default function FollowupsScreen() {
             <View key={d} style={styles.dxChip}><Text style={styles.dxChipText}>{d}</Text></View>
           ))}
         </View>
+        <TouchableOpacity
+          style={styles.rescheduleBtn}
+          onPress={() => openReschedule(item)}
+          testID={`fu-reschedule-${item.encounter_id}`}
+        >
+          <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
+          <Text style={styles.rescheduleText}>Reschedule</Text>
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -133,6 +166,72 @@ export default function FollowupsScreen() {
           )}
         />
       )}
+
+      <Modal
+        visible={!!rescheduling}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRescheduling(null)}
+      >
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Reschedule follow-up</Text>
+            {!!rescheduling && <Text style={styles.sheetSub}>{rescheduling.patient_name}</Text>}
+
+            <View style={styles.chipsWrap}>
+              {[
+                { label: '1 week', days: 7 },
+                { label: '2 weeks', days: 14 },
+                { label: '1 month', days: 30 },
+                { label: '3 months', days: 90 },
+              ].map((opt) => {
+                const val = (() => { const d = new Date(); d.setDate(d.getDate() + opt.days); return d.toISOString().slice(0, 10); })();
+                const active = newDate === val;
+                return (
+                  <TouchableOpacity
+                    key={opt.label}
+                    style={[styles.qChip, active && styles.qChipActive]}
+                    onPress={() => setNewDate(val)}
+                    testID={`fu-reschedule-chip-${opt.days}`}
+                  >
+                    <Text style={[styles.qChipText, active && styles.qChipTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TextInput
+              style={styles.dateInput}
+              placeholder="Follow-up date (YYYY-MM-DD)"
+              placeholderTextColor={COLORS.textDisabled}
+              value={newDate}
+              onChangeText={setNewDate}
+              autoCapitalize="none"
+              testID="fu-reschedule-input"
+            />
+
+            <TouchableOpacity
+              style={[styles.saveBtn, (!newDate || saving) && { opacity: 0.5 }]}
+              disabled={!newDate || saving}
+              onPress={() => saveReschedule(newDate)}
+              testID="fu-reschedule-save"
+            >
+              {saving ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.saveBtnText}>Save new date</Text>}
+            </TouchableOpacity>
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={() => saveReschedule(null)} disabled={saving} testID="fu-reschedule-clear">
+                <Text style={styles.clearText}>Remove follow-up</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setRescheduling(null)} disabled={saving}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -171,4 +270,33 @@ const styles = StyleSheet.create({
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   dxChip: { backgroundColor: COLORS.primary + '14', borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 3 },
   dxChipText: { ...FONTS.bodyMedium, fontSize: 11, color: COLORS.primaryDark },
+  rescheduleBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.primary + '12',
+  },
+  rescheduleText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primary },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34, gap: 12 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 4 },
+  sheetTitle: { ...FONTS.h2, fontSize: 18, color: COLORS.textPrimary },
+  sheetSub: { ...FONTS.body, fontSize: 13, color: COLORS.textSecondary, marginTop: -6 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  qChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  qChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  qChipText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textSecondary },
+  qChipTextActive: { color: '#fff' },
+  dateInput: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: COLORS.textPrimary,
+    backgroundColor: COLORS.bg,
+  },
+  saveBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center' },
+  saveBtnText: { ...FONTS.bodyMedium, fontSize: 15, color: '#fff' },
+  sheetActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  clearText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.accent || '#D64545' },
+  cancelText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textSecondary },
 });

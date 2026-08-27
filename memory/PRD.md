@@ -389,3 +389,14 @@ to the generated poster as og:image — so every shared link unfurls with a poli
 - Branded Sender (emails from consulturo.com): user chose LATER. When ready: verify consulturo.com
   in Resend (DNS at Squarespace), set RESEND_FROM_EMAIL=noreply@consulturo.com, route account mail
   via the branded Resend sender. Currently using Emergent-managed email (reliable, no DNS needed).
+
+## Follow-up Reschedule — SHIPPED (Jun 2026)
+/encounters/followups rows now have a Reschedule action → bottom sheet with quick chips
+(1w/2w/1m/3m from today) + date input; Save PATCHes /api/encounters/{id} {follow_up_date}
+(re-arms the reminder), "Remove follow-up" clears it. Verified via screenshot + curl PATCH.
+
+## Announcement Scheduling — ALREADY LIVE (verified Jun 2026)
+Feature already exists end-to-end: admin/announcements.tsx form has Start/End date fields
+(ISODateField), backend routers/announcements.py public feed filters on start_at/end_at
+(auto show/hide). Verified: future-start and past-end announcements are correctly hidden.
+Location for owner: More → Administration → Announcements.
