@@ -345,3 +345,9 @@ consultations-panel (now server-filtered status=confirmed). Dashboard pending ba
 requests only status=requested&limit=200.
 Testing: iteration 27 — 22/22 backend pytest + full frontend flow PASS
 (tests/test_encounters_phase_e.py; re-run green after tenancy hardening).
+
+## i18n fix — More tab "Encounters" & "Net Check" labels — SHIPPED (Jun 2026)
+Root cause: i18n t() returns the raw key string on a missing key, so the `|| 'fallback'` in
+more.tsx never triggered — buttons showed literal "more.encounters"/"more.netCheck". Added the
+missing keys (encounters, encountersSub, netCheck, netCheckSub) to en.ts/hi.ts/gu.ts under `more`.
+Verified via screenshot: raw keys gone, "Connection Diagnostics" renders. Frontend-only.

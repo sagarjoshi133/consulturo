@@ -325,6 +325,10 @@ const en = {
     // Practice / Administration rows (sidebar + More)
     consults:          'Consults',
     consultsSub:       'Today & upcoming · start / resume Rx',
+    encounters:        'Encounters',
+    encountersSub:     'Clinical notes · AI dictation · diagnoses',
+    netCheck:          'Connection Diagnostics',
+    netCheckSub:       'Test app-to-server speed',
     analytics:         'Analytics',
     analyticsSub:      'KPIs & trends',
     team:              'Team',
