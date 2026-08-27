@@ -558,3 +558,27 @@ trigger of the SDK 54 Hermes Android networking hang). Now the next build carrie
 CRITICAL: user MUST Publish (redeploy) → generate a NEW Android build → install it. The old installed
 APK will behave identically until rebuilt. If a FRESH build still fails, escalate to Emergent support
 (build/deploy/Cloudflare infra).
+
+## FIX (round 3 — ACTUAL root-cause fix): route Android networking through expo/fetch (Jun 2026)
+DIAGNOSIS (systematic): backend healthy (preview + prod /api/health = ok), no SDK version
+mismatches, web/preview boots fine. User's REAL symptom on the installed APK = extreme LATENCY
+(app + sections load only after minutes, every reload slow again), NOT a hard failure.
+Per expo/expo#40061 maintainer thread: the SDK 54 Android bug makes BOTH global fetch AND
+XMLHttpRequest (i.e. axios) extremely slow — "applies to any client we use". The confirmed fix is
+expo/fetch (Expo's own native networking) — "if I use expo/fetch then it's not slow".
+=> The round-1/2 XHR polyfill could NOT have fixed it: axios uses XHR (untouched by that shim) and
+   XHR is ALSO affected. Round-2 newArchEnabled:false additionally broke the EAS build (reanimated
+   requires New Arch) and was reverted.
+CHANGES:
+1. src/net/fetch-polyfill.ts — rewritten: global fetch on Android now routes http(s) → expo/fetch
+   (fast), local file://data://blob:/Request → native fetch. iOS/web untouched. Fixes all RAW fetch()
+   calls (backend-health probes, attachment/PDF downloads).
+2. src/api.ts — axios instance now uses axios's BUILT-IN fetch adapter (via getFetch from
+   'axios/unsafe/adapters/fetch.js') transported by expo/fetch on Android. Request:null forces the
+   string-URL branch so expo/fetch (string-URL only) gets the URL directly. This is what actually
+   makes API calls fast (axios default XHR adapter was the slow path).
+VERIFIED: full Android JS bundle resolves (3128 modules; Hermes bytecode step only fails in THIS
+container due to missing hermesc binary — runs fine on EAS). Web preview boots clean, no regression.
+newArchEnabled stays TRUE.
+VALIDATION: Android-only, build-time — user MUST Publish → generate a fresh Android build → install
+it, then retest. Old installed APK will behave identically until rebuilt.

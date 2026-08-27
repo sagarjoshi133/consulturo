@@ -1,6 +1,10 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+// @ts-ignore — deep import of axios's fetch-adapter factory (ships no types).
+// Allowed by axios's package "exports" map: "./unsafe/*" → "./lib/*".
+import { getFetch } from 'axios/unsafe/adapters/fetch.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { expoFetch } from './net/fetch-polyfill';
 import {
   activateFallback,
   getActiveBase,
@@ -57,9 +61,33 @@ if (!BACKEND_URL) {
 // effective base via a request interceptor on every call.
 export const API_BASE = `${BACKEND_URL.replace(/\/$/, '')}/api`;
 
+// ─── Android SDK 54 networking fix ─────────────────────────────────────
+// axios defaults to the XHR adapter on React Native, but XHR is ALSO hit
+// by the Expo SDK 54 Android networking regression (requests are extremely
+// slow / hang — see ./net/fetch-polyfill.ts and expo/expo#40061). We swap
+// axios onto its BUILT-IN fetch adapter, transported by `expo/fetch`
+// (Expo's native networking) which bypasses the broken path and is fast.
+//
+// `Request: null` forces axios's fetch adapter down its string-URL branch
+// (`_fetch(url, options)`) so `expo/fetch` — which only accepts a string
+// URL, not a Request object — receives the URL directly.
+function buildAndroidFetchAdapter(): AxiosRequestConfig['adapter'] {
+  return getFetch({
+    env: {
+      fetch: (url: string, init?: any) => expoFetch(url, init),
+      Request: null,
+      Response: null,
+    },
+  });
+}
+
+const androidFetchAdapter =
+  Platform.OS === 'android' ? buildAndroidFetchAdapter() : undefined;
+
 export const api = axios.create({
   baseURL: API_BASE,
   timeout: 15000,
+  ...(androidFetchAdapter ? { adapter: androidFetchAdapter } : {}),
 });
 
 // ─── Multi-tenant header injection ─────────────────────────────────────
