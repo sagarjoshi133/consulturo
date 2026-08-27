@@ -606,3 +606,21 @@ VALIDATION: Android build-time only — user MUST rebuild + reinstall, then run 
 and share the numbers. If axios rows are fast but screens still slow => app-level (re-fetch/render);
 if all rows slow => device/network → escalate to Emergent support. testing_agent CANNOT reproduce
 (Android-native-build-only bug; it tests web/preview which is unaffected).
+
+## ROOT CAUSE IDENTIFIED (round 5): Cloudflare EDGE rate-limiting / bot-protection, NOT app code (Jun 2026)
+User ran the new in-app Connection Diagnostics on-device (app v1.0.36, backend urology-pro.emergent.host,
+backup NOT active). Results: /health ping#1 16882ms(200), ping#2 12513ms(429), ping#3 10277ms(429),
+/auth/me 7434ms(429), /bookings/me 5195ms(429), /blog 4487ms(429), Dashboard 16075ms(200),
+Patients registry 15007ms(429), Surgeries network error, Inbox 14860ms(200). Worst 16.9s. Both WiFi+data.
+KEY DIAGNOSIS:
+- Origin healthy & fast: curl prod /api/health = 0.1-0.5s TTFB; 15 concurrent burst = ALL 200 <1s, NO 429.
+- Prod host is behind CLOUDFLARE: headers server:cloudflare, cf-ray:...-ORD, via:1.1 google.
+- Our FastAPI CANNOT emit these 429s: slowapi Limiter default_limits=[] and /health has NO limit decorator,
+  yet device gets 429 on /health. 429 bodies ~5KB (our app 429 JSON is tiny) => Cloudflare challenge/
+  rate-limit HTML page.
+CONCLUSION: Cloudflare edge rate-limiting / bot-protection on the production deployment throttles + 429s
+the mobile client (likely IP/User-Agent bot rules) while origin is fine. NOT fixable via app code.
+ACTION: Escalated via support_agent — user to email support@emergent.sh (Job ID + host + v1.0.36 +
+diagnostics screenshots) requesting Cloudflare edge rate-limit/bot-protection review for
+urology-pro.emergent.host. The earlier SDK54 expo/fetch work (round 3/4) stays in — harmless and correct
+for the Hermes latency class — but the PRIMARY blocker is the Cloudflare edge, on Emergent's side.
