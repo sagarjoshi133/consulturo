@@ -122,6 +122,14 @@ export default function EncountersScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Encounters</Text>
         <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          onPress={() => router.push('/encounters/followups' as any)}
+          style={styles.fuHeaderBtn}
+          testID="enc-followups"
+        >
+          <Ionicons name="calendar" size={15} color="#B45309" />
+          <Text style={styles.fuHeaderText}>Follow-ups</Text>
+        </TouchableOpacity>
         <Text style={styles.count}>{total ? `${total}` : ''}</Text>
       </View>
 
@@ -183,6 +191,12 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   headerTitle: { ...FONTS.h2, fontSize: 19, color: COLORS.textPrimary },
   count: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13 },
+  fuHeaderBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1,
+    borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  fuHeaderText: { ...FONTS.bodyMedium, fontSize: 12, color: '#92400E' },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: COLORS.surface, marginHorizontal: 16, borderRadius: RADIUS.md,

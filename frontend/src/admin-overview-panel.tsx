@@ -32,9 +32,10 @@ export function AdminOverviewPanel({
 }) {
   const router = useRouter();
   const OVERVIEW_CK = 'admin-overview';
-  const _cachedOverview = getCached<{ overview: any; todayBookings: any[] }>(OVERVIEW_CK);
+  const _cachedOverview = getCached<{ overview: any; todayBookings: any[]; followups?: any[] }>(OVERVIEW_CK);
   const [data, setData] = useState<any>(_cachedOverview?.overview ?? null);
   const [todayBookings, setTodayBookings] = useState<any[]>(_cachedOverview?.todayBookings ?? []);
+  const [followups, setFollowups] = useState<any[]>(_cachedOverview?.followups ?? []);
   // Only show the full-screen spinner when we have NOTHING cached yet.
   // On a tab re-open we render the cached data instantly and refresh
   // quietly in the background.
@@ -48,11 +49,14 @@ export function AdminOverviewPanel({
         api.get('/analytics/dashboard', { params: { months: 3 } }).then((r) => r.data).catch(() => null),
         api.get('/bookings/all').then((r) => r.data).catch(() => []),
       ]);
+      const fu = await api.get('/encounters/followups', { params: { scope: 'today' } })
+        .then((r) => r.data?.items || []).catch(() => []);
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const today = (Array.isArray(bookings) ? bookings : []).filter((b: any) => b.booking_date === todayStr);
       setData(overview);
       setTodayBookings(today);
-      setCached(OVERVIEW_CK, { overview, todayBookings: today });
+      setFollowups(fu);
+      setCached(OVERVIEW_CK, { overview, todayBookings: today, followups: fu });
       setUpdatedAt(Date.now());
     } finally {
       setLoading(false);
@@ -166,6 +170,40 @@ export function AdminOverviewPanel({
           </TouchableOpacity>
         ))}
       </View>
+
+      {followups.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Follow-ups due today</Text>
+          {followups.slice(0, 6).map((f: any) => (
+            <TouchableOpacity
+              key={f.encounter_id}
+              style={styles.followupRow}
+              onPress={() => router.push(`/encounters/${f.encounter_id}` as any)}
+              activeOpacity={0.75}
+              testID={`overview-fu-${f.encounter_id}`}
+            >
+              <Ionicons name="calendar" size={16} color="#B45309" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.followupName} numberOfLines={1}>{f.patient_name}</Text>
+                {!!(f.chief_complaint || (f.diagnoses || [])[0]) && (
+                  <Text style={styles.followupSub} numberOfLines={1}>
+                    {f.chief_complaint || (f.diagnoses || [])[0]}
+                  </Text>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            onPress={() => router.push('/encounters/followups' as any)}
+            style={styles.followupAll}
+            testID="overview-fu-all"
+          >
+            <Text style={styles.followupAllText}>View all follow-ups</Text>
+            <Ionicons name="arrow-forward" size={13} color={COLORS.primary} />
+          </TouchableOpacity>
+        </>
+      )}
 
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.quickRow}>
@@ -400,6 +438,11 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
+  followupRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBEB', padding: 13, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: '#FDE68A' },
+  followupName: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.textPrimary },
+  followupSub: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
+  followupAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, marginBottom: 4 },
+  followupAllText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primary },
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   bookingName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 15, flexShrink: 1 },
   bookingMeta: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },

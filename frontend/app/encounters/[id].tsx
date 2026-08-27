@@ -127,6 +127,12 @@ export default function EncounterDetailScreen() {
           <Text style={styles.meta}>
             {fmtDateTime(enc.created_at)}{enc.created_by_name ? ` · ${enc.created_by_name}` : ''}
           </Text>
+          {!!enc.follow_up_date && (
+            <View style={styles.fuBadge}>
+              <Ionicons name="calendar" size={13} color="#B45309" />
+              <Text style={styles.fuBadgeText}>Follow-up: {enc.follow_up_date}</Text>
+            </View>
+          )}
           {vitalPairs.length > 0 && (
             <View style={styles.vitalsRow}>
               {vitalPairs.map(([k, v]) => (
@@ -202,6 +208,12 @@ const styles = StyleSheet.create({
   },
   vitalKey: { ...FONTS.bodyMedium, fontSize: 11, color: COLORS.textSecondary },
   vitalVal: { ...FONTS.bodyMedium, fontSize: 12, color: COLORS.textPrimary },
+  fuBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1,
+    borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 5, marginTop: 8,
+  },
+  fuBadgeText: { ...FONTS.bodyMedium, fontSize: 12, color: '#92400E' },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   dxChip: { backgroundColor: COLORS.primary + '14', borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 5 },
   dxChipText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primaryDark },

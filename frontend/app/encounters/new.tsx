@@ -49,6 +49,7 @@ export default function EncounterFormScreen() {
   const [diagnoses, setDiagnoses] = useState<string[]>([]);
   const [dxInput, setDxInput] = useState('');
   const [dxSuggestions, setDxSuggestions] = useState<string[]>([]);
+  const [followUp, setFollowUp] = useState<string>('');
 
   // Load existing encounter for edit mode.
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function EncounterFormScreen() {
         setAssessment(data.assessment || '');
         setPlan(data.plan || '');
         setDiagnoses(data.diagnoses || []);
+        setFollowUp(data.follow_up_date || '');
         const v = data.vitals || {};
         setBp(v.bp || ''); setPulse(v.pulse || ''); setTemp(v.temp || '');
         setSpo2(v.spo2 || ''); setWeight(v.weight || '');
@@ -152,6 +154,7 @@ export default function EncounterFormScreen() {
         plan: plan.trim(),
         vitals: { bp, pulse, temp, spo2, weight },
         diagnoses,
+        follow_up_date: followUp || null,
       };
       const { data } = isEdit
         ? await api.patch(`/encounters/${editId}`, body)
@@ -166,7 +169,7 @@ export default function EncounterFormScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, isEdit, editId, router]);
+  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router]);
 
   if (loadingExisting) {
     return (
@@ -257,6 +260,47 @@ export default function EncounterFormScreen() {
             </View>
           )}
 
+          <Text style={styles.section}>Follow-up</Text>
+          <View style={styles.chipsRow}>
+            {[
+              { label: '1 week', days: 7 },
+              { label: '2 weeks', days: 14 },
+              { label: '1 month', days: 30 },
+              { label: '3 months', days: 90 },
+            ].map((opt) => {
+              const val = (() => { const d = new Date(); d.setDate(d.getDate() + opt.days); return d.toISOString().slice(0, 10); })();
+              const active = followUp === val;
+              return (
+                <TouchableOpacity
+                  key={opt.label}
+                  style={[styles.fuChip, active && styles.fuChipActive]}
+                  onPress={() => setFollowUp(active ? '' : val)}
+                  testID={`encform-fu-${opt.days}`}
+                >
+                  <Text style={[styles.fuChipText, active && styles.fuChipTextActive]}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {!!followUp && (
+              <TouchableOpacity style={styles.fuClear} onPress={() => setFollowUp('')} testID="encform-fu-clear">
+                <Ionicons name="close" size={13} color="#B45309" />
+                <Text style={styles.fuClearText}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TextInput
+            style={styles.input}
+            placeholder="Follow-up date (YYYY-MM-DD)"
+            placeholderTextColor={COLORS.textDisabled}
+            value={followUp}
+            onChangeText={setFollowUp}
+            autoCapitalize="none"
+            testID="encform-fu-input"
+          />
+          {!!followUp && (
+            <Text style={styles.fuHint}>Patient will be listed under Follow-ups on {followUp}. You'll get a reminder that morning.</Text>
+          )}
+
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
             onPress={save}
@@ -328,6 +372,20 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 6,
   },
   suggestionText: { ...FONTS.body, fontSize: 12.5, color: COLORS.textSecondary },
+  fuChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  fuChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  fuChipText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.textSecondary },
+  fuChipTextActive: { color: '#fff' },
+  fuClear: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D',
+  },
+  fuClearText: { ...FONTS.bodyMedium, fontSize: 12, color: '#B45309' },
+  fuHint: { ...FONTS.body, fontSize: 11.5, color: COLORS.textSecondary, marginTop: -4, marginBottom: 6 },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 15, marginTop: 22,

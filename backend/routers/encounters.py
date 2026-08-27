@@ -45,7 +45,22 @@ _LIST_PROJECTION = {
     "booking_id": 1,
     "created_by_name": 1,
     "created_at": 1,
+    "follow_up_date": 1,
 }
+
+
+def _parse_follow_up(date_str: Optional[str]) -> tuple[Optional[str], Optional[datetime]]:
+    """Normalise a 'YYYY-MM-DD' follow-up date to (clean_str, reminder_dt).
+    The reminder fires at 09:00 IST (03:30 UTC) on that day."""
+    s = (date_str or "").strip()[:10]
+    if not s:
+        return None, None
+    try:
+        y, m, d = (int(x) for x in s.split("-"))
+        dt = datetime(y, m, d, 3, 30, 0, tzinfo=timezone.utc)  # 09:00 IST
+        return s, dt
+    except Exception:
+        return None, None
 
 
 class VitalsBody(BaseModel):
@@ -69,6 +84,7 @@ class EncounterBody(BaseModel):
     plan: Optional[str] = ""
     vitals: Optional[VitalsBody] = None
     diagnoses: Optional[List[str]] = None
+    follow_up_date: Optional[str] = None
 
 
 class EncounterPatchBody(BaseModel):
@@ -83,6 +99,7 @@ class EncounterPatchBody(BaseModel):
     plan: Optional[str] = None
     vitals: Optional[VitalsBody] = None
     diagnoses: Optional[List[str]] = None
+    follow_up_date: Optional[str] = None
 
 
 class LinkRxBody(BaseModel):
@@ -131,6 +148,7 @@ async def create_encounter(request: Request, body: EncounterBody, user=Depends(r
     clinic_id = await resolve_clinic_id(request, user)
     diagnoses = _clean_diagnoses(body.diagnoses)
     now = datetime.now(timezone.utc)
+    fu_str, fu_at = _parse_follow_up(body.follow_up_date)
     doc: Dict[str, Any] = {
         "encounter_id": f"enc_{uuid.uuid4().hex[:12]}",
         "clinic_id": clinic_id,
@@ -146,6 +164,9 @@ async def create_encounter(request: Request, body: EncounterBody, user=Depends(r
         "plan": (body.plan or "").strip(),
         "vitals": body.vitals.dict() if body.vitals else {},
         "diagnoses": diagnoses,
+        "follow_up_date": fu_str,
+        "follow_up_at": fu_at,
+        "follow_up_notified": False,
         "prescription_id": None,
         "created_by": user.get("user_id"),
         "created_by_name": user.get("name") or user.get("email") or "",
@@ -205,6 +226,65 @@ async def _scoped_find(request: Request, user: Dict[str, Any], encounter_id: str
     return await db.encounters.find_one(filt, projection or {"_id": 0})
 
 
+@router.get("/api/encounters/followups")
+async def list_followups(
+    request: Request,
+    user=Depends(require_staff),
+    scope: str = "upcoming",
+    limit: int = 100,
+):
+    """Follow-ups due. scope='today' → only today's (IST); 'upcoming' →
+    today onward (default). Clinic-scoped, sorted by date ascending."""
+    clinic_id = await resolve_clinic_id(request, user)
+    filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    # Today's date in IST.
+    from datetime import timedelta as _td
+    ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
+    today = ist_now.strftime("%Y-%m-%d")
+    if scope == "today":
+        filt["follow_up_date"] = today
+    else:
+        filt["follow_up_date"] = {"$gte": today}
+    limit = max(1, min(int(limit or 100), 300))
+    proj = dict(_LIST_PROJECTION)
+    items = await (
+        db.encounters.find(filt, proj)
+        .sort("follow_up_date", 1)
+        .limit(limit)
+        .to_list(length=limit)
+    )
+    return {"items": items, "today": today, "count": len(items)}
+
+
+async def scan_and_fire_encounter_followups(now: datetime) -> None:
+    """Notify the encounter's provider on the morning of the follow-up
+    day. Fired from the server 60s reminder loop."""
+    cursor = db.encounters.find({
+        "follow_up_at": {"$lte": now},
+        "follow_up_notified": {"$ne": True},
+    }).limit(100)
+    async for enc in cursor:
+        try:
+            from server import create_notification
+            name = (enc.get("patient_name") or "Patient").strip()
+            provider = enc.get("created_by")
+            if provider:
+                await create_notification(
+                    user_id=provider,
+                    title=f"📅 Follow-up today: {name}",
+                    body=(enc.get("chief_complaint") or "Scheduled follow-up visit.")[:140],
+                    kind="encounter_followup",
+                    data={"type": "encounter_followup", "encounter_id": enc.get("encounter_id")},
+                    push=True,
+                )
+            await db.encounters.update_one(
+                {"_id": enc["_id"]},
+                {"$set": {"follow_up_notified": True, "follow_up_notified_at": now}},
+            )
+        except Exception:
+            pass
+
+
 @router.get("/api/encounters/{encounter_id}")
 async def get_encounter(request: Request, encounter_id: str, user=Depends(require_staff)):
     doc = await _scoped_find(request, user, encounter_id)
@@ -236,6 +316,12 @@ async def update_encounter(
         diagnoses = _clean_diagnoses(body.diagnoses)
         updates["diagnoses"] = diagnoses
         await _register_diagnoses(existing.get("clinic_id"), diagnoses)
+    if body.follow_up_date is not None:
+        fu_str, fu_at = _parse_follow_up(body.follow_up_date)
+        updates["follow_up_date"] = fu_str
+        updates["follow_up_at"] = fu_at
+        # Changing/clearing the date re-arms the reminder.
+        updates["follow_up_notified"] = False
     if not updates:
         raise HTTPException(400, detail="Nothing to update")
     updates["updated_at"] = datetime.now(timezone.utc)

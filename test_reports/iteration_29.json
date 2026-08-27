@@ -1,0 +1,26 @@
+{
+  "summary": "Both new features PASSED end-to-end. Backend: 8/8 pytest cases green — POST /api/encounters persists follow_up_date, GET/PATCH round-trip works (update + clear via empty string), GET /api/encounters/followups?scope=today|upcoming returns {items,today,count} correctly, route ordering is respected (followups is NOT captured as an encounter_id), GET /api/share/poster.png returns 1200x630 image/png, /api/share/guide/turp uses the auto-poster as og:image while /api/share/blog/<id>?img=... uses the provided image (poster NOT used). Frontend: Encounter form has Follow-up chips (1w/2w/1m/3m) that fill the YYYY-MM-DD input and persist on save; detail screen shows a yellow 'Follow-up: <date>' badge; Encounters list header has a 'Follow-ups' pill that opens /encounters/followups; that screen renders Today/Upcoming tabs and rows, and tapping a row navigates to the encounter detail. Dashboard Today tab shows the 'Follow-ups due today' section (renders uppercase via textTransform) with a working 'View all follow-ups' link to /encounters/followups. Test data (TEST_* encounters) was cleaned up after the run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_encounter_followups_and_poster.py",
+    "/app/test_reports/pytest/iteration29_followups_poster.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "encounters.py PATCH: passing follow_up_date=null (JSON) also clears the field because Pydantic sets None; router only writes when body.follow_up_date is not None, so `null` in JSON is treated as 'no change'. Doc note in problem statement says clearing via empty string works — confirmed. If clearing via null is desired, that path would need a separate sentinel. Non-blocking.",
+    "share.py poster.png: no upper bound on `t`/`s` query lengths beyond slice [:120]/[:110] — fine, PIL wrap caps to 4/2 lines. No abuse vector observed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created 3 TEST_* encounters during pytest run (auto-deleted via teardown_class) + 1 TEST_UI_FollowUp created by the Playwright UI flow. Both fully purged post-test via mongosh (8 TEST_ encounters deleted).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 29 verified Encounter Follow-ups + Share Poster. Backend regression file at /app/backend/tests/test_encounter_followups_and_poster.py can be re-used. Seed token test_session_1781800271528 (primary_owner) is valid. The pre-seeded 'FollowUp Test' encounter with today's IST follow_up_date is still present and surfaces in both /encounters/followups?scope=today and the dashboard Today tab. When re-testing the dashboard, use case-insensitive text matching — the section title 'Follow-ups due today' is rendered uppercase via textTransform.",
+  "rca_of_issue": "N/A — no bugs found. Only observation: the section title 'Follow-ups due today' renders as 'FOLLOW-UPS DUE TODAY' in the DOM because of styles.sectionTitle → textTransform: 'uppercase'. Initial Playwright case-sensitive innerText.includes returned false; case-insensitive check confirmed presence."
+}

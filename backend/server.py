@@ -808,6 +808,13 @@ async def _start_reminder_loop():
                     await sweep_purge_due_accounts(now)
                 except Exception:
                     pass
+
+                # ---- Encounter follow-up reminders (morning of due date) ----
+                try:
+                    from routers.encounters import scan_and_fire_encounter_followups
+                    await scan_and_fire_encounter_followups(now)
+                except Exception:
+                    pass
             except Exception:
                 pass
             await asyncio.sleep(60)

@@ -370,3 +370,22 @@ refer/<code>. Server-resolves clinic/blog/guide metadata; query params t/d/img o
 preserved for referral attribution. Frontend src/share.ts (shareLink/buildShareUrl) wired into
 share buttons: Blog detail, Clinic page, Refer (WhatsApp+native), Guide detail, Videos, Education.
 Tested: iteration 28 — 12/12 backend pytest + frontend flows PASS.
+
+## Encounter Follow-ups — SHIPPED (Jun 2026)
+Encounters gained follow_up_date (YYYY-MM-DD). new.tsx form: quick chips (1w/2w/1m/3m) + date
+input. Detail shows a "Follow-up: <date>" badge. GET /api/encounters/followups?scope=today|upcoming
+(IST-based). Surfaced BOTH on Dashboard Today tab (AdminOverviewPanel "Follow-ups due today" +
+View all link) AND a dedicated /encounters/followups screen (Today/Upcoming tabs), reachable from
+the Encounters list header. Provider gets a push/notification at 09:00 IST on the due day via
+routers.encounters.scan_and_fire_encounter_followups in the server 60s loop (follow_up_at +
+follow_up_notified flag, re-armed on date change). Tested: iteration 29 (8/8 backend + frontend).
+
+## Share Poster (branded OG image fallback) — SHIPPED (Jun 2026)
+GET /api/share/poster.png?t=&s= renders a 1200x630 branded teal card (Pillow, Liberation Sans).
+share.py now uses the item's own image (blog cover / clinic cover) when present, else falls back
+to the generated poster as og:image — so every shared link unfurls with a polished card.
+
+## Deferred
+- Branded Sender (emails from consulturo.com): user chose LATER. When ready: verify consulturo.com
+  in Resend (DNS at Squarespace), set RESEND_FROM_EMAIL=noreply@consulturo.com, route account mail
+  via the branded Resend sender. Currently using Emergent-managed email (reliable, no DNS needed).

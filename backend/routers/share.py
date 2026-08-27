@@ -20,10 +20,10 @@ from __future__ import annotations
 
 from html import escape
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from db import db
 from routers.guides import get_guide
@@ -34,6 +34,9 @@ DEFAULT_TITLE = "ConsultUro"
 DEFAULT_DESC = "Dr. Sagar Joshi — Urology care, appointments, patient guides & more, all in one app."
 # A safe default OG image (the public clinic site banner). Absolute https.
 DEFAULT_IMAGE = "https://www.drsagarjoshi.com/favicon.ico"
+
+_FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+_FONT_REG = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
 
 def _base_url(request: Request) -> str:
@@ -92,6 +95,76 @@ _APP_PATH = {
     "blog_list": "/blog",
     "refer": "/refer",
 }
+
+
+@router.get("/api/share/poster.png")
+async def share_poster(request: Request, t: Optional[str] = None, s: Optional[str] = None):
+    """Auto-generated branded OG card (1200×630 PNG). Used as the preview
+    image when a shared item has no image of its own."""
+    from io import BytesIO
+    from PIL import Image, ImageDraw, ImageFont
+
+    W, H = 1200, 630
+    img = Image.new("RGB", (W, H), (14, 124, 139))  # brand teal
+    draw = ImageDraw.Draw(img)
+    # Simple vertical gradient (teal -> darker teal).
+    top, bot = (14, 124, 139), (8, 74, 84)
+    for y in range(H):
+        r = int(top[0] + (bot[0] - top[0]) * y / H)
+        g = int(top[1] + (bot[1] - top[1]) * y / H)
+        b = int(top[2] + (bot[2] - top[2]) * y / H)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+    def _font(path: str, size: int):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            return ImageFont.load_default()
+
+    f_brand = _font(_FONT_BOLD, 44)
+    f_title = _font(_FONT_BOLD, 76)
+    f_sub = _font(_FONT_REG, 38)
+
+    # Brand wordmark (top-left).
+    draw.text((80, 70), "ConsultUro", font=f_brand, fill=(224, 247, 250))
+    draw.line([(80, 140), (260, 140)], fill=(255, 255, 255), width=4)
+
+    # Wrapped title (centre-left block).
+    title = (t or DEFAULT_TITLE).strip()[:120]
+
+    def _wrap(text: str, font, max_w: int):
+        words, lines, cur = text.split(), [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if draw.textlength(trial, font=font) <= max_w:
+                cur = trial
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines[:4]
+
+    lines = _wrap(title, f_title, W - 160)
+    y = 220
+    for ln in lines:
+        draw.text((80, y), ln, font=f_title, fill=(255, 255, 255))
+        y += 92
+
+    # Subtitle.
+    sub = (s or "Urology care, all in one app").strip()[:110]
+    for ln in _wrap(sub, f_sub, W - 160)[:2]:
+        draw.text((80, y + 14), ln, font=f_sub, fill=(200, 236, 240))
+        y += 50
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.get("/api/share/{kind}")
@@ -158,7 +231,13 @@ async def _share(kind: str, ident: Optional[str], request: Request,
     # Query-param overrides always win (screen already knows its content).
     title = t or title or DEFAULT_TITLE
     desc = d or desc or DEFAULT_DESC
-    image = img or image or DEFAULT_IMAGE
+    # Prefer the item's own image; otherwise auto-generate a branded poster
+    # so the shared link still unfurls with a polished card.
+    if img or image:
+        image = img or image
+    else:
+        pparams = urlencode({"t": title, "s": desc})
+        image = f"{base}/api/share/poster.png?{pparams}"
 
     canonical = f"{base}{app_path}"
     # Preserve a referral code on the canonical redirect so attribution
