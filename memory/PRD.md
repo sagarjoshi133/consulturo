@@ -483,3 +483,19 @@ encounters/new.tsx (create mode):
   PATCHes the linked booking status→'completed' in one tap; invalidates bookings + encounters cache.
   Regular "Save encounter" leaves booking status untouched.
 Verified: screenshot (context card + prefilled fields + button) + curl (PATCH status→completed).
+
+## Quick Vitals + Visit Summary PDF — SHIPPED (Jun 2026)
+encounters/new.tsx (Vitals section):
+- Quick Vitals tap-to-fill chips: "Normal BP" → BP 120/80, "Normal Pulse" → Pulse 72,
+  "All normal" → BP 120/80 + Pulse 72 + Temp 98.6 + SpO2 98. Values stay editable/clearable
+  so staff can adjust or blank them out during rush times. Haptic feedback on tap.
+encounters/[id].tsx (Encounter detail):
+- "Export Visit Summary PDF" (body button + header share icon) generates a clean one-page PDF
+  via existing sharePdfFromHtml (real .pdf file, never OS print dialog).
+- New builder src/encounter-pdf.ts (buildEncounterHtml / buildEncounterSummaryHtml) mirrors the
+  rx-pdf.ts branded look. Branding (clinic name/address/phone, doctor degrees/reg no, signature,
+  letterhead) sourced from loadClinicSettings() so it matches Branding & Settings > Clinic &
+  Prescription Details. Renders: header/letterhead, "Visit Summary" title, patient band, vitals
+  chips, diagnoses, SOAP sections, follow-up, verify QR + signature footer + ConsultUro stamp.
+Verified: testing_agent iteration_31 (tap-fill correctness, editable/clearable, PDF export triggers
+render/pdf + download with 0 console errors, detail-screen regression clean).

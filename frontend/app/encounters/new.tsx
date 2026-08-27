@@ -283,6 +283,32 @@ export default function EncounterFormScreen() {
           </View>
 
           <Text style={styles.section}>Vitals</Text>
+          <View style={styles.quickVitalsRow}>
+            <TouchableOpacity
+              style={styles.qvChip}
+              onPress={() => { setBp('120/80'); haptics.light(); }}
+              testID="qv-bp"
+            >
+              <Ionicons name="pulse-outline" size={13} color={COLORS.primaryDark} />
+              <Text style={styles.qvChipText}>Normal BP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.qvChip}
+              onPress={() => { setPulse('72'); haptics.light(); }}
+              testID="qv-pulse"
+            >
+              <Ionicons name="heart-outline" size={13} color={COLORS.primaryDark} />
+              <Text style={styles.qvChipText}>Normal Pulse</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.qvChip, styles.qvChipStrong]}
+              onPress={() => { setBp('120/80'); setPulse('72'); setTemp('98.6'); setSpo2('98'); haptics.success(); }}
+              testID="qv-all"
+            >
+              <Ionicons name="checkmark-done" size={13} color="#fff" />
+              <Text style={[styles.qvChipText, styles.qvChipTextStrong]}>All normal</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.rowWrap}>
             <TextInput style={[styles.input, styles.vital]} placeholder="BP" placeholderTextColor={COLORS.textDisabled} value={bp} onChangeText={setBp} />
             <TextInput style={[styles.input, styles.vital]} placeholder="Pulse" placeholderTextColor={COLORS.textDisabled} value={pulse} onChangeText={setPulse} />
@@ -430,6 +456,15 @@ const styles = StyleSheet.create({
   },
   multi: { minHeight: 74, textAlignVertical: 'top' },
   vital: { flex: 1, paddingHorizontal: 8 },
+  quickVitalsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  qvChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.primary + '12', borderWidth: 1, borderColor: COLORS.primary + '2E',
+    borderRadius: RADIUS.pill, paddingHorizontal: 11, paddingVertical: 7,
+  },
+  qvChipStrong: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  qvChipText: { ...FONTS.bodyMedium, fontSize: 12, color: COLORS.primaryDark },
+  qvChipTextStrong: { color: '#fff' },
   sexRow: { flexDirection: 'row', gap: 6 },
   sexChip: {
     flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: RADIUS.md,

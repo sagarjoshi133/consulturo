@@ -15,6 +15,8 @@ import api from '../../src/api';
 import { invalidateCached } from '../../src/data-cache';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { goBackSafe } from '../../src/nav';
+import { buildEncounterSummaryHtml } from '../../src/encounter-pdf';
+import { sharePdfFromHtml } from '../../src/pdf-share';
 
 function fmtDateTime(v?: string): string {
   if (!v) return '';
@@ -31,6 +33,7 @@ export default function EncounterDetailScreen() {
   const [enc, setEnc] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -70,6 +73,23 @@ export default function EncounterDetailScreen() {
     }
   }, [id, router]);
 
+  const exportPdf = useCallback(async () => {
+    if (!enc) return;
+    setExporting(true);
+    try {
+      const html = await buildEncounterSummaryHtml(enc);
+      const safeName = String(enc.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+      const filename = `Visit-Summary-${safeName || 'Patient'}-${String(enc.encounter_id).slice(0, 8)}`;
+      await sharePdfFromHtml(html, filename, `Visit Summary — ${enc.patient_name || ''}`.trim());
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || 'Could not generate the visit summary';
+      if (Platform.OS === 'web') window.alert(String(msg));
+      else Alert.alert('Export failed', String(msg));
+    } finally {
+      setExporting(false);
+    }
+  }, [enc]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -107,6 +127,9 @@ export default function EncounterDetailScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Encounter</Text>
         <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={exportPdf} style={styles.iconBtn} disabled={exporting} testID="encdet-export">
+          {exporting ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Ionicons name="share-outline" size={20} color={COLORS.primary} />}
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push(`/encounters/new?editId=${enc.encounter_id}` as any)} style={styles.iconBtn} testID="encdet-edit">
           <Ionicons name="create-outline" size={20} color={COLORS.primary} />
         </TouchableOpacity>
@@ -158,6 +181,17 @@ export default function EncounterDetailScreen() {
         <Section label="Objective" value={enc.objective} />
         <Section label="Assessment" value={enc.assessment} />
         <Section label="Plan" value={enc.plan} />
+
+        <TouchableOpacity
+          style={styles.exportBtn}
+          onPress={exportPdf}
+          disabled={exporting}
+          testID="encdet-export-btn"
+        >
+          {exporting ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Ionicons name="document-attach-outline" size={18} color={COLORS.primary} />}
+          <Text style={styles.exportBtnText}>Export Visit Summary PDF</Text>
+        </TouchableOpacity>
+
 
         {enc.prescription_id ? (
           <TouchableOpacity
@@ -228,4 +262,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.success + '14', borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 6,
   },
   rxBtnText: { ...FONTS.bodyMedium, fontSize: 14 },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '33',
+    borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 6,
+  },
+  exportBtnText: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.primary },
 });
