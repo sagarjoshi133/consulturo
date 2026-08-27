@@ -122,6 +122,7 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [linkedEncounter, setLinkedEncounter] = useState<{ encounter_id: string } | null>(null);
   const [clinicPhone, setClinicPhone] = useState<string>('');
   // Reason modal (for reschedule / reject by staff)
   const [reasonModal, setReasonModal] = useState<null | 'reject' | 'reschedule' | 'cancel'>(null);
@@ -157,6 +158,15 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
           setHistoryLoaded(true);
         }
       }
+      // Staff: has an encounter already been recorded for this booking?
+      if (isStaff && data?.booking_id) {
+        try {
+          const enc = await api.get('/encounters', { params: { booking_id: data.booking_id, limit: 1 } });
+          setLinkedEncounter((enc.data?.items || [])[0] || null);
+        } catch {
+          setLinkedEncounter(null);
+        }
+      }
       // Patient view: fetch clinic phone so Call/WhatsApp buttons dial the
       // clinic rather than the patient's own number.
       if (!isStaff) {
@@ -180,6 +190,25 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
   React.useEffect(() => {
     fetchClinicSettings().then(setClinicSettings).catch(() => {});
   }, []);
+
+  // Open the clinical Encounter for this appointment — pre-filled from the
+  // booking (patient identity + reason → chief complaint) and linked back
+  // via booking_id so the visit shows up under this appointment.
+  const openEncounter = useCallback(() => {
+    if (!rx) return;
+    router.push({
+      pathname: '/encounters/new',
+      params: {
+        booking_id: rx.booking_id || '',
+        patient_name: rx.patient_name || '',
+        patient_phone: rx.patient_phone || '',
+        patient_user_id: rx.patient_user_id || '',
+        patient_age: rx.patient_age != null ? String(rx.patient_age) : '',
+        patient_sex: rx.patient_gender || '',
+        chief_complaint: rx.reason || '',
+      },
+    } as any);
+  }, [rx, router]);
 
   const patch = async (body: any) => {
     try {
@@ -360,14 +389,25 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
                     <Ionicons name="medkit-outline" size={48} color={COLORS.primary} />
                     <Text style={styles.liveRoomTitle}>Consultation started</Text>
                     <Text style={styles.liveRoomBody}>
-                      Open the prescription tab to record the visit and generate the Rx.
+                      Record the visit as an Encounter (notes, vitals, diagnosis), or jump straight to the prescription.
                     </Text>
                     <TouchableOpacity
                       style={styles.liveRoomCta}
-                      onPress={() => router.push({ pathname: '/prescriptions/new', params: { booking_id: rx.booking_id } } as any)}
+                      onPress={openEncounter}
+                      testID="bk-detail-start-encounter"
                     >
-                      <Ionicons name="document-text" size={16} color="#FFFFFF" />
-                      <Text style={styles.liveRoomCtaText}>Create prescription</Text>
+                      <Ionicons name="clipboard" size={16} color="#FFFFFF" />
+                      <Text style={styles.liveRoomCtaText}>
+                        {linkedEncounter ? 'Open encounter' : 'Start encounter'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.liveRoomCtaAlt}
+                      onPress={() => router.push({ pathname: '/prescriptions/new', params: { booking_id: rx.booking_id } } as any)}
+                      testID="bk-detail-create-rx"
+                    >
+                      <Ionicons name="document-text" size={16} color={COLORS.primary} />
+                      <Text style={styles.liveRoomCtaAltText}>Create prescription</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -391,6 +431,20 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
               </TouchableOpacity>
             )}
           </View>
+        )}
+
+        {/* Visit recorded — links to the clinical encounter for this appt */}
+        {isStaff && linkedEncounter && (
+          <TouchableOpacity
+            style={styles.visitChip}
+            activeOpacity={0.85}
+            onPress={() => router.push(`/encounters/${linkedEncounter.encounter_id}` as any)}
+            testID="bk-detail-visit-recorded"
+          >
+            <Ionicons name="clipboard-outline" size={16} color="#15803D" />
+            <Text style={styles.visitChipText}>Visit recorded — open encounter</Text>
+            <Ionicons name="chevron-forward" size={15} color="#15803D" />
+          </TouchableOpacity>
         )}
 
         {/* Header card */}
@@ -1111,6 +1165,41 @@ const styles = StyleSheet.create({
     ...FONTS.bodyMedium,
     color: '#FFFFFF',
     fontSize: 13,
+  },
+  liveRoomCtaAlt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.primary + '14',
+    borderWidth: 1,
+    borderColor: COLORS.primary + '33',
+  },
+  liveRoomCtaAltText: {
+    ...FONTS.bodyMedium,
+    color: COLORS.primary,
+    fontSize: 13,
+  },
+  visitChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 12,
+  },
+  visitChipText: {
+    ...FONTS.bodyMedium,
+    color: '#15803D',
+    fontSize: 13,
+    flex: 1,
   },
   scheduleSurgeryBtn: {
     flexDirection: 'row',

@@ -24,19 +24,26 @@ const SEXES = ['Male', 'Female', 'Other'];
 
 export default function EncounterFormScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ editId?: string }>();
+  const params = useLocalSearchParams<{
+    editId?: string; booking_id?: string; patient_user_id?: string;
+    patient_name?: string; patient_phone?: string; patient_age?: string;
+    patient_sex?: string; chief_complaint?: string;
+  }>();
   const editId = (params.editId || '') as string;
   const isEdit = !!editId;
+  // Linkage carried from a booking's consultation room.
+  const bookingId = (params.booking_id || '') as string;
+  const patientUserId = (params.patient_user_id || '') as string;
 
   const [loadingExisting, setLoadingExisting] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [dictateOpen, setDictateOpen] = useState(false);
 
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [sex, setSex] = useState('');
-  const [chief, setChief] = useState('');
+  const [phone, setPhone] = useState(isEdit ? '' : (params.patient_phone || ''));
+  const [name, setName] = useState(isEdit ? '' : (params.patient_name || ''));
+  const [age, setAge] = useState(isEdit ? '' : (params.patient_age || ''));
+  const [sex, setSex] = useState(isEdit ? '' : (params.patient_sex || ''));
+  const [chief, setChief] = useState(isEdit ? '' : (params.chief_complaint || ''));
   const [subjective, setSubjective] = useState('');
   const [objective, setObjective] = useState('');
   const [assessment, setAssessment] = useState('');
@@ -155,6 +162,10 @@ export default function EncounterFormScreen() {
         vitals: { bp, pulse, temp, spo2, weight },
         diagnoses,
         follow_up_date: followUp || null,
+        ...(isEdit ? {} : {
+          booking_id: bookingId || null,
+          patient_user_id: patientUserId || null,
+        }),
       };
       const { data } = isEdit
         ? await api.patch(`/encounters/${editId}`, body)
@@ -169,7 +180,7 @@ export default function EncounterFormScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router]);
+  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router, bookingId, patientUserId]);
 
   if (loadingExisting) {
     return (

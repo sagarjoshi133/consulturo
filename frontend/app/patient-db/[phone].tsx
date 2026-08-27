@@ -95,6 +95,7 @@ export default function PatientDetail() {
   const [receipts, setReceipts] = useState<any[]>([]);
   const [discharges, setDischarges] = useState<any[]>([]);
   const [medCerts, setMedCerts] = useState<any[]>([]);
+  const [encounters, setEncounters] = useState<any[]>([]);
   // Per-section collapse state — patient detail pages can get long;
   // collapsing sections lets the doctor jump to the one they need.
   // Defaults: Consultations + Prescriptions open, everything else
@@ -102,6 +103,7 @@ export default function PatientDetail() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     consultations: true,
     prescriptions: true,
+    encounters: true,
     surgeries: false,
     discharges: false,
     certs: false,
@@ -158,6 +160,13 @@ export default function PatientDetail() {
         setMedCerts(Array.isArray(mcRes.data?.items) ? mcRes.data.items : []);
       } catch {
         setMedCerts([]);
+      }
+      // Clinical encounters (visit notes) for this patient — staff-only.
+      try {
+        const encRes = await api.get('/encounters', { params: { patient_phone: String(phone), limit: 50 } });
+        setEncounters(Array.isArray(encRes.data?.items) ? encRes.data.items : []);
+      } catch {
+        setEncounters([]);
       }
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Failed to load patient');
@@ -480,6 +489,43 @@ export default function PatientDetail() {
                 </Text>
               </View>
               <MaterialCommunityIcons name="prescription" size={18} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          ))
+        ))}
+
+        {/* Encounters — clinical visit notes (staff-only) */}
+        <CollapseHeader
+          title={`Encounters (${encounters.length})`}
+          icon="clipboard"
+          color="#7C3AED"
+          open={open.encounters}
+          onToggle={() => toggle('encounters')}
+        />
+        {open.encounters && (encounters.length === 0 ? (
+          <EmptyMini icon="clipboard-outline" text="No encounters yet" />
+        ) : (
+          encounters.slice(0, 10).map((e) => (
+            <TouchableOpacity
+              key={e.encounter_id}
+              onPress={() => router.push(`/encounters/${encodeURIComponent(e.encounter_id || '')}` as any)}
+              activeOpacity={0.85}
+              style={styles.histRow}
+            >
+              <View style={[styles.histDate, { backgroundColor: '#7C3AED15' }]}>
+                <Text style={[styles.histDateText, { color: '#7C3AED' }]}>
+                  {(e.created_at || '').slice(5, 10) || 'Enc'}
+                </Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.histTitle} numberOfLines={1}>
+                  {e.chief_complaint || (e.diagnoses || [])[0] || 'Clinical encounter'}
+                </Text>
+                <Text style={styles.histMeta} numberOfLines={1}>
+                  {(e.diagnoses || []).slice(0, 2).join(', ') || 'Visit notes'}
+                  {e.follow_up_date ? ` · F/U ${e.follow_up_date}` : ''}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
           ))
         ))}

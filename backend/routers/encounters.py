@@ -43,6 +43,7 @@ _LIST_PROJECTION = {
     "diagnoses": 1,
     "prescription_id": 1,
     "booking_id": 1,
+    "patient_user_id": 1,
     "created_by_name": 1,
     "created_at": 1,
     "follow_up_date": 1,
@@ -78,6 +79,7 @@ class EncounterBody(BaseModel):
     patient_age: Optional[str] = ""
     patient_sex: Optional[str] = ""
     booking_id: Optional[str] = None
+    patient_user_id: Optional[str] = None
     chief_complaint: Optional[str] = ""
     subjective: Optional[str] = ""
     objective: Optional[str] = ""
@@ -158,6 +160,7 @@ async def create_encounter(request: Request, body: EncounterBody, user=Depends(r
         "patient_age": (body.patient_age or "").strip(),
         "patient_sex": (body.patient_sex or "").strip(),
         "booking_id": body.booking_id or None,
+        "patient_user_id": body.patient_user_id or None,
         "chief_complaint": (body.chief_complaint or "").strip(),
         "subjective": (body.subjective or "").strip(),
         "objective": (body.objective or "").strip(),
@@ -188,9 +191,15 @@ async def list_encounters(
     skip: int = 0,
     q: str = "",
     patient_phone: str = "",
+    booking_id: str = "",
+    patient_user_id: str = "",
 ):
     clinic_id = await resolve_clinic_id(request, user)
     filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    if booking_id.strip():
+        filt["booking_id"] = booking_id.strip()
+    if patient_user_id.strip():
+        filt["patient_user_id"] = patient_user_id.strip()
     if patient_phone.strip():
         digits = "".join(ch for ch in patient_phone if ch.isdigit())[-10:]
         if digits:

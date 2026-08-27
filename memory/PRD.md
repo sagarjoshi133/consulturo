@@ -459,3 +459,17 @@ bookings dated tomorrow (IST) with reminder_sent != true + user_id, sends an in-
 ("📅 Appointment tomorrow") + push, and flags reminder_sent so each patient is reminded once.
 Rescheduling to a new date resets reminder_sent (PATCH booking_date). Verified via live loop:
 notification created + flag set, then auto-cleaned.
+
+## Encounters ↔ Booking/Patient integration — SHIPPED (Jun 2026)
+Wired the clinical chain Appointment → Encounter → Prescription → patient record:
+- Backend encounters.py: EncounterBody + doc now carry patient_user_id (+ existing booking_id);
+  list endpoint accepts booking_id & patient_user_id filters (patient_phone already existed);
+  _LIST_PROJECTION exposes patient_user_id.
+- bookings/[id].tsx consultation room: "Start/Open encounter" button ALONGSIDE "Create prescription"
+  (openEncounter deep-links /encounters/new prefilled with booking_id, patient_user_id, name, phone,
+  age, sex, reason→chief_complaint). Green "Visit recorded — open encounter" chip shows when an
+  encounter exists for the booking (queries ?booking_id=). Booking status left unchanged (per user).
+- encounters/new.tsx: reads prefill params + sends booking_id + patient_user_id on create.
+- patient-db/[phone].tsx: new collapsible "Encounters" section listing the patient's visit notes
+  (?patient_phone=) so staff see per-patient history. Encounters remain STAFF-ONLY (patients don't see them).
+Verified: curl (all 3 link filters) + screenshot (Visit-recorded chip on booking detail).
