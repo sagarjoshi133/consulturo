@@ -28,6 +28,13 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Tooling caches / dev artifacts that must not bloat the upload tarball
+.ruff_cache/
+.screenshots/
+.pytest_cache/
+__pycache__/
+*.py
+
 # Local env overrides (base .env is required and intentionally NOT ignored)
 .env.local
 .env.*.local
