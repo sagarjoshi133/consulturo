@@ -582,3 +582,27 @@ container due to missing hermesc binary — runs fine on EAS). Web preview boots
 newArchEnabled stays TRUE.
 VALIDATION: Android-only, build-time — user MUST Publish → generate a fresh Android build → install
 it, then retest. Old installed APK will behave identically until rebuilt.
+
+## FIX (round 4): self-contained expo/fetch axios adapter + axios-path diagnostics (Jun 2026)
+CONTEXT: After round-3 (getFetch-based expo/fetch adapter) + the tarball-corrupt-file fix, user
+rebuilt & installed the LATEST build — STILL slow ("Patient DB, Bookings, Dashboard load late /
+reload everytime"). Ruled OUT: OTA reload loop (ota-updates.ts no longer reloads mid-session, only
+on next cold launch); backend latency (prod urology-pro.emergent.host TTFB 0.1-0.5s from server).
+=> Slowness is client-side on Android, and the getFetch deep-import adapter (relies on axios internals
+   resolving under Hermes) could not be verified on-device.
+CHANGES:
+1. NEW src/net/expo-fetch-adapter.ts — hand-rolled, fully self-contained axios adapter backed by
+   expo/fetch. Zero dependency on axios internals. Supports json/text/arraybuffer/blob, timeout,
+   AbortSignal, validateStatus, AxiosError shape (so DR-failover interceptor + 410 handler still work).
+2. src/api.ts — Android axios instance now uses expoFetchAdapter directly (replaced getFetch approach).
+   iOS/web keep axios default adapter.
+3. app/net-check.tsx — Connection Diagnostics now ALSO probes via the axios `api` instance
+   ("App transport (axios) #1/#2") alongside raw-fetch pings, to localise slowness (network vs axios
+   path) on the next build.
+VERIFIED: Android JS bundle resolves (3099 modules); web preview boots, no regression; lint clean.
+NOTE: expo export in THIS container creates a corrupt-named junk file when the Hermes bytecode step
+fails (no runnable hermesc) — MUST delete it after any export (it breaks the EAS tarball upload).
+VALIDATION: Android build-time only — user MUST rebuild + reinstall, then run Connection Diagnostics
+and share the numbers. If axios rows are fast but screens still slow => app-level (re-fetch/render);
+if all rows slow => device/network → escalate to Emergent support. testing_agent CANNOT reproduce
+(Android-native-build-only bug; it tests web/preview which is unaffected).

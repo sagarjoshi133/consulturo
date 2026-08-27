@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { API_BASE } from '../src/api';
+import { API_BASE, api } from '../src/api';
 import { getActiveBase, isOnFallback } from '../src/backend-health';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { goBackSafe } from '../src/nav';
@@ -104,9 +104,33 @@ export default function NetCheckScreen() {
       setRows([...out]);
     };
 
+    // Axios probe — exercises the SAME transport the real app screens use
+    // (on Android this is the expo/fetch adapter). Comparing this against
+    // the raw-fetch pings above localises whether slowness is in the
+    // network itself or specifically the axios path.
+    const probeAxios = async (label: string, path: string) => {
+      const t0 = Date.now();
+      try {
+        const resp = await api.get(path, { timeout: 20000 });
+        const size = (() => { try { return JSON.stringify(resp.data).length; } catch { return 0; } })();
+        out.push({ label, ms: Date.now() - t0, status: resp.status, bytes: size });
+      } catch (e: any) {
+        const st = e?.response?.status;
+        out.push({
+          label,
+          ms: Date.now() - t0,
+          status: typeof st === 'number' ? st : (e?.code === 'ECONNABORTED' ? 'timeout(20s)' : 'network error'),
+          bytes: 0,
+        });
+      }
+      setRows([...out]);
+    };
+
     await probe('Server ping #1', '/health');
     await probe('Server ping #2', '/health');
     await probe('Server ping #3', '/health');
+    await probeAxios('App transport (axios) #1', '/health');
+    await probeAxios('App transport (axios) #2', '/health');
     await probe('Sign-in check (/auth/me)', '/auth/me', true);
     await probe('My bookings', '/bookings/me', true);
     await probe('Public content (blog)', '/blog');
