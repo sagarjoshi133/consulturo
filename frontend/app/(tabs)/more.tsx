@@ -35,6 +35,7 @@ import { useTenant } from '../../src/tenant-context';
 import { useTier } from '../../src/tier';
 import * as Clipboard from 'expo-clipboard';
 import { useScreenBg } from '../../src/dark-mode';
+import DeletionBanner from '../../src/deletion-banner';
 
 const WHATSAPP = '+918155075669';
 const STAFF_ROLES = ['super_owner', 'primary_owner', 'owner', 'partner', 'doctor', 'assistant', 'reception', 'nursing'];
@@ -885,6 +886,7 @@ export default function More() {
             "My Health" for patients) start expanded; everything else
             starts collapsed. State persisted in AsyncStorage so the
             user's preference survives app restarts. */}
+        <DeletionBanner />
         {sections.map((sec) => {
           const isCollapsed = collapsedSections.has(sec.title);
           return (

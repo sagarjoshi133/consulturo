@@ -351,3 +351,22 @@ Root cause: i18n t() returns the raw key string on a missing key, so the `|| 'fa
 more.tsx never triggered — buttons showed literal "more.encounters"/"more.netCheck". Added the
 missing keys (encounters, encountersSub, netCheck, netCheckSub) to en.ts/hi.ts/gu.ts under `more`.
 Verified via screenshot: raw keys gone, "Connection Diagnostics" renders. Frontend-only.
+
+## Account deletion — 30-day restore window + deletion receipt — SHIPPED (Jun 2026)
+DELETE /api/auth/me (patient-only, staff 403) now SOFT-deletes: sets pending_deletion +
+deletion_purge_at(+30d), keeps account/session usable, emails a receipt with a restore link.
+Restore: POST /api/auth/me/restore (in-app banner) OR GET /api/auth/restore/redirect?token=
+(email link). Permanent purge/anonymise runs from server 60s loop (routers.auth.
+sweep_purge_due_accounts) once grace elapses. /api/auth/me surfaces pending_deletion +
+deletion_purge_at. Frontend: src/deletion-banner.tsx (amber banner + Cancel) on Profile + More;
+delete button hidden while pending; modal copy updated to explain the 30-day grace.
+Email via Emergent-managed proxy (services/mailer.py, EMERGENT_EMAIL_KEY + EMAIL_FROM_NAME).
+
+## Rich link sharing (Open Graph unfurl) — SHIPPED (Jun 2026)
+Backend routers/share.py: GET /api/share/{kind}[/{ident}] serves OG + Twitter Card meta HTML
+(title/description/image/url) + JS redirect to the canonical in-app page, so links unfurl in
+WhatsApp/social. Kinds: home, book, clinic/<slug>, blog/<id>, guide/<key>, videos, education,
+refer/<code>. Server-resolves clinic/blog/guide metadata; query params t/d/img override; ref
+preserved for referral attribution. Frontend src/share.ts (shareLink/buildShareUrl) wired into
+share buttons: Blog detail, Clinic page, Refer (WhatsApp+native), Guide detail, Videos, Education.
+Tested: iteration 28 — 12/12 backend pytest + frontend flows PASS.

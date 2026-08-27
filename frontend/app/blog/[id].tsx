@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Share,
   Linking,
   Platform,
   ActivityIndicator,
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../src/api';
+import { shareLink } from '../../src/share';
 import { COLORS, FONTS } from '../../src/theme';
 import { useI18n } from '../../src/i18n';
 import { displayDate } from '../../src/date';
@@ -333,11 +333,13 @@ export default function BlogDetail() {
             ) : null}
             <TouchableOpacity
               onPress={() =>
-                Share.share(
-                  Platform.OS === 'web'
-                    ? { message: p.title + (p.link ? ' — ' + p.link : '') }
-                    : { message: `${p.title} — ConsultUro`, url: p.link || '' }
-                )
+                shareLink({
+                  kind: 'blog',
+                  ident: p.id,
+                  title: p.title,
+                  description: p.excerpt || undefined,
+                  image: p.cover || undefined,
+                })
               }
               style={styles.backBtn}
               testID="blog-detail-share"

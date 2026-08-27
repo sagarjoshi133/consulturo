@@ -40,6 +40,10 @@ export interface User {
   can_view_analytics?: boolean;
   can_manage_blog?: boolean;
   can_manage_settings?: boolean;
+  /** Account-deletion grace window (30-day). Set when a patient has
+   *  scheduled deletion; the account stays usable until the purge date. */
+  pending_deletion?: boolean;
+  deletion_purge_at?: string;
 }
 
 interface AuthState {

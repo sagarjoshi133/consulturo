@@ -133,3 +133,12 @@ Insert-pattern if purged again: upsert into `user_sessions` {session_token, user
 NOTE: backend now has a 30s in-process auth cache (services/auth_cache.py) — after direct DB
 session inserts the token works immediately (cache is lookup-through), but after direct DB
 session DELETES allow ≤30s or restart backend.
+
+## Account deletion / restore + Share (Jun 2026)
+- PATIENT delete-flow test session: `test_pat_del_1787811814560` → user `test-patient-1776494002311` (patient.test@consulturo.app). 7-day TTL. Use for DELETE /api/auth/me + restore.
+- Soft-delete: `DELETE /api/auth/me` (patient only) sets pending_deletion + deletion_purge_at (+30d), emails receipt, returns {ok,pending_deletion,deletion_purge_at,grace_days:30}. Account stays usable.
+- Restore (in-app): `POST /api/auth/me/restore`. Restore (email link): `GET /api/auth/restore/redirect?token=`.
+- Purge sweep runs in server 60s loop (routers.auth.sweep_purge_due_accounts) — purges accounts past deletion_purge_at.
+- /api/auth/me now returns pending_deletion + deletion_purge_at.
+- Email: Emergent-managed proxy (services/mailer.py, EMERGENT_EMAIL_KEY + EMAIL_FROM_NAME in .env). Test recipient delivered@resend.dev works.
+- Share OG endpoints: GET /api/share/{kind}[/{ident}] (kinds: home, book, clinic/<slug>, blog/<id>, guide/<key>, videos, education, refer/<code>). Optional query t,d,img,ref. Returns OG/Twitter meta HTML + JS redirect to canonical in-app page.

@@ -32,6 +32,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import api from '../../src/api';
+import { shareLink } from '../../src/share';
 import { resolveTheme, type BrandTheme } from '../../src/theme-presets';
 import AnnouncementsBanner from '../../src/announcements/banner';
 
@@ -240,14 +241,15 @@ export default function ClinicLanding() {
                 <Text style={styles.brandLinkText}>ConsultUro</Text>
               </Pressable>
               <Pressable
-                onPress={() => {
-                  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as any).share) {
-                    (navigator as any).share({
-                      title: clinic.name,
-                      url: typeof window !== 'undefined' ? window.location.href : '',
-                    }).catch(() => {});
-                  }
-                }}
+                onPress={() =>
+                  shareLink({
+                    kind: 'clinic',
+                    ident: slug,
+                    title: clinic.name,
+                    description: clinic.tagline || clinic.address || undefined,
+                    image: logo || undefined,
+                  })
+                }
                 style={styles.iconBtn}
                 hitSlop={12}
                 accessibilityLabel="Share clinic"

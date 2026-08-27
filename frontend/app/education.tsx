@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../src/api';
+import { shareLink } from '../src/share';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { useI18n } from '../src/i18n';
 import LanguageDropdown from '../src/language-dropdown';
@@ -88,7 +89,18 @@ export default function Education() {
         <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as any))} style={[styles.backBtn, d.surface]} testID="education-back">
           <Ionicons name="arrow-back" size={22} color={d.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.topTitle, d.textP]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.topTitle, d.textP, { flex: 1 }]} numberOfLines={1}>{title}</Text>
+        <TouchableOpacity
+          onPress={() => shareLink({
+            kind: 'education',
+            title,
+            description: subtitle,
+          })}
+          style={[styles.backBtn, d.surface]}
+          testID="education-share"
+        >
+          <Ionicons name="share-social" size={20} color={d.colors.textPrimary} />
+        </TouchableOpacity>
         <LanguageDropdown testID="education-lang" />
       </View>
 

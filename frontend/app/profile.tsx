@@ -44,6 +44,7 @@ import PhoneAuthModal from '../src/phone-auth';
 import { useI18n } from '../src/i18n';
 import LanguageDropdown from '../src/language-dropdown';
 import { useDarkMode, type ThemeMode } from '../src/dark-mode';
+import DeletionBanner from '../src/deletion-banner';
 
 const PUSH_PREF_KEY = 'pref:push_enabled';
 
@@ -225,8 +226,18 @@ export default function ProfileScreen() {
     try {
       await api.delete('/auth/me');
       setDeleteModal(false);
-      await signOut();
-      try { router.replace('/signed-out' as any); } catch {}
+      setDeleting(false);
+      // Account is now SCHEDULED for deletion (30-day grace). It stays
+      // usable — refresh so the "scheduled for deletion" banner appears
+      // instead of signing the user out.
+      await refresh();
+      const msg = t('profile.deleteScheduledMsg') ||
+        'Your account is scheduled for deletion in 30 days. We\'ve emailed you a confirmation with a link to restore it. You can also cancel anytime from the banner.';
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert(msg);
+      } else {
+        Alert.alert(t('profile.deleteScheduledTitle') || 'Deletion scheduled', msg);
+      }
     } catch (e: any) {
       const msg = e?.response?.data?.detail || (t('profile.deleteFailed') || 'Could not delete your account. Please try again.');
       setDeleting(false);
@@ -265,6 +276,7 @@ export default function ProfileScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
       >
+        <DeletionBanner />
         {/* Sign-in Identifiers */}
         <Text style={[styles.sectionLabel, { marginTop: 0 }]}>{t('profile.sectionIdentifiers') || 'SIGN-IN IDENTIFIERS'}</Text>
         <View style={styles.section}>
@@ -502,7 +514,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         {/* Delete account — patients only (Apple App Store 5.1.1(v)) */}
-        {!isStaff && (
+        {!isStaff && !u.pending_deletion && (
           <TouchableOpacity
             onPress={() => { setDeleteConfirmText(''); setDeleteModal(true); }}
             style={styles.deleteBtn}
@@ -528,7 +540,7 @@ export default function ProfileScreen() {
               <Text style={styles.delTitle}>{t('profile.deleteAccount') || 'Delete my account'}</Text>
               <Text style={styles.delBody}>
                 {t('profile.deleteBody') ||
-                  'This permanently deletes your ConsultUro account and personal data (bookings history in your app, IPSS scores, notes and messages). This cannot be undone.\n\nType DELETE below to confirm.'}
+                  'Your account will be scheduled for deletion with a 30-day grace period. During this time it stays usable and you can restore it anytime — from the banner or the link we email you. After 30 days, your personal data is permanently removed (this cannot be undone).\n\nType DELETE below to confirm.'}
               </Text>
               <TextInput
                 value={deleteConfirmText}

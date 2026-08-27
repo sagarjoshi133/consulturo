@@ -801,6 +801,13 @@ async def _start_reminder_loop():
                     await fire_due_review_requests(now)
                 except Exception:
                     pass
+
+                # ---- Account deletion purge (30-day grace elapsed) ----
+                try:
+                    from routers.auth import sweep_purge_due_accounts
+                    await sweep_purge_due_accounts(now)
+                except Exception:
+                    pass
             except Exception:
                 pass
             await asyncio.sleep(60)
@@ -3876,6 +3883,10 @@ app.include_router(_comm_v2_bcast_tpl_router)
 # ─── Phase E — Clinical Core: encounters + diagnosis registry ───
 from routers.encounters import router as _encounters_router
 app.include_router(_encounters_router)
+
+# ─── Share / link-unfurl (Open Graph preview cards) ───
+from routers.share import router as _share_router
+app.include_router(_share_router)
 
 
 @app.on_event("startup")

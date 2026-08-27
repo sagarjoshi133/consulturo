@@ -25,6 +25,7 @@ import { useMyReferralCode } from '../src/referrals/use-my-code';
 import { buildShareMessage } from '../src/referrals/share-templates';
 import { useTenant } from '../src/tenant-context';
 import api from '../src/api';
+import { buildShareUrl } from '../src/share';
 
 function logoFromSlug(slug: string): any | null {
   // Branded QR centre logo — uses the app's bundled mark.
@@ -82,6 +83,24 @@ export default function ReferScreen() {
     clinicName,
   }), [link, data?.referrer_name, clinicName, lang]);
 
+  // Rich, unfurl-friendly share URL (redirects to the clinic page while
+  // preserving the ?ref= attribution). Used when sharing to chat apps so
+  // recipients see a preview card instead of a bare link.
+  const shareUrl = useMemo(() => {
+    if (!data?.code) return link;
+    return buildShareUrl({
+      kind: 'clinic',
+      ident: slug,
+      title: `${clinicName} — Join me on ConsultUro`,
+      description: 'Book appointments, view records & urology guides — all in one app.',
+      ref: data.code,
+    });
+  }, [data?.code, slug, clinicName, link]);
+  const shareMessage = useMemo(
+    () => (link && shareUrl ? message.split(link).join(shareUrl) : message),
+    [message, link, shareUrl],
+  );
+
   const copyLink = useCallback(async () => {
     try {
       await Clipboard.setStringAsync(link);
@@ -101,8 +120,8 @@ export default function ReferScreen() {
   }, [data?.code, toast]);
 
   const shareWhatsApp = useCallback(async () => {
-    const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
-    const fallback = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
+    const fallback = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
     try {
       const supported = await Linking.canOpenURL(url);
       if (supported) {
@@ -114,16 +133,16 @@ export default function ReferScreen() {
     } catch {
       Alert.alert('Could not open WhatsApp', 'Try the share button instead.');
     }
-  }, [message, trackShare]);
+  }, [shareMessage, trackShare]);
 
   const shareNative = useCallback(async () => {
     try {
-      await Share.share({ message, url: link, title: 'Refer to ConsultUro' });
+      await Share.share({ message: shareMessage, url: shareUrl, title: 'Refer to ConsultUro' });
       void trackShare('native_share');
     } catch {
       // user cancelled — silent
     }
-  }, [message, link, trackShare]);
+  }, [shareMessage, shareUrl, trackShare]);
 
   if (loading) {
     return (

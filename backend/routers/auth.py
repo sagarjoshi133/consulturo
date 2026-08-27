@@ -198,6 +198,15 @@ async def auth_me(user=Depends(require_user)):
         out["can_send_personal_messages"] = (explicit is not False)
     else:
         out["can_send_personal_messages"] = bool(explicit)
+    # Account-deletion grace window — surfaced so the app can show the
+    # "scheduled for deletion" banner with a one-tap Cancel.
+    out["pending_deletion"] = bool(user.get("pending_deletion"))
+    _pa = user.get("deletion_purge_at")
+    if _pa is not None:
+        try:
+            out["deletion_purge_at"] = _pa.isoformat() if hasattr(_pa, "isoformat") else str(_pa)
+        except Exception:
+            out["deletion_purge_at"] = None
     return out
 
 @router.post("/api/auth/magic/request")
@@ -572,38 +581,26 @@ _ACCOUNT_DELETE_PURGE_COLLECTIONS = [
 ]
 
 
-@router.delete("/api/auth/me")
-async def delete_my_account(user=Depends(require_user)):
-    """In-app account deletion (Apple App Store Guideline 5.1.1(v)).
+# Grace period (days) between a patient scheduling deletion and the
+# permanent purge. During this window the account stays fully usable and
+# can be restored (either by signing back in and tapping "Cancel", or by
+# the restore link in the deletion-receipt email).
+ACCOUNT_DELETE_GRACE_DAYS = 30
 
-    Behaviour:
-      • ONLY `patient` accounts may self-delete. Staff / owner-tier
-        accounts are blocked (they must be off-boarded by an admin via
-        the Team panel) — this prevents a clinician accidentally
-        nuking their own operational account.
-      • Personal / behavioural data is HARD-deleted (sessions, push
-        installs, IPSS history, notes, inbox, conversations, drafts).
-      • Clinical records (bookings, prescriptions, surgeries, receipts)
-        are ANONYMISED — the personal identifiers are scrubbed but the
-        row is retained for the clinic's medical-legal record, with a
-        `deleted_account: true` flag and the original `user_id` link
-        removed.
-      • The `users` document is removed last so a re-login creates a
-        fresh account rather than resurrecting the deleted identity.
+
+async def purge_account(uid: str, user_snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """PERMANENTLY erase a patient account.
+
+    Personal / behavioural data is HARD-deleted; clinical records
+    (bookings / prescriptions / surgeries / receipts) are ANONYMISED and
+    retained for the clinic's medical-legal record. The `users` document
+    is removed last so a re-login creates a fresh identity.
+
+    This is the terminal step run by the background sweep once the
+    30-day grace window elapses (or immediately if the grace is 0).
     """
-    role = (user.get("role") or "").lower()
-    if role != "patient":
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Only patient accounts can be deleted in-app. Staff and "
-                "owner accounts must be removed by a clinic administrator "
-                "from the Team panel."
-            ),
-        )
-
-    uid = user["user_id"]
     now = datetime.now(timezone.utc)
+    snap = user_snapshot or (await db.users.find_one({"user_id": uid})) or {}
     report: Dict[str, Any] = {"user_id": uid, "purged": {}, "anonymised": {}}
 
     # 1) Hard-delete personal collections.
@@ -614,7 +611,6 @@ async def delete_my_account(user=Depends(require_user)):
         except Exception as e:
             report["purged"][coll] = f"error: {e}"
 
-    # comm_installations / push_tokens may key on other fields too.
     try:
         await db.comm_installations.delete_many({"user_id": uid})
     except Exception:
@@ -652,10 +648,14 @@ async def delete_my_account(user=Depends(require_user)):
         except Exception as e:
             report["anonymised"][coll] = f"error: {e}"
 
-    # 4) Kill every active session for this user.
+    # 4) Kill every active session + restore tokens.
     try:
         sr = await db.user_sessions.delete_many({"user_id": uid})
         report["purged"]["user_sessions"] = int(sr.deleted_count or 0)
+    except Exception:
+        pass
+    try:
+        await db.account_restore_tokens.delete_many({"user_id": uid})
     except Exception:
         pass
     try:
@@ -674,10 +674,10 @@ async def delete_my_account(user=Depends(require_user)):
     # 6) Audit trail (retains no PII beyond the hashed identity).
     try:
         await db.audit_log.insert_one({
-            "type": "account.self_delete",
+            "type": "account.purged",
             "user_id": uid,
-            "email": user.get("email"),
-            "role": role,
+            "email": snap.get("email"),
+            "role": (snap.get("role") or ""),
             "created_at": now,
             "report": report,
         })
@@ -686,6 +686,237 @@ async def delete_my_account(user=Depends(require_user)):
 
     report["ok"] = True
     return report
+
+
+async def sweep_purge_due_accounts(now: Optional[datetime] = None, limit: int = 50) -> Dict[str, Any]:
+    """Background sweep — permanently purge accounts whose 30-day grace
+    window has elapsed. Idempotent; safe to run on a timer."""
+    now = now or datetime.now(timezone.utc)
+    purged = 0
+    cursor = db.users.find(
+        {"pending_deletion": True, "deletion_purge_at": {"$lte": now}},
+        {"user_id": 1, "email": 1, "role": 1},
+    ).limit(limit)
+    async for u in cursor:
+        try:
+            await purge_account(u["user_id"], u)
+            purged += 1
+        except Exception:
+            pass
+    return {"purged": purged, "at": now.isoformat()}
+
+
+def _public_base_url() -> str:
+    return (
+        os.environ.get("PUBLIC_BACKEND_URL")
+        or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+        or "https://urology-pro.preview.emergentagent.com"
+    ).rstrip("/")
+
+
+def _deletion_receipt_html(name: str, purge_date: str, restore_link: str) -> str:
+    safe_name = (name or "there").strip() or "there"
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 0">
+  <tr><td align="center">
+    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#111">
+      <tr><td style="background:#0E7C8B;padding:20px 24px">
+        <span style="color:#ffffff;font-size:18px;font-weight:700">ConsultUro</span>
+      </td></tr>
+      <tr><td style="padding:24px">
+        <h2 style="margin:0 0 8px;font-size:19px;color:#111">Your account is scheduled for deletion</h2>
+        <p style="margin:0 0 14px;font-size:14px;line-height:22px;color:#333">
+          Hi {safe_name}, we've received your request to delete your ConsultUro account.
+          Your personal data will be permanently removed on
+          <strong>{purge_date}</strong>.
+        </p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:22px;color:#333">
+          Changed your mind? You have until then to restore your account and keep
+          everything as it was — just tap the button below, or sign back in and
+          tap <strong>Cancel deletion</strong>.
+        </p>
+        <p style="margin:22px 0">
+          <a href="{restore_link}" style="background:#0E7C8B;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600;font-size:14px">Restore my account</a>
+        </p>
+        <p style="margin:0 0 6px;font-size:12px;color:#666">If the button doesn't work, copy this link:</p>
+        <p style="margin:0 0 18px;font-size:12px;color:#0E7C8B;word-break:break-all">{restore_link}</p>
+        <p style="margin:0;font-size:12px;color:#999;line-height:18px">
+          After {purge_date}, deletion is permanent and cannot be undone. Your clinical
+          records are anonymised and retained by your clinic as required by medical-record law.
+          Sent by ConsultUro. We never ask for your password or payment details by email.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>"""
+
+
+@router.delete("/api/auth/me")
+async def delete_my_account(user=Depends(require_user)):
+    """In-app account deletion with a 30-day restore window
+    (Apple App Store Guideline 5.1.1(v)).
+
+    Behaviour:
+      • ONLY `patient` accounts may self-delete. Staff / owner-tier
+        accounts are blocked (off-boarded by an admin via the Team panel).
+      • The account is SCHEDULED for deletion — it stays fully usable
+        during a 30-day grace window and shows a "scheduled for deletion"
+        banner with a one-tap Cancel.
+      • A deletion-receipt email is sent with the exact purge date and a
+        single-use restore link.
+      • Actual purge/anonymise runs from the background sweep once the
+        grace window elapses (see `sweep_purge_due_accounts`).
+    """
+    role = (user.get("role") or "").lower()
+    if role != "patient":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Only patient accounts can be deleted in-app. Staff and "
+                "owner accounts must be removed by a clinic administrator "
+                "from the Team panel."
+            ),
+        )
+
+    uid = user["user_id"]
+    now = datetime.now(timezone.utc)
+    purge_at = now + timedelta(days=ACCOUNT_DELETE_GRACE_DAYS)
+
+    await db.users.update_one(
+        {"user_id": uid},
+        {"$set": {
+            "pending_deletion": True,
+            "deletion_requested_at": now,
+            "deletion_purge_at": purge_at,
+        }},
+    )
+    try:
+        from services import auth_cache
+        auth_cache.invalidate_user(uid)
+    except Exception:
+        pass
+
+    # Single-use restore token for the email link.
+    token = _secrets.token_urlsafe(32)
+    try:
+        await db.account_restore_tokens.insert_one({
+            "token": token,
+            "user_id": uid,
+            "expires_at": purge_at,
+            "used": False,
+            "created_at": now,
+        })
+    except Exception:
+        pass
+
+    # Deletion-receipt email (best-effort — never blocks the deletion).
+    email_to = (user.get("email") or "").strip()
+    if email_to:
+        try:
+            from services.mailer import send_email
+            restore_link = f"{_public_base_url()}/api/auth/restore/redirect?token={token}"
+            purge_date = purge_at.strftime("%d %b %Y")
+            await send_email(
+                to=email_to,
+                subject="Your ConsultUro account is scheduled for deletion",
+                html=_deletion_receipt_html(user.get("name") or "", purge_date, restore_link),
+            )
+        except Exception:
+            pass
+
+    try:
+        await db.audit_log.insert_one({
+            "type": "account.deletion_scheduled",
+            "user_id": uid,
+            "email": user.get("email"),
+            "role": role,
+            "created_at": now,
+            "deletion_purge_at": purge_at,
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "pending_deletion": True,
+        "deletion_purge_at": purge_at.isoformat(),
+        "grace_days": ACCOUNT_DELETE_GRACE_DAYS,
+    }
+
+
+async def _cancel_pending_deletion(uid: str) -> bool:
+    """Clear the pending-deletion flags + consume any restore tokens.
+    Returns True if the account was actually pending deletion."""
+    res = await db.users.update_one(
+        {"user_id": uid, "pending_deletion": True},
+        {"$set": {"pending_deletion": False, "deletion_restored_at": datetime.now(timezone.utc)},
+         "$unset": {"deletion_requested_at": "", "deletion_purge_at": ""}},
+    )
+    try:
+        await db.account_restore_tokens.delete_many({"user_id": uid})
+    except Exception:
+        pass
+    try:
+        from services import auth_cache
+        auth_cache.invalidate_user(uid)
+    except Exception:
+        pass
+    restored = bool(res.modified_count)
+    if restored:
+        try:
+            await db.audit_log.insert_one({
+                "type": "account.deletion_cancelled",
+                "user_id": uid,
+                "created_at": datetime.now(timezone.utc),
+            })
+        except Exception:
+            pass
+    return restored
+
+
+@router.post("/api/auth/me/restore")
+async def restore_my_account(user=Depends(require_user)):
+    """Cancel a pending deletion for the signed-in user (the in-app
+    "Cancel deletion" banner action)."""
+    restored = await _cancel_pending_deletion(user["user_id"])
+    return {"ok": True, "restored": restored, "pending_deletion": False}
+
+
+@router.get("/api/auth/restore/redirect")
+async def restore_via_link(token: str):
+    """Browser-openable restore link (from the deletion-receipt email).
+    Cancels the pending deletion and shows a confirmation page."""
+    doc = await db.account_restore_tokens.find_one({"token": token})
+    ok = False
+    if doc and doc.get("user_id"):
+        exp = doc.get("expires_at")
+        if exp is not None and getattr(exp, "tzinfo", None) is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if not exp or exp >= datetime.now(timezone.utc):
+            ok = await _cancel_pending_deletion(doc["user_id"])
+            ok = ok or True  # already-restored token is still a success
+    title = "Account restored" if ok else "Link expired"
+    msg = (
+        "Your ConsultUro account has been restored. Nothing was deleted — "
+        "open the app and continue where you left off."
+        if ok else
+        "This restore link is no longer valid. If your account was already "
+        "deleted, please sign up again from the app."
+    )
+    color = "#0E7C8B" if ok else "#B91C1C"
+    html = f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} · ConsultUro</title></head>
+<body style="margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f6f8">
+<div style="max-width:480px;margin:48px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.08)">
+  <div style="background:{color};padding:18px 24px;color:#fff;font-size:18px;font-weight:700">ConsultUro</div>
+  <div style="padding:28px 24px;color:#111">
+    <h2 style="margin:0 0 10px;font-size:20px">{title}</h2>
+    <p style="margin:0 0 20px;font-size:15px;line-height:23px;color:#444">{msg}</p>
+    <a href="consulturo://" style="background:{color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600">Open ConsultUro</a>
+  </div>
+</div></body></html>"""
+    return HTMLResponse(content=html, status_code=200)
 
 
 @router.patch("/api/auth/me")

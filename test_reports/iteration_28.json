@@ -1,0 +1,43 @@
+{
+  "summary": "Tested the three new features: (1) 30-day soft-delete grace window + restore, (2) deletion receipt email via Emergent mailer, and (3) share OG endpoints for rich link unfurling. Backend: 12/12 pytest assertions pass covering DELETE /api/auth/me returning {pending_deletion, deletion_purge_at, grace_days:30}, staff/owner blocked with 403, session still usable after soft-delete, POST /api/auth/me/restore clearing pending state, GET /api/auth/restore/redirect?token= returning HTML 'Account restored' and clearing pending, and all share endpoints (home/clinic/blog/guide/refer) returning OG+Twitter meta with proper title/desc/image and ref-preservation on canonical og:url. Frontend: DeletionBanner renders correctly on Profile and More tab with correct localized text ('Account scheduled for deletion on Sep 26, 2026.' + 'Cancel' button), no raw i18n keys leaked, testID deletion-banner + deletion-banner-cancel present. Share buttons on Videos, Education, Clinic public (/c/dr-joshi-uro), and Guide (/guides/turp) tap without crashing. Test patient is left restored (non-pending) as instructed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/c/[slug].tsx clinic share button", "issues": ["Share icon button uses accessibilityLabel='Share clinic' but has no testID — makes automated testing harder. Reference: /app/frontend/app/c/[slug].tsx:243-258"]}
+    ],
+    "react_native_issues": [
+      {"component": "Style props", "issue": "Console warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and '\"textShadow*\" style props are deprecated. Use \"textShadow\"' repeatedly during renders. Not blocking but should be migrated."},
+      {"component": "Pressable / View", "issue": "Console warns: 'props.pointerEvents is deprecated. Use style.pointerEvents' — RN core deprecation."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_deletion_grace_and_share.py",
+    "/app/test_reports/pytest/iteration28_deletion_share.xml"
+  ],
+  "action_items": [
+    "(Optional) Add testID='clinic-share' to the share button in /app/frontend/app/c/[slug].tsx to enable direct e2e clicks.",
+    "(Optional, unrelated) Migrate deprecated RN style props (shadow* → boxShadow, textShadow* → textShadow, pointerEvents prop → style.pointerEvents) — noisy in console but non-blocking.",
+    "No action needed for the three tested features — all working as spec'd."
+  ],
+  "critical_code_review_comments": [
+    "auth.py: `_cancel_pending_deletion` correctly $unsets deletion_requested_at/deletion_purge_at and invalidates auth_cache. Good.",
+    "auth.py: DELETE /api/auth/me returns 200 (soft-delete) with grace_days=30 exactly as required. Restore token TTL bound to purge_at (30 days).",
+    "share.py: refer canonical URL is built as `/refer?ref=<code>` and if `ref` query param is passed, an extra `&ref=` gets appended — meaning refer/<code>?ref=<code> yields two ref params (`/refer?ref=CODE&ref=CODE`). Both refer-with-path-only and refer with ?ref query are used in tests and the second ref is idempotent, but ideally dedupe. Currently harmless because the value matches.",
+    "mailer.py: `_assert_safe_email` guardrails run before every send; deletion receipt template is server-side only. Good.",
+    "auth.py L317: expression `expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at < datetime.now(...)` has ambiguous operator precedence — works today because the ternary returns a datetime that Python then compares, but this is a legibility landmine (not in scope of this review)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deletion_grace_and_share.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100% (functional smoke — share buttons don't crash; banner renders with correct copy)"},
+  "seed_data_creation": "None. Existing PATIENT session test_pat_del_1787811814560 was toggled soft-delete → restore during tests and finally left restored (pending_deletion=false, no purge_at).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All three features (30-day soft-delete grace, deletion receipt email, share OG endpoints) are working end-to-end. Backend regression file: /app/backend/tests/test_deletion_grace_and_share.py (12 tests, ~3s). Frontend banner tested visually — deletion-banner and deletion-banner-cancel testIDs work. Note that on web, a first-run 'Privacy consent' modal + 'Link mobile number' onboarding may block automated clicks on the banner; use the API to reset patient state (POST /api/auth/me/restore) if a test flow leaves it pending. Share buttons on the clinic public page use accessibilityLabel='Share clinic' rather than testID.",
+  "rca_of_issue": "N/A — no bugs found in scope."
+}

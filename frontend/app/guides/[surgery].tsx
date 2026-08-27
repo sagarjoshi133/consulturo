@@ -20,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../src/api';
+import { shareLink } from '../../src/share';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useI18n } from '../../src/i18n';
 
@@ -127,7 +128,20 @@ export default function GuideScreen() {
             <Ionicons name="chevron-back" size={20} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.heroPill}>{L === 'hi' ? 'मरीज़ गाइड' : L === 'gu' ? 'દર્દી માર્ગદર્શિકા' : 'PATIENT GUIDE'}</Text>
-          <View style={{ width: 32 }} />
+          <TouchableOpacity
+            onPress={() => shareLink({
+              kind: 'guide',
+              ident: slug,
+              title: `${pick(guide.name, L)} — Patient Guide`,
+              description: L === 'hi' ? 'सर्जरी से पहले, दौरान और बाद में क्या करें।'
+                : L === 'gu' ? 'સર્જરી પહેલા, દરમિયાન અને પછી શું અપેક્ષા રાખવી.'
+                : 'What to expect before, during and after your procedure.',
+            })}
+            style={styles.backBtn}
+            testID="guide-share"
+          >
+            <Ionicons name="share-social" size={18} color="#fff" />
+          </TouchableOpacity>
         </View>
         <Text style={styles.heroTitle}>{pick(guide.name, L)}</Text>
         <View style={styles.heroMeta}>

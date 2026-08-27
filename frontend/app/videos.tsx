@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../src/api';
+import { shareLink } from '../src/share';
 import { COLORS, FONTS } from '../src/theme';
 import { useResponsive } from '../src/responsive';
 import { useDarkOverrides } from '../src/dark-mode';
@@ -60,6 +61,17 @@ export default function Videos() {
           <Ionicons name="arrow-back" size={22} color={d.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, d.textP]}>Videos</Text>
+        <TouchableOpacity
+          onPress={() => shareLink({
+            kind: 'videos',
+            title: 'ConsultUro Videos',
+            description: 'Trusted urology explainers by Dr. Sagar Joshi\u2019s team.',
+          })}
+          style={[styles.backBtn, d.surface, { marginLeft: 'auto' }]}
+          testID="videos-share"
+        >
+          <Ionicons name="share-social" size={20} color={d.colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60, alignItems: 'center' }}>
