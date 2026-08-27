@@ -22,7 +22,10 @@ type Row = {
   chief_complaint?: string;
   diagnoses?: string[];
   follow_up_date?: string;
+  follow_up_done_at?: string;
 };
+
+type Scope = 'upcoming' | 'today' | 'done';
 
 function fmtDate(v?: string): string {
   if (!v) return '';
@@ -33,11 +36,18 @@ function fmtDate(v?: string): string {
   } catch { return String(v); }
 }
 
+function fmtDoneAt(v?: string): string {
+  if (!v) return '';
+  try {
+    return new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return ''; }
+}
+
 export default function FollowupsScreen() {
   const router = useRouter();
   const [items, setItems] = useState<Row[]>([]);
   const [today, setToday] = useState('');
-  const [scope, setScope] = useState<'upcoming' | 'today'>('upcoming');
+  const [scope, setScope] = useState<Scope>('upcoming');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState('');
@@ -45,7 +55,7 @@ export default function FollowupsScreen() {
   const [newDate, setNewDate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async (sc: 'upcoming' | 'today') => {
+  const load = useCallback(async (sc: Scope) => {
     try {
       const { data } = await api.get('/encounters/followups', { params: { scope: sc } });
       setItems(data?.items || []);
@@ -98,8 +108,21 @@ export default function FollowupsScreen() {
     }
   }, [scope, load]);
 
+  const reopen = useCallback(async (row: Row) => {
+    setItems((prev) => prev.filter((r) => r.encounter_id !== row.encounter_id));
+    try {
+      await api.post(`/encounters/${row.encounter_id}/followup/reopen`);
+    } catch {
+      await load(scope);
+      const msg = 'Could not reopen it. Please try again.';
+      if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.alert(msg); }
+      else Alert.alert('Error', msg);
+    }
+  }, [scope, load]);
+
   const renderItem = ({ item }: { item: Row }) => {
     const isToday = item.follow_up_date === today;
+    const isDone = scope === 'done';
     return (
       <TouchableOpacity
         style={styles.card}
@@ -109,11 +132,20 @@ export default function FollowupsScreen() {
       >
         <View style={styles.cardTop}>
           <Text style={styles.name} numberOfLines={1}>{item.patient_name}</Text>
-          <View style={[styles.dateBadge, isToday && styles.dateBadgeToday]}>
-            <Text style={[styles.dateBadgeText, isToday && styles.dateBadgeTextToday]}>
-              {isToday ? 'Today' : fmtDate(item.follow_up_date)}
-            </Text>
-          </View>
+          {isDone ? (
+            <View style={[styles.dateBadge, styles.dateBadgeDone]}>
+              <Ionicons name="checkmark" size={12} color="#15803D" />
+              <Text style={[styles.dateBadgeText, { color: '#15803D' }]}>
+                {fmtDoneAt(item.follow_up_done_at) || 'Done'}
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.dateBadge, isToday && styles.dateBadgeToday]}>
+              <Text style={[styles.dateBadgeText, isToday && styles.dateBadgeTextToday]}>
+                {isToday ? 'Today' : fmtDate(item.follow_up_date)}
+              </Text>
+            </View>
+          )}
         </View>
         {!!item.patient_phone && <Text style={styles.meta}>{item.patient_phone}</Text>}
         {!!item.chief_complaint && <Text style={styles.complaint} numberOfLines={2}>{item.chief_complaint}</Text>}
@@ -122,24 +154,37 @@ export default function FollowupsScreen() {
             <View key={d} style={styles.dxChip}><Text style={styles.dxChipText}>{d}</Text></View>
           ))}
         </View>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={styles.rescheduleBtn}
-            onPress={() => openReschedule(item)}
-            testID={`fu-reschedule-${item.encounter_id}`}
-          >
-            <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.rescheduleText}>Reschedule</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={() => markDone(item)}
-            testID={`fu-done-${item.encounter_id}`}
-          >
-            <Ionicons name="checkmark-circle-outline" size={14} color="#15803D" />
-            <Text style={styles.doneText}>Mark done</Text>
-          </TouchableOpacity>
-        </View>
+        {isDone ? (
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.rescheduleBtn}
+              onPress={() => reopen(item)}
+              testID={`fu-reopen-${item.encounter_id}`}
+            >
+              <Ionicons name="refresh" size={14} color={COLORS.primary} />
+              <Text style={styles.rescheduleText}>Reopen</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.rescheduleBtn}
+              onPress={() => openReschedule(item)}
+              testID={`fu-reschedule-${item.encounter_id}`}
+            >
+              <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
+              <Text style={styles.rescheduleText}>Reschedule</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.doneBtn}
+              onPress={() => markDone(item)}
+              testID={`fu-done-${item.encounter_id}`}
+            >
+              <Ionicons name="checkmark-circle-outline" size={14} color="#15803D" />
+              <Text style={styles.doneText}>Mark done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -154,7 +199,7 @@ export default function FollowupsScreen() {
       </View>
 
       <View style={styles.tabs}>
-        {(['today', 'upcoming'] as const).map((sc) => (
+        {(['today', 'upcoming', 'done'] as const).map((sc) => (
           <TouchableOpacity
             key={sc}
             style={[styles.tab, scope === sc && styles.tabActive]}
@@ -162,7 +207,7 @@ export default function FollowupsScreen() {
             testID={`fu-tab-${sc}`}
           >
             <Text style={[styles.tabText, scope === sc && styles.tabTextActive]}>
-              {sc === 'today' ? 'Today' : 'Upcoming'}
+              {sc === 'today' ? 'Today' : sc === 'upcoming' ? 'Upcoming' : 'Done'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -183,7 +228,9 @@ export default function FollowupsScreen() {
             <View style={styles.center}>
               <Ionicons name="calendar-outline" size={40} color={COLORS.textDisabled} />
               <Text style={styles.emptyText}>
-                {scope === 'today' ? 'No follow-ups scheduled for today.' : 'No upcoming follow-ups.'}
+                {scope === 'today' ? 'No follow-ups scheduled for today.'
+                  : scope === 'done' ? 'No completed follow-ups yet.'
+                  : 'No upcoming follow-ups.'}
               </Text>
             </View>
           )}
@@ -288,6 +335,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 4,
   },
   dateBadgeToday: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  dateBadgeDone: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC', flexDirection: 'row', alignItems: 'center', gap: 3 },
   dateBadgeText: { ...FONTS.bodyMedium, fontSize: 11.5, color: COLORS.textSecondary },
   dateBadgeTextToday: { color: '#92400E' },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

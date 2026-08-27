@@ -46,6 +46,7 @@ _LIST_PROJECTION = {
     "created_by_name": 1,
     "created_at": 1,
     "follow_up_date": 1,
+    "follow_up_done_at": 1,
 }
 
 
@@ -233,21 +234,32 @@ async def list_followups(
     scope: str = "upcoming",
     limit: int = 100,
 ):
-    """Follow-ups due. scope='today' → only today's (IST); 'upcoming' →
-    today onward (default). Clinic-scoped, sorted by date ascending."""
+    """Follow-ups. scope='today' → only today's (IST); 'upcoming' →
+    today onward (default); 'done' → completed follow-ups (newest first).
+    Clinic-scoped."""
     clinic_id = await resolve_clinic_id(request, user)
     filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
     # Today's date in IST.
     from datetime import timedelta as _td
     ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
     today = ist_now.strftime("%Y-%m-%d")
+    limit = max(1, min(int(limit or 100), 300))
+    proj = dict(_LIST_PROJECTION)
+    if scope == "done":
+        filt["follow_up_done"] = True
+        items = await (
+            db.encounters.find(filt, proj)
+            .sort("follow_up_done_at", -1)
+            .limit(limit)
+            .to_list(length=limit)
+        )
+        return {"items": items, "today": today, "count": len(items)}
+
     filt["follow_up_done"] = {"$ne": True}
     if scope == "today":
         filt["follow_up_date"] = today
     else:
         filt["follow_up_date"] = {"$gte": today}
-    limit = max(1, min(int(limit or 100), 300))
-    proj = dict(_LIST_PROJECTION)
     items = await (
         db.encounters.find(filt, proj)
         .sort("follow_up_date", 1)
@@ -276,6 +288,28 @@ async def complete_followup(encounter_id: str, request: Request, user=Depends(re
         }},
     )
     return {"ok": True, "encounter_id": encounter_id, "follow_up_done": True}
+
+
+@router.post("/api/encounters/{encounter_id}/followup/reopen")
+async def reopen_followup(encounter_id: str, request: Request, user=Depends(require_staff)):
+    """Re-open a completed follow-up so it returns to the active list."""
+    clinic_id = await resolve_clinic_id(request, user)
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["encounter_id"] = encounter_id
+    existing = await db.encounters.find_one(filt, {"_id": 1, "follow_up_at": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+    # Re-arm the reminder only if the follow-up date is still in the future.
+    fu_at = existing.get("follow_up_at")
+    if getattr(fu_at, "tzinfo", None) is None and fu_at is not None:
+        fu_at = fu_at.replace(tzinfo=timezone.utc)
+    still_pending = bool(fu_at and fu_at > datetime.now(timezone.utc))
+    await db.encounters.update_one(
+        {"_id": existing["_id"]},
+        {"$set": {"follow_up_done": False, "follow_up_notified": not still_pending},
+         "$unset": {"follow_up_done_at": ""}},
+    )
+    return {"ok": True, "encounter_id": encounter_id, "follow_up_done": False}
 
 
 async def scan_and_fire_encounter_followups(now: datetime) -> None:

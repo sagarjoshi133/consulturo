@@ -412,3 +412,16 @@ POST /api/encounters/{id}/followup/done (staff) sets follow_up_done=true (+done_
 (list query filters follow_up_done != true). Rescheduling (PATCH follow_up_date) re-opens it
 (follow_up_done=false). Frontend: "Mark done" button (optimistic removal) beside Reschedule on
 /encounters/followups. Verified: curl (done/hidden/retained/reopen) + screenshots.
+
+## Announcement Templates — SHIPPED (Jun 2026)
+admin/announcements.tsx: a horizontal "Start from a template" row with 5 ready-made trilingual
+banners (Holiday closure, Health camp, New service, Doctor on leave, Timings changed). Tapping a
+chip opens the editor pre-filled (title/body EN+HI+GU, variant, icon, CTA, placements, pinned)
+with {date}/{service} style placeholders to tweak. Verified via screenshot (prefill works).
+
+## Completed Follow-ups Log — SHIPPED (Jun 2026)
+GET /api/encounters/followups?scope=done → completed follow-ups sorted by follow_up_done_at desc
+(exposes follow_up_done_at). POST /api/encounters/{id}/followup/reopen → follow_up_done=false,
+re-arms reminder if date still future. Frontend: /encounters/followups now has a 3rd "Done" tab
+showing completed rows with a green "done on <date>" badge + a "Reopen" action. Verified:
+curl (done list/reopen round-trip) + screenshots.

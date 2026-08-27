@@ -52,6 +52,87 @@ const PLACEMENT_LABELS: Record<AnnouncementPlacement, string> = {
   dashboard: 'Staff dashboard',
 };
 
+// Ready-made banners the owner can tap, tweak and post in seconds.
+const TEMPLATES: { key: string; label: string; icon: string; draft: Partial<Announcement> }[] = [
+  {
+    key: 'holiday',
+    label: 'Holiday closure',
+    icon: 'moon',
+    draft: {
+      variant: 'festive', icon: 'sparkles',
+      title_en: 'Clinic closed for the holiday',
+      title_hi: 'त्योहार के लिए क्लिनिक बंद',
+      title_gu: 'તહેવાર માટે ક્લિનિક બંધ',
+      body_en: 'We are closed on {date} for the holiday and will reopen the next working day. For emergencies, please call us.',
+      body_hi: 'हम {date} को त्योहार के कारण बंद रहेंगे और अगले कार्यदिवस पर फिर खुलेंगे। आपात स्थिति में कृपया कॉल करें।',
+      body_gu: 'અમે {date} ના રોજ તહેવારના કારણે બંધ રહીશું અને પછીના કાર્યકારી દિવસે ફરી ખૂલીશું. કટોકટીમાં કૃપા કરીને કૉલ કરો.',
+      audience: 'both', placements: ['patient_home', 'public_landing', 'dashboard'], pinned: true,
+    },
+  },
+  {
+    key: 'camp',
+    label: 'Health camp',
+    icon: 'medkit',
+    draft: {
+      variant: 'success', icon: 'medkit',
+      title_en: 'Free urology screening camp',
+      title_hi: 'निःशुल्क यूरोलॉजी जांच शिविर',
+      title_gu: 'મફત યુરોલોજી તપાસ કેમ્પ',
+      body_en: 'Join our free screening camp on {date}. Walk-ins welcome — spread the word!',
+      body_hi: '{date} को हमारे निःशुल्क जांच शिविर में शामिल हों। बिना अपॉइंटमेंट आ सकते हैं!',
+      body_gu: '{date} ના રોજ અમારા મફત તપાસ કેમ્પમાં જોડાઓ. એપોઇન્ટમેન્ટ વિના આવકાર્ય!',
+      cta_label_en: 'Book a slot', cta_label_hi: 'स्लॉट बुक करें', cta_label_gu: 'સ્લોટ બુક કરો', cta_url: '/book',
+      audience: 'patients', placements: ['patient_home', 'public_landing'], pinned: true,
+    },
+  },
+  {
+    key: 'service',
+    label: 'New service',
+    icon: 'star',
+    draft: {
+      variant: 'info', icon: 'star',
+      title_en: 'New service now available',
+      title_hi: 'नई सेवा अब उपलब्ध',
+      title_gu: 'નવી સેવા હવે ઉપલબ્ધ',
+      body_en: 'We now offer {service}. Book an appointment to learn more.',
+      body_hi: 'अब हम {service} प्रदान करते हैं। अधिक जानने के लिए अपॉइंटमेंट बुक करें।',
+      body_gu: 'હવે અમે {service} આપીએ છીએ. વધુ જાણવા માટે એપોઇન્ટમેન્ટ બુક કરો.',
+      cta_label_en: 'Book now', cta_label_hi: 'अभी बुक करें', cta_label_gu: 'હમણાં બુક કરો', cta_url: '/book',
+      audience: 'patients', placements: ['patient_home', 'public_landing'], pinned: false,
+    },
+  },
+  {
+    key: 'leave',
+    label: 'Doctor on leave',
+    icon: 'airplane',
+    draft: {
+      variant: 'warning', icon: 'alert-circle',
+      title_en: 'Doctor on leave',
+      title_hi: 'डॉक्टर अवकाश पर',
+      title_gu: 'ડૉક્ટર રજા પર',
+      body_en: 'Dr. Sagar Joshi will be on leave from {start} to {end}. Appointments during this period are paused.',
+      body_hi: 'डॉ. सागर जोशी {start} से {end} तक अवकाश पर रहेंगे। इस अवधि की अपॉइंटमेंट रोकी गई हैं।',
+      body_gu: 'ડૉ. સાગર જોશી {start} થી {end} સુધી રજા પર રહેશે. આ સમયગાળાની એપોઇન્ટમેન્ટ થોભાવેલ છે.',
+      audience: 'both', placements: ['patient_home', 'public_landing', 'booking_flow'], pinned: true,
+    },
+  },
+  {
+    key: 'timings',
+    label: 'Timings changed',
+    icon: 'time',
+    draft: {
+      variant: 'info', icon: 'time',
+      title_en: 'Updated clinic timings',
+      title_hi: 'क्लिनिक के नए समय',
+      title_gu: 'ક્લિનિકના નવા સમય',
+      body_en: 'Our OPD timings have changed to {timing}. Please plan your visit accordingly.',
+      body_hi: 'हमारा ओपीडी समय अब {timing} है। कृपया उसी अनुसार आएं।',
+      body_gu: 'અમારો OPD સમય હવે {timing} છે. કૃપા કરીને તે મુજબ મુલાકાત ગોઠવો.',
+      audience: 'both', placements: ['patient_home', 'public_landing', 'dashboard'], pinned: false,
+    },
+  },
+];
+
 export default function AnnouncementsAdmin() {
   const toast = useToast();
   const router = useRouter();
@@ -168,6 +249,31 @@ export default function AnnouncementsAdmin() {
             <Text style={styles.newBtnText}>New</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Ready-made templates — tap to pre-fill the editor. */}
+        <Text style={styles.templatesLabel}>Start from a template</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.templatesRow}
+        >
+          {TEMPLATES.map((tpl) => {
+            const meta = VARIANT_META[(tpl.draft.variant as AnnouncementVariant)] || VARIANT_META.info;
+            return (
+              <TouchableOpacity
+                key={tpl.key}
+                style={[styles.templateChip, { borderColor: meta.color + '55' }]}
+                onPress={() => { setPreviewLang('en'); setEditing({ ...EMPTY, ...tpl.draft }); }}
+                testID={`ann-template-${tpl.key}`}
+              >
+                <View style={[styles.templateIcon, { backgroundColor: meta.bg }]}>
+                  <Ionicons name={tpl.icon as any} size={16} color={meta.color} />
+                </View>
+                <Text style={styles.templateChipText}>{tpl.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         {loading ? (
           <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -532,6 +638,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  templatesLabel: { ...FONTS.label, color: COLORS.textSecondary, marginTop: 14, marginBottom: 8 },
+  templatesRow: { gap: 8, paddingRight: 8, paddingBottom: 4 },
+  templateChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fff', borderWidth: 1, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  templateIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  templateChipText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textPrimary },
   previewLangRow: { flexDirection: 'row', gap: 6, marginTop: 8, marginBottom: 4 },
   previewLangChip: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.pill,
