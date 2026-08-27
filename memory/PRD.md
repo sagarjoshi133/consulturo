@@ -447,3 +447,8 @@ linking to /encounters/followups?scope=overdue. Verified curl + screenshots.
 - NON-ISSUE (web-only): desktop-UA browser at narrow width shows the web sidebar (isUaDesktopHint) —
   a Playwright artifact; real installed phone (Platform.OS!=web) always renders mobile UI.
 - LOW: /api/inbox + /api/messaging/permissions 404 for patients but screens handle gracefully.
+
+## Empty Inbox Polish — SHIPPED (Jun 2026)
+inbox.tsx empty state redesigned: tinted circular icon bubble, "No messages yet" heading, warmer
+copy ("You're all set. When the clinic team writes to you, their message will appear right here."),
+and a "Browse Help & FAQs" CTA (→ /help) for patients on the Inbox tab. Verified via screenshot.

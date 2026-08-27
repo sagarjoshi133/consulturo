@@ -483,25 +483,38 @@ export default function Inbox() {
         >
           {visible.length === 0 ? (
             <View style={styles.empty}>
-              <MaterialCommunityIcons
-                name={tab === 'sent' ? 'send-outline' : 'chat-outline'}
-                size={56}
-                color={COLORS.textDisabled}
-              />
+              <View style={styles.emptyBubble}>
+                <MaterialCommunityIcons
+                  name={tab === 'sent' ? 'send-outline' : 'message-text-outline'}
+                  size={44}
+                  color={COLORS.primary}
+                />
+              </View>
               <Text style={styles.emptyText}>
                 {tab === 'sent'
                   ? 'No sent messages yet'
                   : isStaff && cpFilter !== 'all'
                     ? `No messages from ${cpFilter}`
-                    : 'No personal messages yet'}
+                    : 'No messages yet'}
               </Text>
               <Text style={styles.emptySub}>
                 {tab === 'sent'
                   ? 'Messages you send will appear here so you can review the conversation history.'
                   : isStaff
                     ? 'Personal messages from team members or patients will land here.'
-                    : 'When the clinic team writes to you, the message will land here.'}
+                    : 'You\u2019re all set. When the clinic team writes to you, their message will appear right here.'}
               </Text>
+              {!isStaff && tab === 'inbox' && (
+                <TouchableOpacity
+                  style={styles.emptyCta}
+                  activeOpacity={0.85}
+                  onPress={() => router.push('/help' as any)}
+                  testID="inbox-empty-help"
+                >
+                  <Ionicons name="help-buoy-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.emptyCtaText}>Browse Help & FAQs</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             visible.map((n) => {
@@ -729,9 +742,23 @@ const styles = StyleSheet.create({
   },
   tagBadgeText: { ...FONTS.label, fontSize: 9, letterSpacing: 0.4 },
 
-  empty: { alignItems: 'center', padding: 40 },
-  emptyText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, marginTop: 14 },
-  emptySub: { ...FONTS.body, color: COLORS.textSecondary, textAlign: 'center', marginTop: 6, fontSize: 12, lineHeight: 18 },
+  empty: { alignItems: 'center', paddingHorizontal: 32, paddingTop: 56 },
+  emptyBubble: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: COLORS.primary + '12',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 18,
+  },
+  emptyText: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 16, marginTop: 0 },
+  emptySub: { ...FONTS.body, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, fontSize: 13, lineHeight: 20 },
+  emptyCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 20, paddingHorizontal: 16, paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.primary + '12',
+    borderWidth: 1, borderColor: COLORS.primary + '33',
+  },
+  emptyCtaText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 13 },
 
   // Card
   card: {
