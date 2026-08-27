@@ -547,3 +547,14 @@ VALIDATION: Cannot be tested in Expo Go/web preview (bug is production-build-onl
 + generate a fresh APK, then re-run Connection Diagnostics — pings should now turn green.
 Escalation if still failing after rebuild: set app.json newArchEnabled:false (New-Arch is the root
 trigger) — bigger change, kept as fallback.
+
+## FIX (round 2): disabled New Architecture + confirmed rebuild requirement (Jun 2026)
+User reported "same issue continues + diagnostic collapses to homepage" — but PREVIEW /net-check runs
+green (87/84/97ms) and does NOT collapse. Confirms app code + backend are healthy; failure is specific
+to the INSTALLED old APK (v1.0.33) which does NOT contain the previous fixes (fixes are build-time only).
+Added the root-cause lever: app.json newArchEnabled true→false (New Architecture is the documented
+trigger of the SDK 54 Hermes Android networking hang). Now the next build carries: expo 54.0.37 patch
++ Android XHR fetch polyfill + New Arch OFF.
+CRITICAL: user MUST Publish (redeploy) → generate a NEW Android build → install it. The old installed
+APK will behave identically until rebuilt. If a FRESH build still fails, escalate to Emergent support
+(build/deploy/Cloudflare infra).
