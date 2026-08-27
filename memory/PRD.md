@@ -429,3 +429,7 @@ curl (done list/reopen round-trip) + screenshots.
 ## Follow-up Count Badge — SHIPPED (Jun 2026)
 Encounters list header "Follow-ups" button now shows a small count badge of follow-ups due today
 (fetched via /encounters/followups?scope=today on focus). Verified: badge shows "1" with one due.
+
+## Dashboard Follow-up Count — SHIPPED (Jun 2026)
+AdminOverviewPanel "Follow-ups due today" section header now shows a count pill (followups.length)
+next to the title, visible on the Today tab (default dashboard landing). Verified via screenshot.

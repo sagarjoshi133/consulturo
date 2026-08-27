@@ -173,7 +173,12 @@ export function AdminOverviewPanel({
 
       {followups.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Follow-ups due today</Text>
+          <View style={styles.followupHead}>
+            <Text style={styles.sectionTitle}>Follow-ups due today</Text>
+            <View style={styles.followupCount}>
+              <Text style={styles.followupCountText}>{followups.length}</Text>
+            </View>
+          </View>
           {followups.slice(0, 6).map((f: any) => (
             <TouchableOpacity
               key={f.encounter_id}
@@ -439,6 +444,9 @@ const styles = StyleSheet.create({
   },
   bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
   followupRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBEB', padding: 13, borderRadius: RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: '#FDE68A' },
+  followupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 8 },
+  followupCount: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 7, backgroundColor: '#B45309', alignItems: 'center', justifyContent: 'center' },
+  followupCountText: { color: '#fff', fontSize: 12, fontFamily: 'Manrope_700Bold' },
   followupName: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.textPrimary },
   followupSub: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
   followupAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, marginBottom: 4 },
