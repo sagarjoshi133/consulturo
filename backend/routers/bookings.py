@@ -639,6 +639,72 @@ async def _auto_mark_missed(clinic_filter: Dict[str, Any]) -> int:
     return len(to_flip)
 
 
+async def sweep_booking_reminders(now: Optional[datetime] = None) -> int:
+    """Gently remind patients the day BEFORE a confirmed appointment.
+
+    Runs from the server 60s loop. Finds confirmed bookings whose date is
+    tomorrow (IST) and that haven't been reminded yet, sends an in-app
+    notification + push, and flags them so each patient is reminded once.
+    """
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = (now.astimezone(ist) if now else datetime.now(ist))
+    tomorrow = (now_ist + timedelta(days=1)).date().isoformat()
+    q = {
+        "status": "confirmed",
+        "booking_date": tomorrow,
+        "reminder_sent": {"$ne": True},
+        "user_id": {"$ne": None},
+    }
+    candidates = await db.bookings.find(
+        q, {"_id": 0, "booking_id": 1, "booking_date": 1, "booking_time": 1,
+            "user_id": 1, "mode": 1},
+    ).to_list(length=500)
+    if not candidates:
+        return 0
+
+    ids = [b["booking_id"] for b in candidates]
+    try:
+        await db.bookings.update_many(
+            {"booking_id": {"$in": ids}, "status": "confirmed"},
+            {"$set": {"reminder_sent": True, "reminder_sent_at": datetime.now(timezone.utc)}},
+        )
+    except Exception:
+        return 0
+
+    async def _notify(rows: List[Dict[str, Any]]) -> None:
+        for b in rows:
+            uid = b.get("user_id")
+            if not uid:
+                continue
+            when = f"tomorrow at {b.get('booking_time','')}".strip()
+            body = (
+                f"Reminder: you have an appointment {when} with Dr. Sagar Joshi's clinic. "
+                f"See you then!"
+            )
+            try:
+                await create_notification(
+                    user_id=uid,
+                    title="📅 Appointment tomorrow",
+                    body=body,
+                    kind="booking_reminder",
+                    data={"booking_id": b["booking_id"], "type": "booking_reminder"},
+                )
+                await push_to_user(
+                    uid,
+                    "Appointment tomorrow",
+                    body,
+                    data={"booking_id": b["booking_id"], "type": "booking_reminder"},
+                )
+            except Exception:
+                pass
+
+    try:
+        asyncio.create_task(_notify(candidates))
+    except Exception:
+        pass
+    return len(candidates)
+
+
 @router.get("/api/bookings/all")
 async def all_bookings(
     request: Request,
@@ -851,6 +917,8 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
 
     if body.booking_date and body.booking_date != existing["booking_date"]:
         updates["booking_date"] = body.booking_date
+        # New date → re-arm the day-before reminder.
+        updates["reminder_sent"] = False
     if body.booking_time and body.booking_time != existing["booking_time"]:
         updates["booking_time"] = body.booking_time
 

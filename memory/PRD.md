@@ -452,3 +452,10 @@ linking to /encounters/followups?scope=overdue. Verified curl + screenshots.
 inbox.tsx empty state redesigned: tinted circular icon bubble, "No messages yet" heading, warmer
 copy ("You're all set. When the clinic team writes to you, their message will appear right here."),
 and a "Browse Help & FAQs" CTA (→ /help) for patients on the Inbox tab. Verified via screenshot.
+
+## Booking Reminders (day before) — SHIPPED (Jun 2026)
+routers/bookings.py sweep_booking_reminders(now) runs in the server 60s loop: finds confirmed
+bookings dated tomorrow (IST) with reminder_sent != true + user_id, sends an in-app notification
+("📅 Appointment tomorrow") + push, and flags reminder_sent so each patient is reminded once.
+Rescheduling to a new date resets reminder_sent (PATCH booking_date). Verified via live loop:
+notification created + flag set, then auto-cleaned.

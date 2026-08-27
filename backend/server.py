@@ -815,6 +815,13 @@ async def _start_reminder_loop():
                     await scan_and_fire_encounter_followups(now)
                 except Exception:
                     pass
+
+                # ---- Booking reminders (day before the appointment) ----
+                try:
+                    from routers.bookings import sweep_booking_reminders
+                    await sweep_booking_reminders(now)
+                except Exception:
+                    pass
             except Exception:
                 pass
             await asyncio.sleep(60)
