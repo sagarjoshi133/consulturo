@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import api from '../../src/api';
+import { sharePdfFromHtml } from '../../src/pdf-share';
+import { loadClinicSettings } from '../../src/rx-pdf';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { goBackSafe } from '../../src/nav';
 
@@ -32,19 +34,73 @@ function shiftMonth(mon: string, delta: number): string {
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+function esc(s: any): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+function buildReportHtml(rep: Report, prev: Report | null, label: string, prevLabel: string, settings: any): string {
+  const inr = (n?: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+  const clinic = settings?.clinic_name || settings?.name || 'Clinic';
+  const prevC = Number(prev?.collected || 0);
+  const curC = Number(rep.collected || 0);
+  const d = curC - prevC;
+  const pct = prevC > 0 ? (d / prevC) * 100 : (curC > 0 ? 100 : 0);
+  const up = d >= 0;
+  const rows = (rep.series || []).map((s) => `
+    <tr>
+      <td>${esc(s.day)}</td>
+      <td class="r">${inr(s.collected)}</td>
+      <td class="r">${inr(s.outstanding)}</td>
+      <td class="r">${inr(s.waived)}</td>
+    </tr>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"/>
+  <style>
+    *{ box-sizing:border-box; } body{ font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#1A2E35; padding:26px; }
+    h1{ font-size:20px; margin:0; } .muted{ color:#64748B; font-size:12px; margin:2px 0 18px; }
+    .cards{ display:flex; gap:10px; margin-bottom:14px; }
+    .card{ flex:1; border-radius:10px; padding:14px; text-align:center; }
+    .card .v{ font-size:18px; font-weight:800; } .card .l{ font-size:11px; font-weight:600; margin-top:2px; }
+    .green{ background:#D1FAE5; color:#047857; } .amber{ background:#FEF3C7; color:#B45309; } .grey{ background:#F1F5F9; color:#475569; }
+    .cmp{ border:1px solid ${up ? '#10B981' : '#EF4444'}; background:${up ? '#ECFDF5' : '#FEF2F2'}; border-radius:10px; padding:12px 14px; font-size:13px; margin-bottom:16px; }
+    .cmp b{ color:${up ? '#047857' : '#B91C1C'}; }
+    table{ width:100%; border-collapse:collapse; font-size:12px; } th,td{ padding:7px 8px; border-bottom:1px solid #E2E8F0; text-align:left; }
+    th{ background:#F8FAFC; font-size:11px; color:#475569; } td.r,th.r{ text-align:right; }
+    .foot{ margin-top:20px; font-size:10px; color:#94A3B8; }
+  </style></head><body>
+    <h1>${esc(clinic)} — Revenue Report</h1>
+    <div class="muted">${esc(label)} · ${rep.counts.total} encounters (${rep.counts.paid} paid · ${rep.counts.pending} pending · ${rep.counts.waived} waived)</div>
+    <div class="cards">
+      <div class="card green"><div class="v">${inr(rep.collected)}</div><div class="l">Collected</div></div>
+      <div class="card amber"><div class="v">${inr(rep.outstanding)}</div><div class="l">Outstanding</div></div>
+      <div class="card grey"><div class="v">${inr(rep.waived_total)}</div><div class="l">Waived</div></div>
+    </div>
+    <div class="cmp"><b>${up ? '▲ Up' : '▼ Down'} ${Math.abs(pct).toFixed(0)}%</b> vs ${esc(prevLabel)} — ${inr(curC)} this month vs ${inr(prevC)} last month (${up ? '+' : '−'}${inr(Math.abs(d))}).</div>
+    <table>
+      <thead><tr><th>Day</th><th class="r">Collected</th><th class="r">Outstanding</th><th class="r">Waived</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">No encounters</td></tr>'}</tbody>
+    </table>
+    <div class="foot">Generated ${new Date().toLocaleString('en-IN')} · ConsultUro</div>
+  </body></html>`;
+}
+
 export default function RevenueReportScreen() {
   const router = useRouter();
   const nowIso = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7);
   const [mon, setMon] = useState(nowIso);
   const [rep, setRep] = useState<Report | null>(null);
+  const [prev, setPrev] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState('');
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/encounters/revenue-report', { params: { month: mon } });
-      setRep(data); setErr('');
+      const [cur, pr] = await Promise.all([
+        api.get('/encounters/revenue-report', { params: { month: mon } }),
+        api.get('/encounters/revenue-report', { params: { month: shiftMonth(mon, -1) } }).catch(() => ({ data: null })),
+      ]);
+      setRep(cur.data); setPrev(pr.data); setErr('');
     } catch (e: any) {
       setErr(e?.response?.status === 403 ? 'Owner access required.' : 'Could not load the report.');
       setRep(null);
@@ -58,6 +114,26 @@ export default function RevenueReportScreen() {
   const label = (() => { const [y, m] = mon.split('-').map(Number); return `${MONTHS[m - 1]} ${y}`; })();
   const maxBar = Math.max(1, ...(rep?.series || []).map((d) => d.collected + d.outstanding + d.waived));
 
+  // Month-over-month comparison on collected revenue.
+  const prevCollected = Number(prev?.collected || 0);
+  const curCollected = Number(rep?.collected || 0);
+  const delta = curCollected - prevCollected;
+  const pct = prevCollected > 0 ? (delta / prevCollected) * 100 : (curCollected > 0 ? 100 : 0);
+  const up = delta >= 0;
+  const prevLabel = (() => { const [y, m] = shiftMonth(mon, -1).split('-').map(Number); return `${MONTHS[m - 1]} ${y}`; })();
+
+  const shareReport = useCallback(async () => {
+    if (!rep) return;
+    setSharing(true);
+    try {
+      const s = await loadClinicSettings();
+      const html = buildReportHtml(rep, prev, label, prevLabel, s);
+      await sharePdfFromHtml(html, `Revenue-${rep.month}`, `Revenue Report — ${label}`);
+    } catch {
+      // best-effort; share sheet errors are non-fatal
+    } finally { setSharing(false); }
+  }, [rep, prev, label, prevLabel]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.topBar}>
@@ -65,6 +141,13 @@ export default function RevenueReportScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Revenue Report</Text>
+        <View style={{ flex: 1 }} />
+        {!!rep && (
+          <TouchableOpacity onPress={shareReport} style={styles.shareBtn} disabled={sharing} testID="rev-share">
+            {sharing ? <ActivityIndicator size="small" color={COLORS.primaryDark} /> : <Ionicons name="share-outline" size={16} color={COLORS.primaryDark} />}
+            <Text style={styles.shareBtnText}>Share PDF</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.monthBar}>
@@ -104,6 +187,21 @@ export default function RevenueReportScreen() {
           <Text style={styles.countsLine}>
             {rep?.counts.total || 0} encounters · {rep?.counts.paid || 0} paid · {rep?.counts.pending || 0} pending · {rep?.counts.waived || 0} waived
           </Text>
+
+          <View style={[styles.compareCard, { borderColor: up ? '#10B98155' : '#EF444455', backgroundColor: up ? '#ECFDF5' : '#FEF2F2' }]}>
+            <View style={styles.compareIconWrap}>
+              <Ionicons name={up ? 'trending-up' : 'trending-down'} size={22} color={up ? '#047857' : '#B91C1C'} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.compareTitle}>
+                {up ? 'Up' : 'Down'} {Math.abs(pct).toFixed(0)}% vs {prevLabel}
+              </Text>
+              <Text style={styles.compareSub}>
+                {money(curCollected)} this month · {money(prevCollected)} last month
+                {'  '}({up ? '+' : '−'}{money(Math.abs(delta))})
+              </Text>
+            </View>
+          </View>
 
           <View style={styles.legendRow}>
             <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#10B981' }]} /><Text style={styles.legendText}>Collected</Text></View>
@@ -152,6 +250,16 @@ const styles = StyleSheet.create({
   statValue: { ...FONTS.h2, fontSize: 16 },
   statLabel: { ...FONTS.bodyMedium, fontSize: 11.5 },
   countsLine: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, textAlign: 'center', marginTop: 12 },
+  compareCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: RADIUS.md, padding: 14, marginTop: 14 },
+  compareIconWrap: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#ffffff99', alignItems: 'center', justifyContent: 'center' },
+  compareTitle: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.textPrimary },
+  compareSub: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.primary + '12', borderColor: COLORS.primary + '30', borderWidth: 1,
+    borderRadius: RADIUS.pill, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  shareBtnText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primaryDark },
   legendRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dot: { width: 10, height: 10, borderRadius: 5 },

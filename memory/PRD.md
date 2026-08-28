@@ -692,3 +692,15 @@ Frontend:
 - app/encounters/[id].tsx — "Patient history & billing" button → /encounters/timeline?phone=&name=.
 VERIFIED (curl): drawer total 1500 Cash; revenue-report collected 500/waived 500/outstanding 1000, 3
 series days; patient-timeline 1 visit + 2 receipts. Screenshots: revenue + timeline render correctly.
+
+## FEATURE: Revenue report Share-PDF + month-over-month Compare (Jun 2026)
+Frontend-only (no new backend; reuses GET /encounters/revenue-report per month + src/pdf-share
+sharePdfFromHtml + src/rx-pdf loadClinicSettings):
+- app/encounters/revenue.tsx:
+  - load() now also fetches PREVIOUS month's report (Promise.all) → Compare card: "Up/Down X% vs
+    <prev month>", this vs last collected + delta, green/red trend styling.
+  - "Share PDF" header button (testID rev-share) → buildReportHtml(rep, prev, label, prevLabel,
+    clinicSettings) → sharePdfFromHtml (opens native share sheet: WhatsApp/email/save). HTML includes
+    clinic name, month, 3 summary cards, compare line, and per-day table.
+VERIFIED: screenshot shows Share PDF button + compare card ("Up 100% vs Jul 2026, ₹500 vs ₹0 (+₹500)").
+Lint/babel clean.
