@@ -107,6 +107,9 @@ class PrescriptionCreate(BaseModel):
     # Set by the "Start Consultation" workflow from a confirmed booking so
     # the whole patient journey stays linked (booking → consult → Rx).
     source_booking_id: Optional[str] = None
+    # Links this Rx to a clinical encounter — finalising the Rx auto-marks
+    # the encounter Completed (encounter → consultation → Rx).
+    encounter_id: Optional[str] = None
 
 class SessionExchangeBody(BaseModel):
     session_id: str
@@ -379,6 +382,9 @@ class ReceiptBody(BaseModel):
     payment_ref: Optional[str] = None      # txn id / cheque #
     notes: Optional[str] = None
     receipt_date: Optional[str] = None     # YYYY-MM-DD (IST). Defaults to today.
+    # Links this receipt to a clinical encounter so reception can see
+    # payment status per visit (encounter → billing).
+    encounter_id: Optional[str] = None
 
 class PushRegisterBody(BaseModel):
     token: str

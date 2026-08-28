@@ -64,6 +64,7 @@ export default function RecordPayment() {
     patient_phone?: string;
     patient_name?: string;
     booking_id?: string;
+    encounter_id?: string;
     amount?: string;
     description?: string;
     service_type?: string;
@@ -273,6 +274,7 @@ export default function RecordPayment() {
         payment_ref: paymentRef || undefined,
         notes: notes || undefined,
         receipt_date: date,
+        encounter_id: (params.encounter_id || '').trim() || undefined,
       };
       const r = await api.post('/receipts', payload);
       const receipt = r.data;

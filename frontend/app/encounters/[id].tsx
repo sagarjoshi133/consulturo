@@ -19,6 +19,21 @@ import { buildEncounterHtml } from '../../src/encounter-pdf';
 import { loadClinicSettings } from '../../src/rx-pdf';
 import { sharePdfFromHtml } from '../../src/pdf-share';
 import { sharePdfThenWhatsApp } from '../../src/whatsapp-pdf';
+import { haptics } from '../../src/haptics';
+import { useAuth } from '../../src/auth';
+
+const PRESCRIBER_ROLES = ['doctor', 'owner', 'primary_owner', 'partner', 'super_owner'];
+
+const STAGE_META: Record<string, { label: string; color: string; bg: string }> = {
+  open: { label: 'Open', color: '#B45309', bg: '#FEF3C7' },
+  in_consultation: { label: 'In Consultation', color: '#6D28D9', bg: '#EDE9FE' },
+  completed: { label: 'Completed', color: '#047857', bg: '#D1FAE5' },
+};
+const PAY_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: 'Payment pending', color: '#B45309', bg: '#FEF3C7' },
+  paid: { label: 'Paid', color: '#047857', bg: '#D1FAE5' },
+  waived: { label: 'Waived off', color: '#64748B', bg: '#F1F5F9' },
+};
 
 function fmtDateTime(v?: string): string {
   if (!v) return '';
@@ -31,12 +46,16 @@ function fmtDateTime(v?: string): string {
 
 export default function EncounterDetailScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const canWaive = PRESCRIBER_ROLES.includes(String((user as any)?.role || ''));
   const { id } = useLocalSearchParams<{ id: string }>();
   const [enc, setEnc] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [sendingWa, setSendingWa] = useState(false);
+  const [startingConsult, setStartingConsult] = useState(false);
+  const [waiving, setWaiving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -125,6 +144,62 @@ export default function EncounterDetailScreen() {
     }
   }, [enc]);
 
+  const startConsultation = useCallback(async () => {
+    if (!enc) return;
+    setStartingConsult(true);
+    try {
+      await api.post(`/encounters/${enc.encounter_id}/start-consultation`);
+      invalidateCached('worklist:');
+      router.push({ pathname: '/prescriptions/new', params: { encounterId: enc.encounter_id } } as any);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not start consultation';
+      if (Platform.OS === 'web') window.alert(String(msg)); else Alert.alert('Error', String(msg));
+    } finally {
+      setStartingConsult(false);
+    }
+  }, [enc, router]);
+
+  const recordPayment = useCallback(() => {
+    if (!enc) return;
+    router.push({
+      pathname: '/billing/new',
+      params: {
+        encounter_id: enc.encounter_id,
+        patient_name: enc.patient_name || '',
+        patient_phone: enc.patient_phone || '',
+        amount: enc.fee_amount ? String(enc.fee_amount) : '',
+        description: 'Consultation',
+        service_type: 'consultation',
+      },
+    } as any);
+  }, [enc, router]);
+
+  const waiveFee = useCallback(() => {
+    if (!enc) return;
+    const run = async () => {
+      setWaiving(true);
+      try {
+        await api.post(`/encounters/${enc.encounter_id}/waive`);
+        invalidateCached('worklist:');
+        haptics.success();
+        await load();
+      } catch (e: any) {
+        const msg = e?.response?.data?.detail || 'Could not waive charges';
+        if (Platform.OS === 'web') window.alert(String(msg)); else Alert.alert('Error', String(msg));
+      } finally {
+        setWaiving(false);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Waive the consultation charge for this encounter?')) void run();
+    } else {
+      Alert.alert('Waive charges?', 'Mark this consultation as waived off (no charge).', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Waive', style: 'destructive', onPress: run },
+      ]);
+    }
+  }, [enc, load]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -185,6 +260,20 @@ export default function EncounterDetailScreen() {
           <Text style={styles.meta}>
             {fmtDateTime(enc.created_at)}{enc.created_by_name ? ` · ${enc.created_by_name}` : ''}
           </Text>
+          <View style={styles.badgeRow}>
+            {!!STAGE_META[enc.stage] && (
+              <View style={[styles.badge, { backgroundColor: STAGE_META[enc.stage].bg }]}>
+                <Text style={[styles.badgeText, { color: STAGE_META[enc.stage].color }]}>{STAGE_META[enc.stage].label}</Text>
+              </View>
+            )}
+            {!!PAY_META[enc.payment_status] && (
+              <View style={[styles.badge, { backgroundColor: PAY_META[enc.payment_status].bg }]}>
+                <Text style={[styles.badgeText, { color: PAY_META[enc.payment_status].color }]}>
+                  {PAY_META[enc.payment_status].label}{enc.fee_amount ? ` · ₹${enc.fee_amount}` : ''}
+                </Text>
+              </View>
+            )}
+          </View>
           {!!enc.follow_up_date && (
             <View style={styles.fuBadge}>
               <Ionicons name="calendar" size={13} color="#B45309" />
@@ -212,6 +301,18 @@ export default function EncounterDetailScreen() {
         )}
 
         <Section label="Chief Complaint" value={enc.chief_complaint} />
+        <Section label="IPSS" value={enc.ipss} />
+        {!!(enc.inv_blood || enc.inv_psa || enc.inv_usg || enc.inv_uroflowmetry || enc.inv_ct || enc.inv_mri || enc.investigation_findings) && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionLabel}>Investigations (Findings)</Text>
+            {[['Blood', enc.inv_blood], ['PSA', enc.inv_psa], ['USG', enc.inv_usg], ['Uroflowmetry', enc.inv_uroflowmetry], ['CT', enc.inv_ct], ['MRI', enc.inv_mri]]
+              .filter(([, v]) => !!v)
+              .map(([k, v]) => (
+                <Text key={k as string} style={styles.sectionText}><Text style={styles.invKey}>{k}: </Text>{v as string}</Text>
+              ))}
+            {!!enc.investigation_findings && <Text style={styles.sectionText}>{enc.investigation_findings}</Text>}
+          </View>
+        )}
         <Section label="Subjective" value={enc.subjective} />
         <Section label="Objective" value={enc.objective} />
         <Section label="Assessment" value={enc.assessment} />
@@ -238,6 +339,7 @@ export default function EncounterDetailScreen() {
         </TouchableOpacity>
 
 
+        {/* ── Consultation flow ──────────────────────────────────── */}
         {enc.prescription_id ? (
           <TouchableOpacity
             style={styles.rxBtn}
@@ -245,19 +347,53 @@ export default function EncounterDetailScreen() {
             testID="encdet-open-rx"
           >
             <Ionicons name="document-text" size={18} color={COLORS.success} />
-            <Text style={[styles.rxBtnText, { color: COLORS.success }]}>Open linked prescription</Text>
+            <Text style={[styles.rxBtnText, { color: COLORS.success }]}>Open prescription</Text>
             <Ionicons name="chevron-forward" size={16} color={COLORS.success} />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
             style={[styles.rxBtn, { backgroundColor: COLORS.primary }]}
-            onPress={() => router.push(`/prescriptions/new?encounterId=${enc.encounter_id}` as any)}
-            testID="encdet-create-rx"
+            onPress={startConsultation}
+            disabled={startingConsult}
+            testID="encdet-start-consult"
           >
-            <Ionicons name="add-circle-outline" size={18} color="#fff" />
-            <Text style={[styles.rxBtnText, { color: '#fff' }]}>Create prescription from this encounter</Text>
+            {startingConsult ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="medkit" size={18} color="#fff" />}
+            <Text style={[styles.rxBtnText, { color: '#fff' }]}>
+              {enc.stage === 'in_consultation' ? 'Resume Consultation' : 'Start Consultation'}
+            </Text>
           </TouchableOpacity>
         )}
+
+        {/* ── Billing ────────────────────────────────────────────── */}
+        <View style={styles.billBlock}>
+          <View style={styles.billHead}>
+            <Ionicons name="cash-outline" size={16} color={COLORS.textSecondary} />
+            <Text style={styles.billTitle}>Billing</Text>
+            {!!PAY_META[enc.payment_status] && (
+              <View style={[styles.badge, { backgroundColor: PAY_META[enc.payment_status].bg, marginLeft: 'auto' }]}>
+                <Text style={[styles.badgeText, { color: PAY_META[enc.payment_status].color }]}>{PAY_META[enc.payment_status].label}</Text>
+              </View>
+            )}
+          </View>
+          {!!enc.fee_amount && <Text style={styles.billFee}>Consultation fee: ₹{enc.fee_amount}</Text>}
+          {enc.payment_status !== 'waived' && (
+            <View style={styles.billActions}>
+              <TouchableOpacity style={styles.billPayBtn} onPress={recordPayment} testID="encdet-record-payment">
+                <Ionicons name="card-outline" size={16} color="#fff" />
+                <Text style={styles.billPayText}>{enc.payment_status === 'paid' ? 'Add another receipt' : 'Record payment'}</Text>
+              </TouchableOpacity>
+              {canWaive && (
+                <TouchableOpacity style={styles.billWaiveBtn} onPress={waiveFee} disabled={waiving} testID="encdet-waive">
+                  {waiving ? <ActivityIndicator size="small" color="#64748B" /> : <Ionicons name="remove-circle-outline" size={16} color="#64748B" />}
+                  <Text style={styles.billWaiveText}>Waive charges</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {enc.payment_status === 'waived' && !!enc.waived_by_name && (
+            <Text style={styles.waivedNote}>Waived by {enc.waived_by_name}</Text>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -318,4 +454,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#25D366', borderRadius: RADIUS.md, paddingVertical: 14, marginTop: 10,
   },
   waBtnText: { ...FONTS.bodyMedium, fontSize: 14, color: '#fff' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  badge: { borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  badgeText: { ...FONTS.bodyMedium, fontSize: 11.5 },
+  invKey: { ...FONTS.bodyMedium, color: COLORS.textSecondary },
+  billBlock: {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: 14,
+    borderWidth: 1, borderColor: COLORS.border, gap: 10, marginTop: 6,
+  },
+  billHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  billTitle: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textPrimary },
+  billFee: { ...FONTS.body, fontSize: 13.5, color: COLORS.textSecondary },
+  billActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  billPayBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 11, paddingHorizontal: 12, minWidth: 150,
+  },
+  billPayText: { ...FONTS.bodyMedium, color: '#fff', fontSize: 13.5 },
+  billWaiveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: RADIUS.md, paddingVertical: 11, paddingHorizontal: 14,
+  },
+  billWaiveText: { ...FONTS.bodyMedium, color: '#64748B', fontSize: 13.5 },
+  waivedNote: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic' },
 });

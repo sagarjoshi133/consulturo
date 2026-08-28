@@ -624,3 +624,34 @@ ACTION: Escalated via support_agent — user to email support@emergent.sh (Job I
 diagnostics screenshots) requesting Cloudflare edge rate-limit/bot-protection review for
 urology-pro.emergent.host. The earlier SDK54 expo/fetch work (round 3/4) stays in — harmless and correct
 for the Hermes latency class — but the PRIMARY blocker is the Cloudflare edge, on Emergent's side.
+
+## FEATURE: Encounter → Consultation → Billing unified worklist (Jun 2026)
+Backend (encounters.py, receipts.py, prescriptions.py, models.py):
+- Encounter model extended: ipss, inv_blood/psa/usg/uroflowmetry/ct/mri, investigation_findings,
+  stage (open→in_consultation→completed), payment_status (pending/paid/waived), fee_amount, booking_date/time.
+- GET /api/encounters/worklist — merges confirmed bookings WITHOUT an encounter (stage=to_start) +
+  real encounters; returns items + counts{to_start,open,in_consultation,completed}. Clinic-scoped.
+- POST /api/encounters/{id}/start-consultation — stage→in_consultation, stamps fee_amount from
+  clinic consultation_fee_inr.
+- POST /api/encounters/{id}/waive — PRESCRIBER only (is_prescriber); payment_status→waived.
+- GET /api/encounters/{id}/billing — fee, linked receipts (by encounter_id) + patient receipt history.
+- recompute_encounter_payment(): paid when linked receipts cover fee; waived never auto-cleared.
+- mark_encounter_completed(): called from prescriptions finalize (create final / draft→final) when
+  Rx carries encounter_id → stage=completed + prescription_id linked.
+- ReceiptBody.encounter_id + PrescriptionCreate.encounter_id added; receipts.create recomputes
+  encounter payment after insert.
+Frontend:
+- app/encounters/index.tsx REWRITTEN as reception worklist: filter chips (All/To Start/Open/In
+  Consult/Completed w/ counts), stage chips + payment badges, per-row actions (Start Encounter /
+  Edit intake / Start Consultation / Resume / View). "N pending actions today".
+- app/encounters/new.tsx: added IPSS + Investigations (blood/psa/usg/uroflow/ct/mri + findings)
+  sections; saved to encounter. Booking prefill via params.
+- app/encounters/[id].tsx: stage + payment badges, IPSS/investigations display, Start/Resume
+  Consultation (calls start-consultation → /prescriptions/new?encounterId), Billing block
+  (Record payment → /billing/new?encounter_id, Waive [doctor only]).
+- app/prescriptions/new.tsx: encounter prefill now carries vitals/IPSS/investigations; payload
+  includes encounter_id so finalize auto-completes the encounter.
+- app/billing/new.tsx: accepts encounter_id param, sends it in receipt payload.
+VERIFIED (curl, owner token): create w/ ipss+inv → start-consultation(fee 500) → linked receipt
+auto-marks paid → waive→waived → billing summary correct. Worklist renders (screenshot).
+Seeded confirmed booking bk_wltest_* (today) for To-Start path testing.

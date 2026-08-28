@@ -433,6 +433,18 @@ export default function NewPrescription() {
         if (data.patient_age) setAge(data.patient_age);
         if (data.patient_sex) setGender(data.patient_sex as any);
         if (data.chief_complaint) setComplaints(data.chief_complaint);
+        // Carry the reception intake forward so the doctor sees it.
+        if (data.ipss) setIpss(data.ipss);
+        if (data.inv_blood) setInvBlood(data.inv_blood);
+        if (data.inv_psa) setInvPsa(data.inv_psa);
+        if (data.inv_usg) setInvUsg(data.inv_usg);
+        if (data.inv_uroflowmetry) setInvUroflow(data.inv_uroflowmetry);
+        if (data.inv_ct) setInvCt(data.inv_ct);
+        if (data.inv_mri) setInvMri(data.inv_mri);
+        if (data.investigation_findings && !data.inv_blood && !data.inv_psa) setInvBlood(data.investigation_findings);
+        const ev = data.vitals || {};
+        if (ev.bp) setBp(ev.bp);
+        if (ev.pulse) setPulse(ev.pulse);
         if (Array.isArray(data.diagnoses) && data.diagnoses.length) {
           setDiagnosis(data.diagnoses.join(', '));
         } else if (data.assessment) {
@@ -628,6 +640,7 @@ export default function NewPrescription() {
       follow_up: followUp || '',
       status: intendedStatus,
       source_booking_id: bookingId || undefined,
+      encounter_id: encounterId || undefined,
     };
   };
 

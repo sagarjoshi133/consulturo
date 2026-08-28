@@ -48,6 +48,11 @@ _LIST_PROJECTION = {
     "created_at": 1,
     "follow_up_date": 1,
     "follow_up_done_at": 1,
+    "stage": 1,
+    "payment_status": 1,
+    "fee_amount": 1,
+    "booking_date": 1,
+    "booking_time": 1,
 }
 
 
@@ -73,6 +78,15 @@ class VitalsBody(BaseModel):
     weight: Optional[str] = None
 
 
+# Intake sections that MIRROR the prescription (reception fills these; the
+# doctor can edit): IPSS summary + per-modality investigation findings.
+_INTAKE_STR_FIELDS = (
+    "chief_complaint", "subjective", "objective", "assessment", "plan",
+    "ipss", "investigation_findings",
+    "inv_blood", "inv_psa", "inv_usg", "inv_uroflowmetry", "inv_ct", "inv_mri",
+)
+
+
 class EncounterBody(BaseModel):
     patient_name: str
     patient_phone: Optional[str] = ""
@@ -85,6 +99,16 @@ class EncounterBody(BaseModel):
     objective: Optional[str] = ""
     assessment: Optional[str] = ""
     plan: Optional[str] = ""
+    # IPSS summary (e.g. "12 / 35 (moderate)") — mirrors Rx `ipss_recent`.
+    ipss: Optional[str] = ""
+    # Investigation findings — split per modality (mirror the Rx fields).
+    investigation_findings: Optional[str] = ""
+    inv_blood: Optional[str] = ""
+    inv_psa: Optional[str] = ""
+    inv_usg: Optional[str] = ""
+    inv_uroflowmetry: Optional[str] = ""
+    inv_ct: Optional[str] = ""
+    inv_mri: Optional[str] = ""
     vitals: Optional[VitalsBody] = None
     diagnoses: Optional[List[str]] = None
     follow_up_date: Optional[str] = None
@@ -100,6 +124,14 @@ class EncounterPatchBody(BaseModel):
     objective: Optional[str] = None
     assessment: Optional[str] = None
     plan: Optional[str] = None
+    ipss: Optional[str] = None
+    investigation_findings: Optional[str] = None
+    inv_blood: Optional[str] = None
+    inv_psa: Optional[str] = None
+    inv_usg: Optional[str] = None
+    inv_uroflowmetry: Optional[str] = None
+    inv_ct: Optional[str] = None
+    inv_mri: Optional[str] = None
     vitals: Optional[VitalsBody] = None
     diagnoses: Optional[List[str]] = None
     follow_up_date: Optional[str] = None
@@ -152,6 +184,17 @@ async def create_encounter(request: Request, body: EncounterBody, user=Depends(r
     diagnoses = _clean_diagnoses(body.diagnoses)
     now = datetime.now(timezone.utc)
     fu_str, fu_at = _parse_follow_up(body.follow_up_date)
+    # If created from a confirmed booking, capture its slot for the worklist.
+    booking_date = None
+    booking_time = None
+    if body.booking_id:
+        bk = await db.bookings.find_one(
+            {"booking_id": body.booking_id},
+            {"_id": 0, "booking_date": 1, "booking_time": 1},
+        )
+        if bk:
+            booking_date = bk.get("booking_date")
+            booking_time = bk.get("booking_time")
     doc: Dict[str, Any] = {
         "encounter_id": f"enc_{uuid.uuid4().hex[:12]}",
         "clinic_id": clinic_id,
@@ -160,18 +203,33 @@ async def create_encounter(request: Request, body: EncounterBody, user=Depends(r
         "patient_age": (body.patient_age or "").strip(),
         "patient_sex": (body.patient_sex or "").strip(),
         "booking_id": body.booking_id or None,
+        "booking_date": booking_date,
+        "booking_time": booking_time,
         "patient_user_id": body.patient_user_id or None,
         "chief_complaint": (body.chief_complaint or "").strip(),
         "subjective": (body.subjective or "").strip(),
         "objective": (body.objective or "").strip(),
         "assessment": (body.assessment or "").strip(),
         "plan": (body.plan or "").strip(),
+        "ipss": (body.ipss or "").strip(),
+        "investigation_findings": (body.investigation_findings or "").strip(),
+        "inv_blood": (body.inv_blood or "").strip(),
+        "inv_psa": (body.inv_psa or "").strip(),
+        "inv_usg": (body.inv_usg or "").strip(),
+        "inv_uroflowmetry": (body.inv_uroflowmetry or "").strip(),
+        "inv_ct": (body.inv_ct or "").strip(),
+        "inv_mri": (body.inv_mri or "").strip(),
         "vitals": body.vitals.dict() if body.vitals else {},
         "diagnoses": diagnoses,
         "follow_up_date": fu_str,
         "follow_up_at": fu_at,
         "follow_up_notified": False,
         "prescription_id": None,
+        # Lifecycle: open (intake) → in_consultation → completed.
+        "stage": "open",
+        # Billing: pending → paid (receipt covers fee) | waived (doctor).
+        "payment_status": "pending",
+        "fee_amount": None,
         "created_by": user.get("user_id"),
         "created_by_name": user.get("name") or user.get("email") or "",
         "created_at": now,
@@ -224,6 +282,135 @@ async def list_encounters(
         .to_list(length=limit)
     )
     return {"items": items, "total": total, "has_more": skip + len(items) < total}
+
+
+async def _clinic_consultation_fee(clinic_id: Optional[str]) -> float:
+    """Default consultation fee for the clinic (falls back to platform default)."""
+    settings_id = clinic_id or "default"
+    doc = await db.clinic_settings.find_one({"_id": settings_id}, {"_id": 0, "consultation_fee_inr": 1})
+    if not doc and settings_id != "default":
+        doc = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "consultation_fee_inr": 1})
+    try:
+        return float((doc or {}).get("consultation_fee_inr") or 500)
+    except Exception:
+        return 500.0
+
+
+@router.get("/api/encounters/worklist")
+async def encounter_worklist(
+    request: Request,
+    user=Depends(require_staff),
+    date: str = "",
+    scope: str = "all",
+):
+    """Unified reception worklist: confirmed bookings that have NOT started
+    an encounter yet (stage='to_start') MERGED with real encounters
+    (open / in_consultation / completed). Clinic-scoped, newest slot first.
+
+    scope: all | to_start | open | in_consultation | completed
+    date : optional YYYY-MM-DD — restrict bookings to that slot day and
+           encounters created that IST day. Empty = today onwards / recent.
+    """
+    from datetime import timedelta as _td
+    clinic_id = await resolve_clinic_id(request, user)
+    ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
+    today = ist_now.strftime("%Y-%m-%d")
+    day = (date or "").strip()[:10]
+
+    rows: List[Dict[str, Any]] = []
+
+    # ── Real encounters (open / in_consultation / completed) ──────────
+    enc_filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    if day:
+        # Encounters whose booking slot is that day OR created that day.
+        enc_filt["$or"] = [
+            {"booking_date": day},
+            {"created_at": {"$gte": datetime(*(int(x) for x in day.split("-")), tzinfo=timezone.utc)}},
+        ]
+    enc_items = await (
+        db.encounters.find(enc_filt, _LIST_PROJECTION)
+        .sort("created_at", -1)
+        .limit(300)
+        .to_list(length=300)
+    )
+    started_booking_ids = set()
+    for e in enc_items:
+        if e.get("booking_id"):
+            started_booking_ids.add(e["booking_id"])
+        rows.append({
+            "kind": "encounter",
+            "stage": e.get("stage") or "open",
+            "encounter_id": e.get("encounter_id"),
+            "booking_id": e.get("booking_id"),
+            "patient_name": e.get("patient_name"),
+            "patient_phone": e.get("patient_phone"),
+            "patient_age": e.get("patient_age"),
+            "patient_sex": e.get("patient_sex"),
+            "chief_complaint": e.get("chief_complaint"),
+            "payment_status": e.get("payment_status") or "pending",
+            "fee_amount": e.get("fee_amount"),
+            "prescription_id": e.get("prescription_id"),
+            "booking_date": e.get("booking_date"),
+            "booking_time": e.get("booking_time"),
+            "created_at": e.get("created_at"),
+        })
+
+    # ── Confirmed bookings without an encounter yet → 'to_start' ──────
+    bk_filt: Dict[str, Any] = tenant_filter(user, clinic_id, allow_global=True)
+    bk_filt["status"] = "confirmed"
+    if day:
+        bk_filt["booking_date"] = day
+    else:
+        bk_filt["booking_date"] = {"$gte": today}
+    bookings = await (
+        db.bookings.find(
+            bk_filt,
+            {"_id": 0, "booking_id": 1, "patient_name": 1, "patient_phone": 1,
+             "patient_age": 1, "patient_gender": 1, "reason": 1,
+             "booking_date": 1, "booking_time": 1, "patient_user_id": 1,
+             "draft_rx_id": 1},
+        )
+        .sort("booking_date", 1)
+        .limit(300)
+        .to_list(length=300)
+    )
+    for b in bookings:
+        if b.get("booking_id") in started_booking_ids:
+            continue  # already has an encounter — shown above
+        rows.append({
+            "kind": "booking",
+            "stage": "to_start",
+            "encounter_id": None,
+            "booking_id": b.get("booking_id"),
+            "patient_name": b.get("patient_name"),
+            "patient_phone": b.get("patient_phone"),
+            "patient_age": str(b.get("patient_age") or ""),
+            "patient_sex": b.get("patient_gender") or "",
+            "chief_complaint": b.get("reason") or "",
+            "payment_status": None,
+            "fee_amount": None,
+            "prescription_id": None,
+            "booking_date": b.get("booking_date"),
+            "booking_time": b.get("booking_time"),
+            "patient_user_id": b.get("patient_user_id"),
+        })
+
+    counts: Dict[str, int] = {"to_start": 0, "open": 0, "in_consultation": 0, "completed": 0}
+    for r in rows:
+        st = r.get("stage")
+        if st in counts:
+            counts[st] += 1
+
+    if scope and scope != "all":
+        rows = [r for r in rows if r.get("stage") == scope]
+
+    return {
+        "items": rows,
+        "today": today,
+        "date": day or today,
+        "count": len(rows),
+        "counts": counts,
+    }
 
 
 async def _scoped_find(request: Request, user: Dict[str, Any], encounter_id: str,
@@ -382,6 +569,8 @@ async def update_encounter(
     for field in (
         "patient_name", "patient_phone", "patient_age", "patient_sex",
         "chief_complaint", "subjective", "objective", "assessment", "plan",
+        "ipss", "investigation_findings",
+        "inv_blood", "inv_psa", "inv_usg", "inv_uroflowmetry", "inv_ct", "inv_mri",
     ):
         val = getattr(body, field)
         if val is not None:
@@ -440,6 +629,130 @@ async def link_encounter_rx(request: Request, encounter_id: str, body: LinkRxBod
         {"$set": {"encounter_id": encounter_id}},
     )
     return {"ok": True, "encounter_id": encounter_id, "prescription_id": body.prescription_id}
+
+
+# ── Encounter lifecycle: start consultation / complete / payment ──────
+
+async def recompute_encounter_payment(encounter_id: str) -> str:
+    """Derive an encounter's payment_status from its linked receipts.
+    'waived' is a doctor override and is never auto-cleared here."""
+    enc = await db.encounters.find_one(
+        {"encounter_id": encounter_id},
+        {"_id": 0, "payment_status": 1, "fee_amount": 1},
+    )
+    if not enc:
+        return "pending"
+    if (enc.get("payment_status") or "") == "waived":
+        return "waived"
+    receipts = await db.receipts.find(
+        {"encounter_id": encounter_id}, {"_id": 0, "paid": 1, "total": 1}
+    ).to_list(length=100)
+    paid_sum = sum(float(r.get("paid") or 0) for r in receipts)
+    fee = float(enc.get("fee_amount") or 0)
+    status = "pending"
+    if receipts and paid_sum >= (fee if fee > 0 else 0.01) and paid_sum > 0:
+        status = "paid"
+    await db.encounters.update_one(
+        {"encounter_id": encounter_id},
+        {"$set": {"payment_status": status, "updated_at": datetime.now(timezone.utc)}},
+    )
+    return status
+
+
+async def mark_encounter_completed(prescription_id: str, encounter_id: Optional[str]) -> None:
+    """Called from the prescriptions router when an Rx is FINALISED.
+    Links the Rx and moves the encounter to `completed`. Best-effort."""
+    if not encounter_id:
+        return
+    try:
+        await db.encounters.update_one(
+            {"encounter_id": encounter_id},
+            {"$set": {
+                "stage": "completed",
+                "prescription_id": prescription_id,
+                "completed_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+    except Exception:
+        pass
+
+
+@router.post("/api/encounters/{encounter_id}/start-consultation")
+async def start_consultation(encounter_id: str, request: Request, user=Depends(require_staff)):
+    """Move an encounter into `in_consultation` and stamp the default
+    consultation fee (so reception can collect it). Idempotent."""
+    from server import block_if_demo
+    block_if_demo(user)
+    enc = await _scoped_find(request, user, encounter_id,
+                             {"_id": 0, "clinic_id": 1, "stage": 1, "fee_amount": 1})
+    if not enc:
+        raise HTTPException(404, detail="Encounter not found")
+    updates: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+    if (enc.get("stage") or "open") == "open":
+        updates["stage"] = "in_consultation"
+        updates["consultation_started_at"] = datetime.now(timezone.utc)
+    if enc.get("fee_amount") in (None, "", 0):
+        updates["fee_amount"] = await _clinic_consultation_fee(enc.get("clinic_id"))
+    await db.encounters.update_one({"encounter_id": encounter_id}, {"$set": updates})
+    return await db.encounters.find_one({"encounter_id": encounter_id}, {"_id": 0})
+
+
+@router.post("/api/encounters/{encounter_id}/waive")
+async def waive_encounter_fee(encounter_id: str, request: Request, user=Depends(require_staff)):
+    """Waive the consultation charge — PRESCRIBER (doctor/owner) only.
+    Reception can see the resulting badge but cannot change it."""
+    from server import block_if_demo
+    from auth_deps import is_prescriber
+    block_if_demo(user)
+    if not await is_prescriber(user):
+        raise HTTPException(403, detail="Only a doctor can waive charges.")
+    enc = await _scoped_find(request, user, encounter_id, {"_id": 0, "encounter_id": 1})
+    if not enc:
+        raise HTTPException(404, detail="Encounter not found")
+    now = datetime.now(timezone.utc)
+    await db.encounters.update_one(
+        {"encounter_id": encounter_id},
+        {"$set": {
+            "payment_status": "waived",
+            "waived_by": user.get("user_id"),
+            "waived_by_name": user.get("name") or user.get("email") or "Doctor",
+            "waived_at": now,
+            "updated_at": now,
+        }},
+    )
+    return {"ok": True, "encounter_id": encounter_id, "payment_status": "waived"}
+
+
+@router.get("/api/encounters/{encounter_id}/billing")
+async def encounter_billing(encounter_id: str, request: Request, user=Depends(require_staff)):
+    """Billing summary for one encounter: fee, receipts linked to it, and
+    the patient's full receipt history (for reception traceability)."""
+    enc = await _scoped_find(
+        request, user, encounter_id,
+        {"_id": 0, "encounter_id": 1, "patient_phone": 1, "patient_name": 1,
+         "fee_amount": 1, "payment_status": 1},
+    )
+    if not enc:
+        raise HTTPException(404, detail="Encounter not found")
+    linked = await db.receipts.find(
+        {"encounter_id": encounter_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=100)
+    history: List[Dict[str, Any]] = []
+    phone = (enc.get("patient_phone") or "")
+    digits = "".join(ch for ch in phone if ch.isdigit())[-10:]
+    if digits:
+        clinic_id = await resolve_clinic_id(request, user)
+        hfilt = tenant_filter(user, clinic_id, allow_global=True)
+        hfilt["patient_phone"] = digits
+        history = await db.receipts.find(hfilt, {"_id": 0}).sort("created_at", -1).limit(50).to_list(length=50)
+    return {
+        "encounter_id": encounter_id,
+        "fee_amount": enc.get("fee_amount"),
+        "payment_status": enc.get("payment_status") or "pending",
+        "linked_receipts": linked,
+        "patient_history": history,
+    }
 
 
 @router.get("/api/diagnoses")

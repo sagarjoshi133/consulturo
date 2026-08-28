@@ -152,6 +152,14 @@ async def create_prescription(request: Request, payload: PrescriptionCreate, use
                 )
         except Exception:
             pass
+    # Encounter → consultation → Rx: finalising the Rx completes the
+    # linked encounter (moves it to the "Completed" worklist stage).
+    if status == "final" and (payload.encounter_id or "").strip():
+        try:
+            from routers.encounters import mark_encounter_completed
+            await mark_encounter_completed(prescription_id, payload.encounter_id.strip())
+        except Exception:
+            pass
     return doc
 
 @router.delete("/api/prescriptions/{prescription_id}")
@@ -229,6 +237,14 @@ async def update_prescription(prescription_id: str, payload: PrescriptionCreate,
                     "$unset": {"draft_rx_id": "", "draft_started_at": "", "draft_started_by": ""},
                 },
             )
+        except Exception:
+            pass
+    # Encounter completion when a draft is finalised into a full Rx.
+    enc_id = (existing.get("encounter_id") or payload.encounter_id or "").strip()
+    if enc_id and is_rx and new_status == "final":
+        try:
+            from routers.encounters import mark_encounter_completed
+            await mark_encounter_completed(prescription_id, enc_id)
         except Exception:
             pass
     return updated

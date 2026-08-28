@@ -53,6 +53,14 @@ export default function EncounterFormScreen() {
   const [temp, setTemp] = useState('');
   const [spo2, setSpo2] = useState('');
   const [weight, setWeight] = useState('');
+  const [ipss, setIpss] = useState('');
+  const [invBlood, setInvBlood] = useState('');
+  const [invPsa, setInvPsa] = useState('');
+  const [invUsg, setInvUsg] = useState('');
+  const [invUroflow, setInvUroflow] = useState('');
+  const [invCt, setInvCt] = useState('');
+  const [invMri, setInvMri] = useState('');
+  const [invFindings, setInvFindings] = useState('');
   const [diagnoses, setDiagnoses] = useState<string[]>([]);
   const [dxInput, setDxInput] = useState('');
   const [dxSuggestions, setDxSuggestions] = useState<string[]>([]);
@@ -75,6 +83,11 @@ export default function EncounterFormScreen() {
         setObjective(data.objective || '');
         setAssessment(data.assessment || '');
         setPlan(data.plan || '');
+        setIpss(data.ipss || '');
+        setInvBlood(data.inv_blood || ''); setInvPsa(data.inv_psa || '');
+        setInvUsg(data.inv_usg || ''); setInvUroflow(data.inv_uroflowmetry || '');
+        setInvCt(data.inv_ct || ''); setInvMri(data.inv_mri || '');
+        setInvFindings(data.investigation_findings || '');
         setDiagnoses(data.diagnoses || []);
         setFollowUp(data.follow_up_date || '');
         const v = data.vitals || {};
@@ -186,6 +199,10 @@ export default function EncounterFormScreen() {
         objective: objective.trim(),
         assessment: assessment.trim(),
         plan: plan.trim(),
+        ipss: ipss.trim(),
+        inv_blood: invBlood.trim(), inv_psa: invPsa.trim(), inv_usg: invUsg.trim(),
+        inv_uroflowmetry: invUroflow.trim(), inv_ct: invCt.trim(), inv_mri: invMri.trim(),
+        investigation_findings: invFindings.trim(),
         vitals: { bp, pulse, temp, spo2, weight },
         diagnoses,
         follow_up_date: followUp || null,
@@ -215,7 +232,7 @@ export default function EncounterFormScreen() {
       setSaving(false);
       setCompleting(false);
     }
-  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router, bookingId, patientUserId]);
+  }, [name, phone, age, sex, chief, subjective, objective, assessment, plan, ipss, invBlood, invPsa, invUsg, invUroflow, invCt, invMri, invFindings, bp, pulse, temp, spo2, weight, diagnoses, followUp, isEdit, editId, router, bookingId, patientUserId]);
 
   if (loadingExisting) {
     return (
@@ -317,8 +334,34 @@ export default function EncounterFormScreen() {
             <TextInput style={[styles.input, styles.vital]} placeholder="Wt (kg)" placeholderTextColor={COLORS.textDisabled} value={weight} onChangeText={setWeight} />
           </View>
 
-          <Text style={styles.section}>Clinical Note</Text>
+          <Text style={styles.section}>Chief Complaint</Text>
           <TextInput style={styles.input} placeholder="Chief complaint" placeholderTextColor={COLORS.textDisabled} value={chief} onChangeText={setChief} testID="encform-chief" />
+
+          <Text style={styles.section}>IPSS</Text>
+          <View style={styles.rowWrap}>
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="IPSS score (e.g. 18/35 severe)" placeholderTextColor={COLORS.textDisabled} value={ipss} onChangeText={setIpss} testID="encform-ipss" />
+            <TouchableOpacity style={styles.ipssBtn} onPress={() => router.push('/ipss' as any)} testID="encform-ipss-tool">
+              <Ionicons name="calculator-outline" size={16} color={COLORS.primaryDark} />
+              <Text style={styles.ipssBtnText}>Tool</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.section}>Investigations (Findings)</Text>
+          <View style={styles.rowWrap}>
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="Blood" placeholderTextColor={COLORS.textDisabled} value={invBlood} onChangeText={setInvBlood} testID="encform-inv-blood" />
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="PSA" placeholderTextColor={COLORS.textDisabled} value={invPsa} onChangeText={setInvPsa} testID="encform-inv-psa" />
+          </View>
+          <View style={styles.rowWrap}>
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="USG" placeholderTextColor={COLORS.textDisabled} value={invUsg} onChangeText={setInvUsg} testID="encform-inv-usg" />
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="Uroflowmetry" placeholderTextColor={COLORS.textDisabled} value={invUroflow} onChangeText={setInvUroflow} testID="encform-inv-uroflow" />
+          </View>
+          <View style={styles.rowWrap}>
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="CT" placeholderTextColor={COLORS.textDisabled} value={invCt} onChangeText={setInvCt} />
+            <TextInput style={[styles.input, { flex: 1 }]} placeholder="MRI" placeholderTextColor={COLORS.textDisabled} value={invMri} onChangeText={setInvMri} />
+          </View>
+          <TextInput style={[styles.input, styles.multi]} placeholder="Other investigation findings / notes" placeholderTextColor={COLORS.textDisabled} value={invFindings} onChangeText={setInvFindings} multiline testID="encform-inv-findings" />
+
+          <Text style={styles.section}>Doctor{'\u2019'}s Clinical Note</Text>
           <TextInput style={[styles.input, styles.multi]} placeholder="Subjective — history & symptoms" placeholderTextColor={COLORS.textDisabled} value={subjective} onChangeText={setSubjective} multiline />
           <TextInput style={[styles.input, styles.multi]} placeholder="Objective — examination findings" placeholderTextColor={COLORS.textDisabled} value={objective} onChangeText={setObjective} multiline />
           <TextInput style={[styles.input, styles.multi]} placeholder="Assessment — impression / differential" placeholderTextColor={COLORS.textDisabled} value={assessment} onChangeText={setAssessment} multiline />
@@ -523,4 +566,10 @@ const styles = StyleSheet.create({
   pastTitle: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primaryDark },
   pastLine: { ...FONTS.body, fontSize: 12.5, color: COLORS.textPrimary, lineHeight: 18 },
   pastLabel: { ...FONTS.bodyMedium, color: COLORS.textSecondary },
+  ipssBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8,
+    backgroundColor: COLORS.primary + '12', borderWidth: 1, borderColor: COLORS.primary + '2E',
+    borderRadius: RADIUS.md, paddingHorizontal: 12, justifyContent: 'center',
+  },
+  ipssBtnText: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.primaryDark },
 });

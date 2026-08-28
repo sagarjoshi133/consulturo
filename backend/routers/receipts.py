@@ -139,12 +139,22 @@ async def create_receipt(request: Request, body: ReceiptBody, user=Depends(requi
         "payment_ref": (body.payment_ref or "").strip() or None,
         "notes": (body.notes or "").strip() or None,
         "receipt_date": receipt_date,
+        "encounter_id": (body.encounter_id or "").strip() or None,
         "created_by": user["user_id"],
         "created_by_name": user.get("name") or user.get("email") or "Staff",
         "created_at": datetime.now(timezone.utc),
     }
     await db.receipts.insert_one(doc)
     doc.pop("_id", None)
+
+    # If this receipt is tied to an encounter, refresh that encounter's
+    # payment badge (pending → paid) for the reception worklist.
+    if doc.get("encounter_id"):
+        try:
+            from routers.encounters import recompute_encounter_payment
+            await recompute_encounter_payment(doc["encounter_id"])
+        except Exception:
+            pass
 
     # ── Push notification (Phase 4 — broader rollout, 2026-05-31) ──
     # Inform the patient that a receipt was issued in their name —
