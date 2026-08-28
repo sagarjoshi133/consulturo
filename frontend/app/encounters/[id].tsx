@@ -56,11 +56,18 @@ export default function EncounterDetailScreen() {
   const [sendingWa, setSendingWa] = useState(false);
   const [startingConsult, setStartingConsult] = useState(false);
   const [waiving, setWaiving] = useState(false);
+  const [receiptNo, setReceiptNo] = useState('');
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/encounters/${id}`);
       setEnc(data);
+      // Latest linked receipt number (for the Visit Summary PDF billing line).
+      try {
+        const b = await api.get(`/encounters/${id}/billing`);
+        const rc = (b.data?.linked_receipts || [])[0];
+        setReceiptNo(rc?.receipt_no || rc?.receipt_id || '');
+      } catch { /* billing optional */ }
     } catch {
       setEnc(null);
     } finally {
@@ -99,7 +106,7 @@ export default function EncounterDetailScreen() {
     if (!enc) return;
     setExporting(true);
     try {
-      const html = await buildEncounterHtml(enc, await loadClinicSettings());
+      const html = await buildEncounterHtml({ ...enc, receipt_no: receiptNo }, await loadClinicSettings());
       const safeName = String(enc.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
       const filename = `Visit-Summary-${safeName || 'Patient'}-${String(enc.encounter_id).slice(0, 8)}`;
       await sharePdfFromHtml(html, filename, `Visit Summary — ${enc.patient_name || ''}`.trim());
@@ -110,7 +117,7 @@ export default function EncounterDetailScreen() {
     } finally {
       setExporting(false);
     }
-  }, [enc]);
+  }, [enc, receiptNo]);
 
   const sendWhatsApp = useCallback(async () => {
     if (!enc) return;
@@ -123,7 +130,7 @@ export default function EncounterDetailScreen() {
     setSendingWa(true);
     try {
       const settings = await loadClinicSettings();
-      const html = await buildEncounterHtml(enc, settings);
+      const html = await buildEncounterHtml({ ...enc, receipt_no: receiptNo }, settings);
       const safeName = String(enc.patient_name || 'patient').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
       const filename = `Visit-Summary-${safeName || 'Patient'}-${String(enc.encounter_id).slice(0, 8)}`;
       await sharePdfThenWhatsApp(html, filename, `Visit Summary — ${enc.patient_name || ''}`.trim(), {
@@ -142,7 +149,7 @@ export default function EncounterDetailScreen() {
     } finally {
       setSendingWa(false);
     }
-  }, [enc]);
+  }, [enc, receiptNo]);
 
   const startConsultation = useCallback(async () => {
     if (!enc) return;

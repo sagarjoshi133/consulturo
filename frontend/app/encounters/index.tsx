@@ -231,6 +231,9 @@ export default function EncountersWorklistScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Encounters</Text>
         <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={() => router.push('/encounters/collection' as any)} style={styles.collectHeaderBtn} testID="wl-collection">
+          <Ionicons name="cash-outline" size={15} color={COLORS.primaryDark} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/encounters/followups' as any)} style={styles.fuHeaderBtn} testID="wl-followups">
           <Ionicons name="calendar" size={15} color="#B45309" />
           {dueToday > 0 && <View style={styles.fuBadge}><Text style={styles.fuBadgeText}>{dueToday}</Text></View>}
@@ -313,6 +316,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1,
     borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  collectHeaderBtn: {
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.primary + '12', borderColor: COLORS.primary + '30', borderWidth: 1,
+    borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 6, marginRight: 8,
   },
   fuBadge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: '#B45309', alignItems: 'center', justifyContent: 'center' },
   fuBadgeText: { color: '#fff', fontSize: 11, fontFamily: 'Manrope_700Bold' },

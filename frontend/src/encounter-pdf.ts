@@ -40,6 +40,9 @@ export type EncounterDoc = {
   plan?: string;
   follow_up_date?: string;
   prescription_id?: string;
+  payment_status?: string;
+  fee_amount?: number | string | null;
+  receipt_no?: string;
 };
 
 const escapeHtml = (s?: string | number) =>
@@ -122,6 +125,23 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
     ? `<section class="sec"><div class="sech">Follow-up</div><div class="secb"><div class="para"><b>${escapeHtml(enc.follow_up_date)}</b></div></div></section>`
     : '';
 
+  // Billing / payment status band.
+  const payStatus = String(enc.payment_status || '').toLowerCase();
+  const payMeta: Record<string, { label: string; bg: string; fg: string }> = {
+    paid: { label: 'PAID', bg: '#D1FAE5', fg: '#047857' },
+    pending: { label: 'PAYMENT PENDING', bg: '#FEF3C7', fg: '#B45309' },
+    waived: { label: 'WAIVED OFF', bg: '#F1F5F9', fg: '#475569' },
+  };
+  const pm = payMeta[payStatus];
+  const feeNum = Number(enc.fee_amount || 0);
+  const billingBlock = pm
+    ? `<section class="sec"><div class="sech">Billing</div><div class="secb"><div class="billRow">
+         <span class="payTag" style="background:${pm.bg};color:${pm.fg};">${pm.label}</span>
+         ${feeNum > 0 ? `<span class="billFee">Consultation fee: <b>₹${escapeHtml(String(feeNum))}</b></span>` : ''}
+         ${(enc.receipt_no || '').trim() ? `<span class="billRcpt">Receipt: <b>${escapeHtml(enc.receipt_no)}</b></span>` : ''}
+       </div></div></section>`
+    : '';
+
   return `
 <html><head><meta charset="utf-8"/>
 <style>
@@ -182,6 +202,9 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
   .vv{ font-size:12.5px; color:#1A2E35; font-weight:700; }
   .dxRow{ display:flex; flex-wrap:wrap; gap:6px; }
   .dxChip{ background:#0E7C8B14; color:#0A5E6B; border-radius:14px; padding:4px 11px; font-size:11px; font-weight:600; }
+  .billRow{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; font-size:11px; color:#1A2E35; }
+  .payTag{ border-radius:14px; padding:3px 11px; font-size:10px; font-weight:800; letter-spacing:.6px; }
+  .billFee b, .billRcpt b{ color:#0A5E6B; }
   .spacer{ flex:1 1 auto; min-height:0; }
   .footwrap{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; padding-top:10px; page-break-inside:avoid; break-inside:avoid; position:relative; z-index:1; }
   .qrBlock{ text-align:center; flex:0 0 auto; }
@@ -250,6 +273,7 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
   ${vitalsBlock}
   ${dxBlock}
   ${soap}
+  ${billingBlock}
   ${followBlock}
 
   <div class="spacer"></div>

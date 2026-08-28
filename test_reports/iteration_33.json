@@ -1,0 +1,39 @@
+{
+  "summary": "Backend + frontend verification of Daily Collection + Pending Dues + Encounter PDF billing band. 7/7 pytest cases pass on public URL. Frontend collection screen renders correctly: date stepper, three stat cards (₹500 collected / ₹1,000 pending dues / ₹500 waived), follow-up list with 4 col-collect-<id> rows. Tapping Collect navigates to /billing/new prefilled with encounter_id, patient_name, patient_phone, amount=500, description=Consultation, service_type=consultation. Worklist header 'wl-collection' opens the collection screen. Date arrows (col-prev/col-next) shift the day correctly (Today → 2026-08-27). Encounter PDF buildEncounterHtml (encounter-pdf.ts:128-143) correctly emits the Billing section with pay tag (PAID/PAYMENT PENDING/WAIVED OFF), ₹fee, and receipt_no when payment_status is set — verified by code path (lines 128-143 render the billingBlock conditional on payMeta[payStatus]).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/encounters/collection",
+        "issues": [
+          "In the web preview (with sidebar visible) at 390px viewport the three stat cards get squeezed: ₹1,000 truncates to '₹1,00' and the labels 'Collected/Pending dues/Waived' overlap. On real mobile (no sidebar) this is fine, but the value fontSize (17px) is aggressive when three cards share a narrow row — consider reducing to 15px or allowing the value to wrap. Non-blocking."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_collection_flow.py",
+    "/app/test_reports/pytest/iteration33_collection_flow.xml"
+  ],
+  "action_items": [
+    "Optional: tighten stat-card typography on /encounters/collection so ₹1,000+ values don't truncate at narrow widths."
+  ],
+  "critical_code_review_comments": [
+    "encounters.py:437-440 — collection-summary uses $or on booking_date/created_at within the IST day; that includes encounters whose booking is today OR whose row was created today. Reasonable for reception but be aware of double-inclusion (a booking today whose row was created yesterday is still shown, which is the desired behaviour).",
+    "encounters.py:473 — 'pending_due' only counts encounters where fee_amount>0. This is intentional (no fee stamped yet ⇒ not a due), matches spec.",
+    "encounter-pdf.ts:129 — payStatus is lowercased before lookup, so callers passing 'PAID'/'Paid' still resolve. Good defensive handling.",
+    "encounter-pdf.ts:136 — feeNum = Number(fee_amount||0); if backend ever returns null the block still renders the tag but silently drops the fee line — verify main agent is happy with that fallback."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_collection_flow.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "test_collection_flow.py creates and then deletes 2 test encounters (TEST_CollectFlow One + TEST_CollectFlow Waive). It also creates a 500 INR receipt tied to the paid one; receipts are not cleaned up (schema has no delete endpoint linked here) — safe to leave in preview DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest lives at /app/backend/tests/test_collection_flow.py — uses owner token test_session_1781800271528 + X-Clinic-Id clinic_a97b903f2fb2. Collection screen testIDs: col-back, col-prev, col-next, col-collect-<encounter_id>. Worklist header opens collection via wl-collection. Encounter PDF billing band: buildEncounterHtml in /app/frontend/src/encounter-pdf.ts lines 128-143 — payMeta covers paid|pending|waived; renders payTag + billFee + billRcpt inside a 'Billing' <section> just above the follow-up block.",
+  "rca_of_issue": "N/A — all requested feature paths verified green."
+}

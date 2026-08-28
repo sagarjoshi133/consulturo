@@ -413,6 +413,105 @@ async def encounter_worklist(
     }
 
 
+def _ist_day_bounds_utc(day: str):
+    """UTC [start, end) for an IST calendar day 'YYYY-MM-DD'."""
+    from datetime import timedelta as _td
+    y, m, d = (int(x) for x in day.split("-"))
+    ist_midnight = datetime(y, m, d, tzinfo=timezone.utc)
+    start = ist_midnight - _td(hours=5, minutes=30)
+    return start, start + _td(days=1)
+
+
+@router.get("/api/encounters/collection-summary")
+async def collection_summary(request: Request, user=Depends(require_staff), date: str = ""):
+    """Day-end billing summary across the day's encounters:
+    collected (₹ received) vs pending dues vs waived, with a list of the
+    unpaid encounters so reception can follow up before closing the day."""
+    from datetime import timedelta as _td
+    clinic_id = await resolve_clinic_id(request, user)
+    ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
+    day = (date or "").strip()[:10] or ist_now.strftime("%Y-%m-%d")
+    start_utc, end_utc = _ist_day_bounds_utc(day)
+
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["$or"] = [
+        {"booking_date": day},
+        {"created_at": {"$gte": start_utc, "$lt": end_utc}},
+    ]
+    encs = await db.encounters.find(
+        filt,
+        {"_id": 0, "encounter_id": 1, "patient_name": 1, "patient_phone": 1,
+         "payment_status": 1, "fee_amount": 1, "stage": 1, "booking_time": 1},
+    ).sort("booking_time", 1).limit(500).to_list(length=500)
+
+    enc_ids = [e["encounter_id"] for e in encs]
+    receipts = []
+    if enc_ids:
+        receipts = await db.receipts.find(
+            {"encounter_id": {"$in": enc_ids}}, {"_id": 0, "encounter_id": 1, "paid": 1}
+        ).to_list(length=1000)
+    paid_by_enc: Dict[str, float] = {}
+    for r in receipts:
+        paid_by_enc[r["encounter_id"]] = paid_by_enc.get(r["encounter_id"], 0.0) + float(r.get("paid") or 0)
+
+    collected = 0.0
+    pending_due = 0.0
+    waived_total = 0.0
+    counts = {"paid": 0, "pending": 0, "waived": 0, "total": len(encs)}
+    pending_list: List[Dict[str, Any]] = []
+    for e in encs:
+        st = e.get("payment_status") or "pending"
+        fee = float(e.get("fee_amount") or 0)
+        collected += paid_by_enc.get(e["encounter_id"], 0.0)
+        if st == "waived":
+            waived_total += fee
+            counts["waived"] += 1
+        elif st == "paid":
+            counts["paid"] += 1
+        else:
+            # Only count as a "due" once a consultation fee has been stamped.
+            if fee > 0:
+                pending_due += fee
+                pending_list.append({
+                    "encounter_id": e["encounter_id"],
+                    "patient_name": e.get("patient_name"),
+                    "patient_phone": e.get("patient_phone"),
+                    "fee_amount": fee,
+                    "booking_time": e.get("booking_time"),
+                    "stage": e.get("stage"),
+                })
+            counts["pending"] += 1
+
+    return {
+        "date": day,
+        "collected": round(collected, 2),
+        "pending_due": round(pending_due, 2),
+        "waived_total": round(waived_total, 2),
+        "counts": counts,
+        "pending_list": pending_list,
+    }
+
+
+@router.get("/api/encounters/pending-dues")
+async def pending_dues(request: Request, user=Depends(require_staff), days: int = 7):
+    """Encounters with a stamped fee still unpaid (payment_status='pending')
+    over the last `days` days — the day-end follow-up list for reception."""
+    from datetime import timedelta as _td
+    clinic_id = await resolve_clinic_id(request, user)
+    since = datetime.now(timezone.utc) - _td(days=max(1, min(days, 90)))
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["payment_status"] = "pending"
+    filt["fee_amount"] = {"$gt": 0}
+    filt["created_at"] = {"$gte": since}
+    rows = await db.encounters.find(
+        filt,
+        {"_id": 0, "encounter_id": 1, "patient_name": 1, "patient_phone": 1,
+         "fee_amount": 1, "stage": 1, "booking_date": 1, "booking_time": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(200).to_list(length=200)
+    total_due = sum(float(r.get("fee_amount") or 0) for r in rows)
+    return {"items": rows, "count": len(rows), "total_due": round(total_due, 2)}
+
+
 async def _scoped_find(request: Request, user: Dict[str, Any], encounter_id: str,
                        projection: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Fetch an encounter WITH the same tenant scoping as the list

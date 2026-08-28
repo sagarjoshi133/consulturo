@@ -655,3 +655,21 @@ Frontend:
 VERIFIED (curl, owner token): create w/ ipss+inv → start-consultation(fee 500) → linked receipt
 auto-marks paid → waive→waived → billing summary correct. Worklist renders (screenshot).
 Seeded confirmed booking bk_wltest_* (today) for To-Start path testing.
+
+## FEATURE: Daily Collection + Encounter-PDF billing + Pending-dues follow-up (Jun 2026)
+Backend (routers/encounters.py):
+- GET /api/encounters/collection-summary?date= — day-end summary across the day's encounters:
+  collected (sum receipts.paid linked to those encounters), pending_due (sum fee for pending w/ fee>0),
+  waived_total, counts{paid,pending,waived,total}, pending_list[]. IST day bounds via _ist_day_bounds_utc.
+- GET /api/encounters/pending-dues?days=7 — unpaid encounters (payment_status=pending, fee>0) last N days;
+  items + count + total_due. Reception day-end follow-up list.
+Frontend:
+- NEW app/encounters/collection.tsx — date stepper, 3 stat cards (Collected/Pending/Waived), today's
+  unpaid follow-up list + carry-over (7d) list, each with "Collect" → /billing/new?encounter_id=...
+- app/encounters/index.tsx — added "Collection" header button (testID wl-collection).
+- src/encounter-pdf.ts — added Billing band to Visit Summary PDF: payment status tag (PAID/PENDING/
+  WAIVED) + consultation fee + receipt no. EncounterDoc extended (payment_status, fee_amount, receipt_no).
+- app/encounters/[id].tsx — load() now fetches /billing to get latest receipt_no; passed into
+  buildEncounterHtml for both Export PDF and Send-WhatsApp.
+VERIFIED (curl): collection-summary → collected 500, pending_due 1000, waived 500, counts, pending_list=2;
+pending-dues count=2 total_due=1000. Collection screen renders (screenshot). PDF babel-compiles.
