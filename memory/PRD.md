@@ -673,3 +673,22 @@ Frontend:
   buildEncounterHtml for both Export PDF and Send-WhatsApp.
 VERIFIED (curl): collection-summary → collected 500, pending_due 1000, waived 500, counts, pending_list=2;
 pending-dues count=2 total_due=1000. Collection screen renders (screenshot). PDF babel-compiles.
+
+## FEATURE: Payment-mode drawer + Monthly revenue + Patient timeline (Jun 2026)
+Backend (routers/encounters.py):
+- collection-summary now returns `drawer` = ALL receipts dated `day` (clinic-scoped) grouped by
+  normalized mode (Cash/UPI/Card/Wallet/Cheque/Other) via _norm_mode + _drawer_by_mode → {total, modes[]}.
+- GET /api/encounters/revenue-report?month=YYYY-MM — OWNER-tier only (role in super_owner/primary_owner/
+  owner/partner else 403). Returns collected/waived_total/outstanding + counts + per-day series[].
+- GET /api/encounters/patient-timeline?phone=&encounter_id= — {phone, visits[] (encounters), receipts[]}
+  clinic-scoped, newest first.
+Frontend:
+- app/encounters/collection.tsx — "Drawer by mode" section (mode chips w/ amount+txn count); owner-only
+  "Month" header button → /encounters/revenue.
+- NEW app/encounters/revenue.tsx — month stepper, Collected/Outstanding/Waived cards, counts, per-day
+  stacked bars (collected/outstanding/waived).
+- NEW app/encounters/timeline.tsx — patient summary (visits/paid/due), Visits list (→ encounter detail),
+  Receipts list (→ billing detail).
+- app/encounters/[id].tsx — "Patient history & billing" button → /encounters/timeline?phone=&name=.
+VERIFIED (curl): drawer total 1500 Cash; revenue-report collected 500/waived 500/outstanding 1000, 3
+series days; patient-timeline 1 visit + 2 receipts. Screenshots: revenue + timeline render correctly.

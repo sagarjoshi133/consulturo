@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import api from '../../src/api';
+import { useAuth } from '../../src/auth';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { goBackSafe } from '../../src/nav';
 
@@ -31,6 +32,7 @@ type Summary = {
   waived_total: number;
   counts: { paid: number; pending: number; waived: number; total: number };
   pending_list: Due[];
+  drawer?: { total: number; modes: { mode: string; amount: number; count: number }[] };
 };
 
 function shiftDay(day: string, delta: number): string {
@@ -42,6 +44,8 @@ function shiftDay(day: string, delta: number): string {
 
 export default function CollectionScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isOwner = ['owner', 'primary_owner', 'partner', 'super_owner'].includes(String((user as any)?.role || ''));
   const todayIso = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
   const [day, setDay] = useState(todayIso);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -85,6 +89,7 @@ export default function CollectionScreen() {
   const isToday = day === todayIso;
   // Carry-over = unpaid from days OTHER than the one being viewed.
   const carryOthers = carry.items.filter((c) => c.booking_date !== day);
+  const drawer = summary?.drawer;
 
   const header = (
     <View>
@@ -119,6 +124,25 @@ export default function CollectionScreen() {
         </View>
       </View>
 
+      {drawer && drawer.modes.length > 0 && (
+        <View style={styles.drawerBox}>
+          <View style={styles.drawerHead}>
+            <Ionicons name="wallet-outline" size={15} color={COLORS.textSecondary} />
+            <Text style={styles.drawerTitle}>Drawer by mode</Text>
+            <Text style={styles.drawerTotal}>₹{Number(drawer.total).toLocaleString('en-IN')}</Text>
+          </View>
+          <View style={styles.modeRow}>
+            {drawer.modes.map((mo) => (
+              <View key={mo.mode} style={styles.modeChip}>
+                <Text style={styles.modeName}>{mo.mode}</Text>
+                <Text style={styles.modeAmt}>₹{Number(mo.amount).toLocaleString('en-IN')}</Text>
+                <Text style={styles.modeCount}>{mo.count} txn</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       <Text style={styles.sectionTitle}>
         Follow up — unpaid {isToday ? 'today' : `on ${day}`} ({(summary?.pending_list || []).length})
       </Text>
@@ -148,6 +172,13 @@ export default function CollectionScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Daily Collection</Text>
+        <View style={{ flex: 1 }} />
+        {isOwner && (
+          <TouchableOpacity onPress={() => router.push('/encounters/revenue' as any)} style={styles.monthBtn} testID="col-month">
+            <Ionicons name="bar-chart-outline" size={14} color={COLORS.primaryDark} />
+            <Text style={styles.monthBtnText}>Month</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -199,4 +230,19 @@ const styles = StyleSheet.create({
   dueAmt: { ...FONTS.bodyMedium, fontSize: 14, color: '#B45309' },
   collectBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 9, paddingHorizontal: 12 },
   collectText: { ...FONTS.bodyMedium, color: '#fff', fontSize: 13 },
+  monthBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.primary + '12', borderColor: COLORS.primary + '30', borderWidth: 1,
+    borderRadius: RADIUS.pill, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  monthBtnText: { ...FONTS.bodyMedium, fontSize: 12.5, color: COLORS.primaryDark },
+  drawerBox: { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginTop: 14, gap: 10 },
+  drawerHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  drawerTitle: { ...FONTS.bodyMedium, fontSize: 13, color: COLORS.textPrimary },
+  drawerTotal: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.primaryDark, marginLeft: 'auto' },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modeChip: { backgroundColor: COLORS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 8, paddingHorizontal: 12, minWidth: 92 },
+  modeName: { ...FONTS.body, fontSize: 11, color: COLORS.textSecondary },
+  modeAmt: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.textPrimary },
+  modeCount: { ...FONTS.body, fontSize: 10, color: COLORS.textDisabled },
 });

@@ -489,7 +489,44 @@ async def collection_summary(request: Request, user=Depends(require_staff), date
         "waived_total": round(waived_total, 2),
         "counts": counts,
         "pending_list": pending_list,
+        "drawer": await _drawer_by_mode(user, clinic_id, day),
     }
+
+
+def _norm_mode(mode: str) -> str:
+    """Collapse the many stored receipt modes into drawer buckets."""
+    m = (mode or "").lower()
+    if "cash" in m: return "Cash"
+    if "upi" in m: return "UPI"
+    if "card" in m: return "Card"
+    if "wallet" in m: return "Wallet"
+    if "cheque" in m or "check" in m: return "Cheque"
+    return "Other"
+
+
+async def _drawer_by_mode(user: Dict[str, Any], clinic_id: Optional[str], day: str) -> Dict[str, Any]:
+    """True daily drawer = ALL receipts dated `day` (clinic-scoped) split by
+    payment mode, so reception can reconcile Cash / UPI / Card etc."""
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["receipt_date"] = day
+    receipts = await db.receipts.find(
+        filt, {"_id": 0, "paid": 1, "mode": 1}
+    ).to_list(length=2000)
+    buckets: Dict[str, Dict[str, float]] = {}
+    total = 0.0
+    for r in receipts:
+        b = _norm_mode(r.get("mode"))
+        paid = float(r.get("paid") or 0)
+        buckets.setdefault(b, {"amount": 0.0, "count": 0})
+        buckets[b]["amount"] += paid
+        buckets[b]["count"] += 1
+        total += paid
+    order = ["Cash", "UPI", "Card", "Wallet", "Cheque", "Other"]
+    modes = [
+        {"mode": k, "amount": round(buckets[k]["amount"], 2), "count": int(buckets[k]["count"])}
+        for k in order if k in buckets and buckets[k]["amount"] > 0
+    ]
+    return {"total": round(total, 2), "modes": modes}
 
 
 @router.get("/api/encounters/pending-dues")
@@ -510,6 +547,116 @@ async def pending_dues(request: Request, user=Depends(require_staff), days: int 
     ).sort("created_at", -1).limit(200).to_list(length=200)
     total_due = sum(float(r.get("fee_amount") or 0) for r in rows)
     return {"items": rows, "count": len(rows), "total_due": round(total_due, 2)}
+
+
+@router.get("/api/encounters/revenue-report")
+async def revenue_report(request: Request, user=Depends(require_staff), month: str = ""):
+    """Owner month view: collected vs waived vs outstanding across the
+    month's encounters, with a per-day series. Owner-tier only."""
+    from datetime import timedelta as _td
+    OWNER_ROLES = {"super_owner", "primary_owner", "owner", "partner"}
+    if str(user.get("role") or "") not in OWNER_ROLES:
+        raise HTTPException(403, detail="Owner access required.")
+    clinic_id = await resolve_clinic_id(request, user)
+    ist_now = datetime.now(timezone.utc) + _td(hours=5, minutes=30)
+    mon = (month or "").strip()[:7] or ist_now.strftime("%Y-%m")
+    y, m = (int(x) for x in mon.split("-"))
+    first = f"{mon}-01"
+    ny, nm = (y + 1, 1) if m == 12 else (y, m + 1)
+    nxt = f"{ny:04d}-{nm:02d}-01"
+    start_utc, _ = _ist_day_bounds_utc(first)
+    end_utc, _ = _ist_day_bounds_utc(nxt)
+
+    filt = tenant_filter(user, clinic_id, allow_global=True)
+    filt["$or"] = [
+        {"booking_date": {"$gte": first, "$lt": nxt}},
+        {"created_at": {"$gte": start_utc, "$lt": end_utc}},
+    ]
+    encs = await db.encounters.find(
+        filt,
+        {"_id": 0, "encounter_id": 1, "payment_status": 1, "fee_amount": 1,
+         "booking_date": 1, "created_at": 1},
+    ).limit(5000).to_list(length=5000)
+
+    enc_ids = [e["encounter_id"] for e in encs]
+    paid_by_enc: Dict[str, float] = {}
+    if enc_ids:
+        rs = await db.receipts.find(
+            {"encounter_id": {"$in": enc_ids}}, {"_id": 0, "encounter_id": 1, "paid": 1}
+        ).to_list(length=10000)
+        for r in rs:
+            paid_by_enc[r["encounter_id"]] = paid_by_enc.get(r["encounter_id"], 0.0) + float(r.get("paid") or 0)
+
+    collected = waived = outstanding = 0.0
+    counts = {"total": len(encs), "paid": 0, "pending": 0, "waived": 0}
+    series: Dict[str, Dict[str, float]] = {}
+
+    def day_of(e):
+        if e.get("booking_date"):
+            return e["booking_date"][:10]
+        ca = e.get("created_at")
+        if isinstance(ca, datetime):
+            return (ca + _td(hours=5, minutes=30)).strftime("%Y-%m-%d")
+        return mon + "-01"
+
+    for e in encs:
+        st = e.get("payment_status") or "pending"
+        fee = float(e.get("fee_amount") or 0)
+        d = day_of(e)
+        s = series.setdefault(d, {"collected": 0.0, "waived": 0.0, "outstanding": 0.0})
+        c = paid_by_enc.get(e["encounter_id"], 0.0)
+        collected += c
+        s["collected"] += c
+        if st == "waived":
+            waived += fee; s["waived"] += fee; counts["waived"] += 1
+        elif st == "paid":
+            counts["paid"] += 1
+        else:
+            if fee > 0:
+                outstanding += fee; s["outstanding"] += fee
+            counts["pending"] += 1
+
+    day_series = [
+        {"day": k, "collected": round(v["collected"], 2), "waived": round(v["waived"], 2), "outstanding": round(v["outstanding"], 2)}
+        for k, v in sorted(series.items())
+    ]
+    return {
+        "month": mon,
+        "collected": round(collected, 2),
+        "waived_total": round(waived, 2),
+        "outstanding": round(outstanding, 2),
+        "counts": counts,
+        "series": day_series,
+    }
+
+
+@router.get("/api/encounters/patient-timeline")
+async def patient_timeline(request: Request, user=Depends(require_staff), phone: str = "", encounter_id: str = ""):
+    """A patient's full history on one screen — every encounter (visit) and
+    every receipt, newest first — for reception traceability."""
+    clinic_id = await resolve_clinic_id(request, user)
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())[-10:]
+    if not digits and encounter_id:
+        enc = await _scoped_find(request, user, encounter_id, {"_id": 0, "patient_phone": 1})
+        digits = "".join(ch for ch in ((enc or {}).get("patient_phone") or "") if ch.isdigit())[-10:]
+    if not digits:
+        return {"phone": "", "visits": [], "receipts": []}
+    efilt = tenant_filter(user, clinic_id, allow_global=True)
+    efilt["patient_phone"] = {"$regex": digits + "$"}
+    visits = await db.encounters.find(
+        efilt,
+        {"_id": 0, "encounter_id": 1, "patient_name": 1, "chief_complaint": 1,
+         "stage": 1, "payment_status": 1, "fee_amount": 1, "prescription_id": 1,
+         "booking_date": 1, "booking_time": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(100).to_list(length=100)
+    rfilt = tenant_filter(user, clinic_id, allow_global=True)
+    rfilt["patient_phone"] = digits
+    receipts = await db.receipts.find(
+        rfilt,
+        {"_id": 0, "receipt_id": 1, "receipt_no": 1, "total": 1, "paid": 1,
+         "balance": 1, "mode": 1, "receipt_date": 1, "encounter_id": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(100).to_list(length=100)
+    return {"phone": digits, "visits": visits, "receipts": receipts}
 
 
 async def _scoped_find(request: Request, user: Dict[str, Any], encounter_id: str,

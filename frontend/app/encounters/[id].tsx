@@ -401,6 +401,16 @@ export default function EncounterDetailScreen() {
             <Text style={styles.waivedNote}>Waived by {enc.waived_by_name}</Text>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.timelineBtn}
+          onPress={() => router.push({ pathname: '/encounters/timeline', params: { phone: enc.patient_phone || '', name: enc.patient_name || '' } } as any)}
+          testID="encdet-timeline"
+        >
+          <Ionicons name="time-outline" size={17} color={COLORS.primaryDark} />
+          <Text style={styles.timelineBtnText}>Patient history &amp; billing</Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.primaryDark} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -484,4 +494,10 @@ const styles = StyleSheet.create({
   },
   billWaiveText: { ...FONTS.bodyMedium, color: '#64748B', fontSize: 13.5 },
   waivedNote: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic' },
+  timelineBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6,
+    backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '2E',
+    borderRadius: RADIUS.md, paddingVertical: 13, paddingHorizontal: 14,
+  },
+  timelineBtnText: { ...FONTS.bodyMedium, fontSize: 14, color: COLORS.primaryDark, flex: 1 },
 });
