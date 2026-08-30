@@ -717,3 +717,27 @@ times/hour (boot + login + FCM token-rotation listener), tripping Cloudflare's r
   a successful backend response.
 - No Cloudflare/edge/tier changes (per user). Native-only path (web short-circuits) → not
   web-testable; needs a new build/OTA to reach the installed app.
+
+## FIX: Encounter payment status not updating + Push deep-links + Duplicate Review (Jun 2026)
+Three user-reported items:
+1. **Encounter payment status not updating after recording a payment — FIXED.** Backend chain
+   (POST /api/receipts w/ encounter_id → recompute_encounter_payment) was already correct (curl-
+   verified: flips encounters.payment_status pending→paid). Root cause was FRONTEND stale cache:
+   billing/new.tsx never invalidated the worklist/encounters SWR cache after saving a receipt, so
+   /encounters rows kept showing "Payment pending". Fix: billing/new.tsx now calls
+   invalidateCached('worklist:')+('encounters:') on a successful save when payload.encounter_id is
+   set. Encounter detail already reloaded via useFocusEffect. Verified (testing iteration 35):
+   badge flips to "Paid" on BOTH detail + worklist. (Billing prefills default consultation_fee_inr
+   when the encounter has no fee, so ₹0 receipts aren't an issue.)
+2. **Push notification deep-links — FIXED (native-only, needs build to verify).** app/_layout.tsx
+   push-tap handler only routed legacy `type`/`link` payloads; Comm V2 pushes carry `inbox_action`
+   + target ids and were a no-op on tap. Added V2 routing: type='v2_message'/inbox_action=
+   'open_conversation' → /comm-v2/conversations/[id]; inbox_action='open_broadcast' →
+   /comm-v2/broadcasts/[id] (else /comm-v2/inbox); any other V2 inbox_action → /comm-v2/inbox. Also
+   added type='receipt_issued' → /receipts/[id], and the generic fallback now honours `deep_link`
+   (not just `link`). V2 pushes only fan out to canary users so V2 screens are unlocked for them.
+   NOT web-testable (native push) — requires a new build/OTA to validate on device.
+3. **Duplicate Review Tool — ALREADY SHIPPED, verified.** admin/dup-merge.tsx (owner-only,
+   reachable via More → "Dup-Merge Accounts" and web-shell) already has the quarantined email/phone
+   Merge/Restore section backed by GET /api/admin/users/quarantined-duplicates + POST
+   /api/admin/users/resolve-quarantine. Renders cleanly for owner (testing iteration 35).

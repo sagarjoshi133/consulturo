@@ -28,6 +28,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../src/api';
+import { invalidateCached } from '../../src/data-cache';
 import { useToast } from '../../src/toast';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { DateField } from '../../src/date-picker';
@@ -279,6 +280,15 @@ export default function RecordPayment() {
       const r = await api.post('/receipts', payload);
       const receipt = r.data;
       toast.success(`Receipt ${receipt.receipt_no} saved`);
+
+      // This receipt is tied to an encounter → its payment badge just
+      // flipped (pending → paid) server-side. Drop the cached worklist /
+      // collection data so those screens show the fresh status
+      // immediately instead of stale "Payment pending".
+      if (payload.encounter_id) {
+        invalidateCached('worklist:');
+        invalidateCached('encounters:');
+      }
 
       // If we were launched from a pending-payment booking, flip the
       // booking's payment_status to 'paid' via the dedicated endpoint

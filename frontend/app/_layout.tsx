@@ -198,12 +198,56 @@ function RootNav() {
     // Route user on tap of a push notification
     const unsub = attachNotificationListeners((data) => {
       const type = data?.type;
-      const link = data?.link;
+      // Legacy notifications use `link`; some (e.g. receipt_issued) use
+      // `deep_link`. Honour both so every tap has a destination.
+      const link = data?.link || data?.deep_link;
 
       // Comm V2: every push tap should refresh the inbox counts so
       // the bell + category badges reflect reality. Silent no-op when
       // the flag is off.
       triggerCommV2Refresh();
+
+      // ── Comm V2 deep-links ────────────────────────────────────
+      // V2 pushes (messages, broadcasts, inbox items) carry an
+      // `inbox_action` + target id instead of the legacy `type`/`link`.
+      // V2 pushes are only fanned out to canary users, so routing
+      // straight to the V2 screens is safe (they're unlocked for them).
+      const inboxAction = data?.inbox_action;
+      if (type === 'v2_message' || inboxAction === 'open_conversation') {
+        const convId = data?.conversation_id;
+        if (convId) {
+          router.push({ pathname: '/comm-v2/conversations/[id]', params: { id: String(convId) } } as any);
+        } else {
+          router.push('/comm-v2/conversations' as any);
+        }
+        return;
+      }
+      if (inboxAction === 'open_broadcast') {
+        const bid = data?.broadcast_id;
+        if (bid) {
+          router.push({ pathname: '/comm-v2/broadcasts/[id]', params: { id: String(bid) } } as any);
+        } else {
+          router.push('/comm-v2/inbox' as any);
+        }
+        return;
+      }
+      if (inboxAction && inboxAction !== 'none' && inboxAction !== 'open_home') {
+        // Any other V2 inbox action lands the user in the Notification
+        // Centre where the item lives and can be opened directly.
+        router.push('/comm-v2/inbox' as any);
+        return;
+      }
+
+      // ── Receipt issued (billing) ──────────────────────────────
+      if (type === 'receipt_issued') {
+        const rid = data?.receipt_id;
+        if (rid) {
+          router.push({ pathname: '/receipts/[id]', params: { id: String(rid) } } as any);
+        } else {
+          router.push('/receipts' as any);
+        }
+        return;
+      }
 
       // ── Video consultation deep-link (Phase 5.13) ─────────────
       // Patient receives `role=patient` + their patient_code/url;

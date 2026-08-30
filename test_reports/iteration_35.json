@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 35 — Frontend-only regression on (1) Encounter Record-payment flow badge update and (3) Duplicate Review Tool rendering. Both flows PASS end-to-end. Created a fresh pending encounter enc_5dd3d9fb6b63 (fee_amount=null, stage=open, payment_status=pending) via POST /api/encounters, then drove the UI on mobile viewport 390x844 with owner session test_session_1781800271528. Flow: /encounters/{id} → 'Payment pending' badge visible → tapped encdet-record-payment → landed on /billing/new with phone (+919000111222) & name (TEST_PayFlow) prefilled and Consultation amount auto-seeded to 500 from clinic_settings.consultation_fee_inr (encounter fee_amount was null so URL param was empty — default kicked in as designed) → tapped bill-save → redirected to /billing/rc_0286c4234e → navigated back to /encounters/enc_5dd3d9fb6b63 → billing badge now reads 'Paid' (no residual 'Payment pending' string on the page) → navigated to /encounters worklist → row wl-row-enc_5dd3d9fb6b63 payChip renders 'Paid'. useFocusEffect+invalidateCached('worklist:'/'encounters:') is working. Task 3 (dup-merge) — /admin/dup-merge loads for primary_owner: hero 'Duplicate Account Merge' + section header 'Quarantined email / phone' + testID quarantine-empty ('No quarantined values — nothing to review.') all present; GET /api/admin/users/quarantined-duplicates returns 200 {count:0,quarantined:[]} as expected. Test encounter cleaned up (DELETE /api/encounters/enc_5dd3d9fb6b63 → {ok:true}).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/encounters/{id} & /admin/dup-merge (web-preview only)", "issues": ["Expo web renders a persistent left sidebar at ~50% of the 390-wide viewport, so title 'Duplicate Account Merge' and patient card labels wrap letter-by-letter. On real mobile (no sidebar) this is fine. Not a functional bug — reported previously in iteration 34."]}
+    ],
+    "react_native_issues": [
+      {"component": "Global styles (repeat from iter 34)", "issue": "Console warnings persist: 'shadow*' style props deprecated (use 'boxShadow'); 'textShadow*' style props deprecated (use 'textShadow'); props.pointerEvents deprecated (use style.pointerEvents); Animated useNativeDriver falling back to JS. Not new to this iteration."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No fixes required for Tasks 1 & 3 — both verified working. (Task 2 push deep-link intentionally skipped — native only.)"
+  ],
+  "critical_code_review_comments": [
+    "billing/new.tsx correctly forwards encounter_id to POST /api/receipts (line 278) and calls invalidateCached('worklist:')+invalidateCached('encounters:') after save (lines 288-291) — this is what makes the badge flip on return.",
+    "encounters/[id].tsx uses useFocusEffect(load) (line 78) so the detail refetches on navigation-back — verified: enc.payment_status becomes 'paid' after receipt save and the PAY_META badge in both the header card and the Billing sub-card update correctly.",
+    "admin/dup-merge.tsx guards on canMerge (super_owner || primary_owner) before calling load() — rendering path verified for primary_owner. GET /admin/users/quarantined-duplicates is wrapped in .catch(() => ({data:{quarantined:[]}})) so a 404/500 there degrades gracefully."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (8/8 steps: nav → pending badge → record payment → prefill → save → detail=Paid → worklist=Paid → dup-merge renders)"},
+  "seed_data_creation": "Created encounter enc_5dd3d9fb6b63 (TEST_PayFlow, +919000111222) and receipt rc_0286c4234e during the flow. Encounter deleted at end (ok:true). Receipt rc_0286c4234e remains — cascade-delete of receipts on encounter delete is out of scope; can be removed manually if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner session test_session_1781800271528 (primary_owner, user_4775ed40276e, clinic_a97b903f2fb2) is fully working. Record-payment badge flip regression is now covered end-to-end at the UI level. For future encounter tests, note that if you POST /api/encounters without fee_amount the /billing/new screen will auto-fill the amount from clinic_settings.consultation_fee_inr (currently ₹500)."
+}
