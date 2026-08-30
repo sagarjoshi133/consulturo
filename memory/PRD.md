@@ -872,3 +872,21 @@ routed consulturo.com → the Vercel web app.
   /registry/invites/bulk → queue with per-patient WhatsApp/SMS send). No new UI needed.
 - NOTE for deploy: PUBLIC_APP_URL overrides the domain; the Vercel build's EXPO_PUBLIC_BACKEND_URL
   must point to the production backend so /login OTP + /magic-link token exchange work.
+
+## FEATURE: Invite Follow-up — auto-flag stale invites for re-invite (Jun 2026)
+Patients invited ≥7 days ago who still haven't signed up are auto-flagged for a gentle re-invite.
+- Backend (routers/patient_registry.py):
+  • GET /registry/patients now accepts registration_status=stale_invite (unregistered + invited_at
+    ≤ now-7d) and annotates EVERY row with a computed `needs_reinvite` boolean (tz-safe parse of
+    invited_at as datetime OR ISO string; excludes registered patients).
+  • GET /registry/patients/summary now returns `stale_invite` count for the tab badge.
+- Frontend Directory (app/patients/index.tsx):
+  • New "Re-invite · N" tab (TAB_STATUS maps it → stale_invite) between Unregistered and Registered.
+  • Orange "re-invite" chip on any row where needs_reinvite (shown in place of the green "invited"
+    chip). New styles reinviteChip/reinviteTxt.
+  • Per-row Invite action now shows in BOTH unregistered + reinvite tabs (labelled "Re-invite" in the
+    reinvite tab); existing bulk Select→/registry/invites/bulk works in this tab too.
+  • Optimistic updates clear needs_reinvite (and bump invite_count) after (re)inviting so the badge
+    and tab reflect immediately.
+- Verified (backend curl + web UI): backdated NoteTest → summary stale_invite=1, Re-invite tab lists
+  it with the badge + Re-invite button; needs_reinvite=True.

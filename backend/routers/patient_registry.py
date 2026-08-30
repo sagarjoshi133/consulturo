@@ -96,9 +96,13 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
     limit = max(1, min(int(limit or 50), 200))
     skip = max(0, int(skip or 0))
     status = (registration_status or "all").lower().strip()
-    if status not in ("all", "registered", "unregistered"):
+    if status not in ("all", "registered", "unregistered", "stale_invite"):
         raise HTTPException(status_code=400,
-                             detail="registration_status must be all|registered|unregistered")
+                             detail="registration_status must be all|registered|unregistered|stale_invite")
+
+    # Patients invited on/before this cutoff who still haven't signed up
+    # are surfaced for a gentle re-invite (7-day nudge window).
+    reinvite_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
     flt: Dict[str, Any] = {}
     qs = (q or "").strip()
@@ -118,10 +122,9 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
     # A patient is REGISTERED if a `users` row exists with matching
     # normalised phone (last-10 digits) OR email. This runs as a fast
     # $in filter after we materialise the set of patient user IDs.
-    if status in ("registered", "unregistered"):
-        # Collect the set of phone_digits / emails that ARE registered
-        # (cached — shared with /summary and rapid tab re-opens).
-        registered_phones, registered_emails = await _get_registered_sets()
+    # (Sets are cached — also reused below to annotate needs_reinvite.)
+    registered_phones, registered_emails = await _get_registered_sets()
+    if status in ("registered", "unregistered", "stale_invite"):
         if status == "registered":
             flt.setdefault("$and", [])
             flt["$and"].append({
@@ -130,15 +133,41 @@ async def search_patients(q: str = "", limit: int = 50, skip: int = 0,
                     {"email": {"$in": list(registered_emails)}},
                 ]
             })
-        else:  # unregistered
+        else:  # unregistered OR stale_invite (both exclude registered rows)
             flt.setdefault("$and", [])
             flt["$and"].append({
                 "phone_digits": {"$nin": list(registered_phones)},
                 "email": {"$nin": list(registered_emails)},
             })
+            if status == "stale_invite":
+                # invited at least 7 days ago and still not signed up
+                flt["$and"].append({"invited_at": {"$lte": reinvite_cutoff}})
 
     rows = await patients_repo.search(flt, limit=limit, skip=skip)
-    return {"items": [_iso(r) for r in rows], "limit": limit, "skip": skip,
+
+    # Annotate each row with needs_reinvite so the UI can badge stale
+    # invites in any tab (unregistered + invited ≥7d ago).
+    def _annotate(r: Dict[str, Any]) -> Dict[str, Any]:
+        out = _iso(r)
+        phone_d = r.get("phone_digits")
+        email_l = (r.get("email") or "").lower()
+        is_registered = (phone_d in registered_phones) or (email_l and email_l in registered_emails)
+        inv = r.get("invited_at")
+        inv_dt: Optional[datetime] = None
+        if isinstance(inv, datetime):
+            inv_dt = inv if inv.tzinfo else inv.replace(tzinfo=timezone.utc)
+        elif isinstance(inv, str) and inv:
+            try:
+                inv_dt = datetime.fromisoformat(inv.replace("Z", "+00:00"))
+                if not inv_dt.tzinfo:
+                    inv_dt = inv_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                inv_dt = None
+        invited_stale = inv_dt is not None and inv_dt <= reinvite_cutoff
+        out["needs_reinvite"] = bool((not is_registered) and invited_stale)
+        return out
+
+    return {"items": [_annotate(r) for r in rows], "limit": limit, "skip": skip,
              "registration_status": status}
 
 
@@ -160,10 +189,19 @@ async def registry_summary(user=Depends(require_registry_access)):
             {"email": {"$in": registered_emails}},
         ],
     })
+    # Stale invites: unregistered + invited ≥7 days ago (re-invite nudge).
+    reinvite_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    stale_invite = await db.patients.count_documents({
+        "merged_into": {"$exists": False},
+        "phone_digits": {"$nin": registered_phones},
+        "email": {"$nin": registered_emails},
+        "invited_at": {"$lte": reinvite_cutoff},
+    })
     return {
         "total": int(total),
         "registered": int(registered),
         "unregistered": int(total) - int(registered),
+        "stale_invite": int(stale_invite),
     }
 
 

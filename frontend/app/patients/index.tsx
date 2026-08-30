@@ -37,6 +37,7 @@ type Patient = {
   updated_at?: string;
   invited_at?: string | null;
   invite_count?: number;
+  needs_reinvite?: boolean;
 };
 
 type InvitePayload = {
@@ -54,13 +55,22 @@ type DuplicateCandidate = Patient & {
   reasons: string[];
 };
 
-type Tab = 'unregistered' | 'registered' | 'all';
+type Tab = 'unregistered' | 'reinvite' | 'registered' | 'all';
 
-const TAB_ORDER: Tab[] = ['unregistered', 'registered', 'all'];
+const TAB_ORDER: Tab[] = ['unregistered', 'reinvite', 'registered', 'all'];
 const TAB_LABEL: Record<Tab, string> = {
   unregistered: 'Unregistered',
+  reinvite:     'Re-invite',
   registered:   'Registered',
   all:          'All patients',
+};
+
+// Map a UI tab → the backend registration_status query value.
+const TAB_STATUS: Record<Tab, string> = {
+  unregistered: 'unregistered',
+  reinvite:     'stale_invite',
+  registered:   'registered',
+  all:          'all',
 };
 
 export default function UnregisteredPatientsScreen() {
@@ -71,7 +81,7 @@ export default function UnregisteredPatientsScreen() {
   const [loading, setLoading] = useState(() => !hasCached('patients:items:unregistered'));
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<{
-    total: number; registered: number; unregistered: number;
+    total: number; registered: number; unregistered: number; stale_invite?: number;
   } | null>(() => getCached('patients:summary') ?? null);
   const [analytics, setAnalytics] = useState<{
     total_invited: number; converted_total: number;
@@ -102,7 +112,7 @@ export default function UnregisteredPatientsScreen() {
     try {
       const [listRes, summaryRes, analyticsRes] = await Promise.all([
         api.get('/registry/patients', {
-          params: { q: q.trim(), limit: 100, registration_status: tab },
+          params: { q: q.trim(), limit: 100, registration_status: TAB_STATUS[tab] },
         }),
         api.get('/registry/patients/summary').catch(() => ({ data: null })),
         api.get('/registry/invites/analytics').catch(() => ({ data: null })),
@@ -144,6 +154,7 @@ export default function UnregisteredPatientsScreen() {
   const badge = (t: Tab): number | null => {
     if (!summary) return null;
     if (t === 'unregistered') return summary.unregistered;
+    if (t === 'reinvite')     return summary.stale_invite ?? 0;
     if (t === 'registered')   return summary.registered;
     return summary.total;
   };
@@ -170,7 +181,7 @@ export default function UnregisteredPatientsScreen() {
       // Optimistically bump the local invite_count so the badge reflects immediately.
       setItems((cur) => cur.map((x) =>
         x.patient_id === p.patient_id
-          ? { ...x, invited_at: r.data.invited_at, invite_count: (x.invite_count || 0) + 1 }
+          ? { ...x, invited_at: r.data.invited_at, invite_count: (x.invite_count || 0) + 1, needs_reinvite: false }
           : x,
       ));
     } catch (e: any) {
@@ -305,7 +316,7 @@ export default function UnregisteredPatientsScreen() {
       setItems((cur) => cur.map((x) =>
         okIds.has(x.patient_id)
           ? { ...x, invite_count: (x.invite_count || 0) + 1,
-              invited_at: new Date().toISOString() }
+              invited_at: new Date().toISOString(), needs_reinvite: false }
           : x,
       ));
       // Refresh analytics.
@@ -492,7 +503,12 @@ export default function UnregisteredPatientsScreen() {
                         <Text style={styles.regNoTxt}>#{item.reg_no}</Text>
                       </View>
                     ) : null}
-                    {(item.invite_count || 0) > 0 ? (
+                    {item.needs_reinvite ? (
+                      <View style={styles.reinviteChip}>
+                        <Ionicons name="alarm" size={10} color={COLORS.warning} />
+                        <Text style={styles.reinviteTxt}>re-invite</Text>
+                      </View>
+                    ) : (item.invite_count || 0) > 0 ? (
                       <View style={styles.invitedChip}>
                         <Ionicons name="paper-plane" size={10} color={COLORS.success} />
                         <Text style={styles.invitedTxt}>invited</Text>
@@ -509,14 +525,14 @@ export default function UnregisteredPatientsScreen() {
               </Pressable>
               {selectMode ? null : (
                 <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, marginLeft: 52 }}>
-                  {tab === 'unregistered' ? (
+                  {tab === 'unregistered' || tab === 'reinvite' ? (
                     <Pressable
                       onPress={() => openInvite(item)}
                       style={styles.actionBtn}
                       hitSlop={4}
                     >
                       <Ionicons name="paper-plane-outline" size={13} color={COLORS.primary} />
-                      <Text style={styles.actionBtnTxt}>Invite</Text>
+                      <Text style={styles.actionBtnTxt}>{tab === 'reinvite' ? 'Re-invite' : 'Invite'}</Text>
                     </Pressable>
                   ) : null}
                   <Pressable
@@ -942,6 +958,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999,
   },
   invitedTxt: { fontSize: 10, fontWeight: '700', color: COLORS.success },
+  reinviteChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: COLORS.warning + '18',
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999,
+  },
+  reinviteTxt: { fontSize: 10, fontWeight: '700', color: COLORS.warning },
   actionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
