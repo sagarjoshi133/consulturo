@@ -476,11 +476,19 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         f"⚠️ Awaiting your confirmation in the app."
     )
     await notify_telegram(msg)
+    # Booking Notes Preview — surface the patient's reason/note in the
+    # appointment alert so staff get context at a glance (staff-only
+    # recipients, so it's fine to include the reason here).
+    _reason = (payload.reason or "").strip()
+    _note_snip = ""
+    if _reason:
+        _note_snip = " — " + (_reason[:80] + "…" if len(_reason) > 80 else _reason)
+    _push_body = f"{payload.patient_name} · {payload.booking_date} {payload.booking_time}{_note_snip}"
     # Push to owner's devices too
     await push_to_owner(
         "New appointment request",
-        f"{payload.patient_name} — {payload.booking_date} {payload.booking_time}",
-        {"type": "new_booking", "booking_id": booking_id},
+        _push_body,
+        {"type": "new_booking", "booking_id": booking_id, "reason": _reason[:160]},
     )
     # Persist an in-app notification for every user who can approve bookings
     # (owner-tier + team members with can_approve_bookings) so the bell
@@ -497,9 +505,9 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         await create_notification(
             user_id=uid,
             title="New appointment request",
-            body=f"{payload.patient_name} — {payload.booking_date} {payload.booking_time}",
+            body=_push_body,
             kind="booking",
-            data={"type": "new_booking", "booking_id": booking_id, "status": "requested"},
+            data={"type": "new_booking", "booking_id": booking_id, "status": "requested", "reason": _reason[:160]},
             push=True,
         )
 
