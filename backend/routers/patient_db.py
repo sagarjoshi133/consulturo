@@ -125,17 +125,30 @@ async def list_patients(
     q: str = "",
     month: str = "",
     gender: str = "",
+    status: str = "",
     limit: int = 50,
     skip: int = 0,
     user=Depends(require_user),
 ):
-    """Paginated patient list with multi-field search + month filter."""
+    """Paginated patient list with multi-field search + month filter.
+
+    `status` quick-filter (optional):
+      • registered    — patient has a linked app account
+      • unregistered  — no matching patient account
+      • has_dues      — has ≥1 confirmed booking with an outstanding
+                        (unpaid) balance
+    """
     _require_access(user)
     limit = max(1, min(int(limit or 50), 200))
     skip = max(0, int(skip or 0))
 
+    clinic_id = await resolve_clinic_id(request, user)
+
     base: Dict[str, Any] = {"merged_into": {"$exists": False}}
-    base.update(_build_search_filter(q))
+    and_clauses: List[Dict[str, Any]] = []
+    sf = _build_search_filter(q)
+    if sf:
+        and_clauses.append(sf)
     if month:
         start, end = _month_bounds(month)
         if start and end:
@@ -143,11 +156,48 @@ async def list_patients(
     if gender:
         base["gender"] = gender
 
+    # ── Quick status filter ──────────────────────────────────────
+    if status in ("registered", "unregistered"):
+        from routers.patient_registry import _get_registered_sets
+        reg_phones, reg_emails = await _get_registered_sets()
+        if status == "registered":
+            and_clauses.append({"$or": [
+                {"phone_digits": {"$in": list(reg_phones)}},
+                {"email": {"$in": list(reg_emails)}},
+            ]})
+        else:
+            and_clauses.append({
+                "phone_digits": {"$nin": list(reg_phones)},
+                "email": {"$nin": list(reg_emails)},
+            })
+    elif status == "has_dues":
+        tenant = tenant_filter(user, clinic_id, allow_global=True)
+        due_q: Dict[str, Any] = {
+            **tenant,
+            "status": "confirmed",
+            "$or": [
+                {"payment_status": "pending_offline"},
+                {"payment_status": {"$exists": False}},
+                {"payment_status": None},
+                {"payment_status": ""},
+            ],
+            "paid_offline": {"$ne": True},
+        }
+        due_phones: set = set()
+        async for b in db.bookings.find(due_q, {"_id": 0, "patient_phone": 1}):
+            d = re.sub(r"\D", "", b.get("patient_phone") or "")[-10:]
+            if len(d) == 10:
+                due_phones.add(d)
+        # Sentinel keeps the query valid (matches nothing) when no dues.
+        and_clauses.append({"phone_digits": {"$in": list(due_phones) or ["__none__"]}})
+
+    if and_clauses:
+        base["$and"] = and_clauses
+
     # Tenant scoping — primary_owner sees own clinic, super_owner sees
     # all if no header. patients collection is global at the moment but
     # the booking history is clinic-scoped so the count we surface for
     # each row uses tenant-filtered queries below.
-    clinic_id = await resolve_clinic_id(request, user)
 
     total = await db.patients.count_documents(base)
     cursor = (
@@ -301,26 +351,62 @@ async def export_patients(
     q: str = "",
     month: str = "",
     gender: str = "",
+    status: str = "",
     user=Depends(require_user),
 ):
     """Stream a CSV containing the patient database (filtered by the
-    same q / month / gender filters as the list endpoint).
+    same q / month / gender / status filters as the list endpoint).
     Restricted to primary_owner / super_owner. Excel happily opens
     UTF-8 CSV — for true XLSX we can layer openpyxl later."""
     _require_access(user)
     _require_export(user)
 
+    clinic_id = await resolve_clinic_id(request, user)
+    tenant = tenant_filter(user, clinic_id, allow_global=True)
+
     base: Dict[str, Any] = {}
-    base.update(_build_search_filter(q))
+    and_clauses: List[Dict[str, Any]] = []
+    sf = _build_search_filter(q)
+    if sf:
+        and_clauses.append(sf)
     if month:
         start, end = _month_bounds(month)
         if start and end:
             base["first_seen_at"] = {"$gte": start, "$lt": end}
     if gender:
         base["gender"] = gender
-
-    clinic_id = await resolve_clinic_id(request, user)
-    tenant = tenant_filter(user, clinic_id, allow_global=True)
+    if status in ("registered", "unregistered"):
+        from routers.patient_registry import _get_registered_sets
+        reg_phones, reg_emails = await _get_registered_sets()
+        if status == "registered":
+            and_clauses.append({"$or": [
+                {"phone_digits": {"$in": list(reg_phones)}},
+                {"email": {"$in": list(reg_emails)}},
+            ]})
+        else:
+            and_clauses.append({
+                "phone_digits": {"$nin": list(reg_phones)},
+                "email": {"$nin": list(reg_emails)},
+            })
+    elif status == "has_dues":
+        due_q: Dict[str, Any] = {
+            **tenant, "status": "confirmed",
+            "$or": [
+                {"payment_status": "pending_offline"},
+                {"payment_status": {"$exists": False}},
+                {"payment_status": None},
+                {"payment_status": ""},
+            ],
+            "paid_offline": {"$ne": True},
+        }
+        due_phones: set = set()
+        async for b in db.bookings.find(due_q, {"_id": 0, "patient_phone": 1}):
+            d = re.sub(r"\D", "", b.get("patient_phone") or "")[-10:]
+            if len(d) == 10:
+                due_phones.add(d)
+        and_clauses.append({"phone_digits": {"$in": list(due_phones) or ["__none__"]}})
+    if and_clauses:
+        base["$and"] = and_clauses
 
     buf = io.StringIO()
     w = csv.writer(buf)

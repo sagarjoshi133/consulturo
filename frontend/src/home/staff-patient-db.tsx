@@ -63,6 +63,14 @@ type ListResponse = {
 
 const PAGE_SIZE = 50;
 
+// Quick status filter chips shown in the Filters dropdown.
+const STATUS_OPTS: { key: string; label: string; icon: string }[] = [
+  { key: '', label: 'All', icon: '' },
+  { key: 'registered', label: 'Registered', icon: 'checkmark-circle-outline' },
+  { key: 'unregistered', label: 'Unregistered', icon: 'person-add-outline' },
+  { key: 'has_dues', label: 'Has dues', icon: 'cash-outline' },
+];
+
 // Generate the last N months as YYYY-MM strings (newest first). Uses
 // IST so the labels match what the backend filter expects.
 function recentMonths(n: number): { key: string; label: string }[] {
@@ -94,6 +102,7 @@ export default function StaffPatientDb() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [month, setMonth] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [items, setItems] = useState<PatientRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -106,6 +115,15 @@ export default function StaffPatientDb() {
   } | null>(null);
 
   const months = useMemo(() => recentMonths(6), []);
+
+  // Compact label for the Filters button (¼ width).
+  const filterLabel = useMemo(() => {
+    const n = (status ? 1 : 0) + (month ? 1 : 0);
+    if (n === 0) return 'All';
+    if (n > 1) return '2 filters';
+    if (status) return STATUS_OPTS.find((s) => s.key === status)?.label || 'Filter';
+    return months.find((m) => m.key === month)?.label || 'Filter';
+  }, [status, month, months]);
 
   // Load the Unregistered/Registered summary for the compact Directory
   // button subtitle. (Invite → sign-up conversion analytics live only on
@@ -140,6 +158,7 @@ export default function StaffPatientDb() {
         params: {
           q: debouncedQuery || undefined,
           month: month || undefined,
+          status: status || undefined,
           limit: PAGE_SIZE,
         },
       });
@@ -152,11 +171,11 @@ export default function StaffPatientDb() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, month, canAccess]);
+  }, [debouncedQuery, month, status, canAccess]);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
-  React.useEffect(() => { setLoading(true); load(); }, [debouncedQuery, month, load]);
+  React.useEffect(() => { setLoading(true); load(); }, [debouncedQuery, month, status, load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -173,6 +192,7 @@ export default function StaffPatientDb() {
       const params = new URLSearchParams();
       if (debouncedQuery) params.set('q', debouncedQuery);
       if (month) params.set('month', month);
+      if (status) params.set('status', status);
       const url = `${(api.defaults.baseURL || '').replace(/\/$/, '')}/patient-db/export?${params.toString()}`;
       if (Platform.OS === 'web') {
         // Use window.open to leverage the auth cookie / interceptor.
@@ -197,7 +217,7 @@ export default function StaffPatientDb() {
     } finally {
       setExporting(false);
     }
-  }, [canExport, exporting, debouncedQuery, month]);
+  }, [canExport, exporting, debouncedQuery, month, status]);
 
   // ─── Permission gates ─────────────────────────────────────────
   if (!canAccess) {
@@ -291,40 +311,79 @@ export default function StaffPatientDb() {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.filterBtn, month ? styles.filterBtnActive : null]}
+          style={[styles.filterBtn, (month || status) ? styles.filterBtnActive : null]}
           onPress={() => setFilterOpen(true)}
           activeOpacity={0.85}
           testID="patient-db-filter"
         >
-          <Ionicons name="options-outline" size={15} color={month ? COLORS.primary : COLORS.textSecondary} />
-          <Text style={[styles.filterBtnTxt, month ? { color: COLORS.primary } : null]} numberOfLines={1}>
-            {month ? (months.find((m) => m.key === month)?.label || 'Filter') : 'All'}
+          <Ionicons name="options-outline" size={15} color={(month || status) ? COLORS.primary : COLORS.textSecondary} />
+          <Text style={[styles.filterBtnTxt, (month || status) ? { color: COLORS.primary } : null]} numberOfLines={1}>
+            {filterLabel}
           </Text>
-          <Ionicons name="chevron-down" size={13} color={month ? COLORS.primary : COLORS.textSecondary} />
+          <Ionicons name="chevron-down" size={13} color={(month || status) ? COLORS.primary : COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      {/* Filters dropdown — month picker */}
+      {/* Filters dropdown — quick status chips + month picker */}
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setFilterOpen(false)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Filter by month</Text>
-            <ScrollView style={{ maxHeight: 340 }}>
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Filters</Text>
+              {(month || status) ? (
+                <TouchableOpacity onPress={() => { setStatus(''); setMonth(''); }} testID="patient-db-filter-clear">
+                  <Text style={styles.clearTxt}>Clear all</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <Text style={styles.modalSubTitle}>Status</Text>
+            <View style={styles.chipsWrap}>
+              {STATUS_OPTS.map((s) => {
+                const active = status === s.key;
+                return (
+                  <TouchableOpacity
+                    key={s.key || 'all'}
+                    onPress={() => setStatus(s.key)}
+                    activeOpacity={0.8}
+                    style={[styles.statusChip, active && styles.statusChipActive]}
+                    testID={`patient-db-status-${s.key || 'all'}`}
+                  >
+                    {s.icon ? (
+                      <Ionicons name={s.icon as any} size={13} color={active ? '#fff' : COLORS.primary} />
+                    ) : null}
+                    <Text style={[styles.statusChipTxt, active && styles.statusChipTxtActive]}>{s.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.modalSubTitle, { marginTop: 12 }]}>Month</Text>
+            <ScrollView style={{ maxHeight: 260 }}>
               <FilterOption
                 label="All months"
                 active={month === ''}
-                onPress={() => { setMonth(''); setFilterOpen(false); }}
+                onPress={() => setMonth('')}
               />
               {months.map((m) => (
                 <FilterOption
                   key={m.key}
                   label={m.label}
                   active={month === m.key}
-                  onPress={() => { setMonth(m.key); setFilterOpen(false); }}
+                  onPress={() => setMonth(m.key)}
                 />
               ))}
             </ScrollView>
-          </View>
+
+            <TouchableOpacity
+              style={styles.applyBtn}
+              onPress={() => setFilterOpen(false)}
+              activeOpacity={0.85}
+              testID="patient-db-filter-apply"
+            >
+              <Text style={styles.applyBtnTxt}>Done</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -501,6 +560,29 @@ const styles = StyleSheet.create({
     ...FONTS.h4, fontSize: 13, color: COLORS.textSecondary, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, paddingHorizontal: 10,
   },
+  modalHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 10,
+  },
+  clearTxt: { ...FONTS.body, fontSize: 12.5, color: COLORS.primary, fontWeight: '700' },
+  modalSubTitle: {
+    ...FONTS.body, fontSize: 11, color: COLORS.textSecondary, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4, marginBottom: 6, paddingHorizontal: 10,
+  },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 10 },
+  statusChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.pill,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.primary + '40',
+  },
+  statusChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  statusChipTxt: { ...FONTS.body, fontSize: 12.5, fontWeight: '700', color: COLORS.primary },
+  statusChipTxtActive: { color: '#fff' },
+  applyBtn: {
+    marginTop: 12, marginHorizontal: 10, paddingVertical: 12, borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary, alignItems: 'center',
+  },
+  applyBtnTxt: { ...FONTS.body, fontSize: 14, fontWeight: '700', color: '#fff' },
   filterOption: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12, paddingHorizontal: 12, borderRadius: RADIUS.md,

@@ -839,3 +839,16 @@ filters on one line (search ¾ left, filters ¼ right); make a compact space-sav
   checkmark on active). testIDs patient-db-filter, patient-db-filter-opt-*.
 - Verified on web (desktop shell): single Directory pill w/ badge, one-line search+filter, modal opens
   and lists All months + last 6 months. Renders full-width on mobile (flexbox).
+
+## FEATURE: Quick status filter chips on Patient Database (Jun 2026)
+Added one-tap status chips inside the Filters dropdown of the Patient DB (src/home/staff-patient-db.tsx):
+All / Registered / Unregistered / Has dues.
+- Backend: /api/patient-db/list (+ /export) now accept `status` = registered|unregistered|has_dues.
+  registered/unregistered reuse patient_registry._get_registered_sets() (phone_digits/email match
+  against patient user accounts). has_dues = patients whose phone_digits appear in confirmed bookings
+  with an outstanding balance (payment_status pending_offline/missing/null/"" AND paid_offline!=True).
+  Search/month/status combined via $and so clauses don't clobber. Verified: All=11, registered=2,
+  unregistered=9, has_dues=1.
+- Frontend: `status` state wired into list + export params; Filters modal shows a Status chips row +
+  Month list + "Clear all" + "Done"; the ¼-width Filters button reflects active state ("Has dues",
+  a month label, or "2 filters"). Verified on web: selecting "Has dues" filtered to the 1 due patient.
