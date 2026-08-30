@@ -704,3 +704,16 @@ sharePdfFromHtml + src/rx-pdf loadClinicSettings):
     clinic name, month, 3 summary cards, compare line, and per-day table.
 VERIFIED: screenshot shows Share PDF button + compare card ("Up 100% vs Jul 2026, ₹500 vs ₹0 (+₹500)").
 Lint/babel clean.
+
+## FIX: Push-registration flood → Cloudflare 429s — persistent cooldown guard (Jun 2026)
+Production reported registerV2Installation() (src/comm-v2/installation.ts) firing thousands of
+times/hour (boot + login + FCM token-rotation listener), tripping Cloudflare's rate limiter → 429s
+→ app slow/broken. Fix (client-side only, native path):
+- Added a cooldown guard INSIDE registerV2Installation (covers every caller automatically).
+- last-attempt timestamp + consecutive-failure count persisted to SecureStore (survives kill/relaunch).
+- Guard runs BEFORE any work: within cooldown → returns {ok:false, reason:'cooldown'}, no network call.
+- Timestamp stamped BEFORE the api.post (not after) so a crash mid-request still enforces cooldown.
+- Exponential backoff on repeated failures: base 5m → 10m → 20m → 40m → 60m cap; reset to base on
+  a successful backend response.
+- No Cloudflare/edge/tier changes (per user). Native-only path (web short-circuits) → not
+  web-testable; needs a new build/OTA to reach the installed app.

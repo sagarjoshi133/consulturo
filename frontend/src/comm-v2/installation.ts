@@ -32,6 +32,43 @@ import api from '../api';
 const INSTALLATION_KEY = 'consulturo_installation_id_v2';
 const LAST_TOKEN_KEY = 'consulturo_last_fcm_token_v2';
 
+// --- Persistent registration cooldown ------------------------------------
+// registerV2Installation() is called from several places (app boot, login,
+// and the FCM token-rotation listener). If any of those fire in a tight
+// loop the app can hammer /v2/communications/installations/register
+// thousands of times, tripping Cloudflare's rate limiter (HTTP 429) and
+// making the whole app appear slow/broken. To prevent that, we persist the
+// last-attempt timestamp (survives app kill/relaunch) and skip the call
+// entirely if we attempted too recently. On repeated failures the cooldown
+// grows exponentially up to a cap instead of retrying on a fixed schedule.
+const LAST_ATTEMPT_KEY = 'consulturo_reg_last_attempt_v2';
+const FAIL_COUNT_KEY = 'consulturo_reg_fail_count_v2';
+const BASE_COOLDOWN_MS = 5 * 60 * 1000; // normal: 5 min between attempts
+const MAX_COOLDOWN_MS = 60 * 60 * 1000; // cap the failure backoff at 60 min
+
+/** Cooldown window for the given consecutive-failure count.
+ *  0 failures → base (5m); then 10m → 20m → 40m → 60m (capped). */
+function _cooldownFor(failCount: number): number {
+  if (failCount <= 0) return BASE_COOLDOWN_MS;
+  return Math.min(BASE_COOLDOWN_MS * Math.pow(2, failCount), MAX_COOLDOWN_MS);
+}
+
+async function _getStoredNum(key: string): Promise<number> {
+  try {
+    const v = await SecureStore.getItemAsync(key);
+    const n = v ? parseInt(v, 10) : 0;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function _setStoredNum(key: string, val: number): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(key, String(val));
+  } catch {}
+}
+
 export type RegistrationResult = {
   ok: boolean;
   installation_id?: string;
@@ -94,6 +131,17 @@ export async function registerV2Installation(): Promise<RegistrationResult> {
     return { ok: false, reason: 'web_unsupported' };
   }
 
+  // 0: persistent cooldown guard — BEFORE any work. Every caller (boot,
+  // login, token-rotation listener) is covered automatically, so a tight
+  // loop can never flood the backend / trip Cloudflare's rate limiter.
+  const nowTs = Date.now();
+  const lastAttempt = await _getStoredNum(LAST_ATTEMPT_KEY);
+  const failCount = await _getStoredNum(FAIL_COUNT_KEY);
+  const cooldown = _cooldownFor(failCount);
+  if (lastAttempt > 0 && nowTs - lastAttempt < cooldown) {
+    return { ok: false, reason: 'cooldown' };
+  }
+
   // 1 & 2: permission
   const before = await _permissionSnapshot();
   let permStatus = before.status;
@@ -125,6 +173,10 @@ export async function registerV2Installation(): Promise<RegistrationResult> {
   const provider = Platform.OS === 'ios' ? 'apns' : 'fcm';
 
   // 4: register with backend
+  // Stamp the attempt timestamp BEFORE the network call (not after) so that
+  // even if the app crashes mid-request the cooldown still takes effect on
+  // the next launch and we don't re-flood the endpoint.
+  await _setStoredNum(LAST_ATTEMPT_KEY, Date.now());
   let resp: any;
   try {
     const r = await api.post('/v2/communications/installations/register', {
@@ -142,6 +194,8 @@ export async function registerV2Installation(): Promise<RegistrationResult> {
     });
     resp = r.data;
   } catch (e: any) {
+    // Failure → grow the cooldown for the next attempt (exponential backoff).
+    await _setStoredNum(FAIL_COUNT_KEY, failCount + 1);
     return {
       ok: false,
       reason: 'backend_register_failed',
@@ -149,6 +203,9 @@ export async function registerV2Installation(): Promise<RegistrationResult> {
       permission_status: permStatus,
     };
   }
+
+  // Success reaching the backend → reset the failure backoff to base.
+  await _setStoredNum(FAIL_COUNT_KEY, 0);
 
   // 5: cache token for rotation detection
   try { await SecureStore.setItemAsync(LAST_TOKEN_KEY, deviceToken); } catch {}
