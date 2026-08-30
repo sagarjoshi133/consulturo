@@ -23,7 +23,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../api';
 import { COLORS, FONTS, RADIUS } from '../theme';
@@ -66,6 +67,25 @@ export default function AttachmentsCard({ bookingId, visible = true, isStaff = f
   if (!visible) return null;
 
   /* ── helpers ─────────────────────────────────────────────────── */
+  // Read a picked asset → base64 (no data-URL prefix), cross-platform.
+  // Native uses expo-file-system; web reads the File/blob via FileReader
+  // because expo-file-system's readAsStringAsync is native-only.
+  const readAssetBase64 = async (asset: any): Promise<string> => {
+    if (Platform.OS === 'web') {
+      const blob: Blob = asset?.file || (await (await fetch(asset.uri)).blob());
+      return await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => {
+          const s = String(fr.result || '');
+          resolve(s.slice(s.indexOf(',') + 1));
+        };
+        fr.onerror = () => reject(new Error('read failed'));
+        fr.readAsDataURL(blob);
+      });
+    }
+    return FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+  };
+
   const uploadBase64 = async (b64: string, name: string, mime: string) => {
     setBusy('upload');
     try {
@@ -109,12 +129,18 @@ export default function AttachmentsCard({ bookingId, visible = true, isStaff = f
       });
       if (res.canceled || !res.assets?.[0]) return;
       const a = res.assets[0];
-      // expo-document-picker doesn't return base64 by default — read it.
+      // Read base64 cross-platform (expo-file-system is native-only, so
+      // web must read the File via FileReader — otherwise PDF uploads
+      // silently failed in the browser).
       let b64: string;
       try {
-        b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
-      } catch (e) {
-        Alert.alert('Upload', 'Could not read the file.');
+        b64 = await readAssetBase64(a);
+      } catch {
+        Alert.alert('Upload', 'Could not read the file. Please try again.');
+        return;
+      }
+      if (!b64) {
+        Alert.alert('Upload', 'The selected file appears to be empty.');
         return;
       }
       await uploadBase64(b64, (a.name || `file-${Date.now()}`).slice(0, 200), a.mimeType || 'application/octet-stream');
@@ -142,28 +168,71 @@ export default function AttachmentsCard({ bookingId, visible = true, isStaff = f
     ]);
   };
 
-  const openFile = (a: Attachment) => {
-    if (!a.content_base64) return;
-    // For web, open a data URL in a new tab. For native, only image
-    // preview is meaningful inline; PDFs we surface via a download.
-    if (Platform.OS === 'web') {
-      const dataUrl = `data:${a.mime_type};base64,${a.content_base64}`;
-      try {
-        const w = (globalThis as any).window;
-        if (w?.open) {
-          w.open(dataUrl, '_blank');
-          return;
-        }
-      } catch { /* fallthrough */ }
+  const openFile = async (a: Attachment) => {
+    if (!a.content_base64) {
+      Alert.alert('Open', 'This file has no content to open.');
+      return;
     }
-    // Native fallback: write to cache and open via system viewer.
-    (async () => {
+    const mime = a.mime_type || 'application/octet-stream';
+
+    if (Platform.OS === 'web') {
+      // Browsers BLOCK top-level navigation to `data:` URLs (the old
+      // approach) → blank popup that does nothing. Convert the base64
+      // to a Blob and open the object URL instead — images and PDFs
+      // both preview correctly this way. Fall back to an anchor
+      // download if the popup is blocked.
       try {
-        const path = `${FileSystem.cacheDirectory}${a.name}`;
-        await FileSystem.writeAsStringAsync(path, a.content_base64!, { encoding: FileSystem.EncodingType.Base64 });
-        Linking.openURL(path).catch(() => {});
-      } catch { /* silent */ }
-    })();
+        const bin = atob(a.content_base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const w = (globalThis as any).window;
+        const opened = w?.open ? w.open(url, '_blank') : null;
+        if (!opened) {
+          const doc = (globalThis as any).document;
+          if (doc?.createElement) {
+            const link = doc.createElement('a');
+            link.href = url;
+            link.download = a.name || 'attachment';
+            link.rel = 'noopener';
+            doc.body.appendChild(link);
+            link.click();
+            doc.body.removeChild(link);
+          }
+        }
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 60000);
+      } catch {
+        Alert.alert('Open', 'Could not open the file.');
+      }
+      return;
+    }
+
+    // Native: write the decoded bytes to a cache file, then hand it to
+    // the system "Open with…" sheet via expo-sharing. (Linking.openURL
+    // on a file:// path is rejected by Android — that's why tapping did
+    // nothing before.)
+    setBusy(`open-${a.id}`);
+    try {
+      const safe = (a.name || `file-${Date.now()}`).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || 'attachment';
+      const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+      const path = dir.endsWith('/') ? `${dir}${safe}` : `${dir}/${safe}`;
+      await FileSystem.writeAsStringAsync(path, a.content_base64, { encoding: FileSystem.EncodingType.Base64 });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(path, {
+          mimeType: mime,
+          UTI: mime,
+          dialogTitle: `Open ${a.name || 'attachment'}`,
+        });
+      } else {
+        await Linking.openURL(path).catch(() => {});
+      }
+    } catch {
+      Alert.alert('Open', 'Could not open the file on this device.');
+    } finally {
+      setBusy(null);
+    }
   };
 
   /* ── render ──────────────────────────────────────────────────── */

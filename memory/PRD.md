@@ -803,3 +803,21 @@ Branding & Settings.
    'Same patient history' card to the BOTTOM (after Actions), wrapped in a collapsible
    (historyExpanded state, default COLLAPSED) with a chevron toggle (testIDs bk-history-toggle,
    bk-history-card, bk-history-row-*). Verified expand/collapse (testing iter 36 PASS).
+
+## FIX: Video-consultation attachments — can't attach PDF + blank/no-op open (Jun 2026)
+Booking detail (/bookings/[id]) 'Reports & images' card (src/video/AttachmentsCard.tsx):
+- ROOT CAUSE 1: component imported the NEW expo-file-system v19 (`import * as FileSystem from
+  'expo-file-system'`) but called legacy APIs (readAsStringAsync / writeAsStringAsync /
+  cacheDirectory / EncodingType) which the v19 root no longer exports → threw on device →
+  (a) PDF pick read failed = "can't attach PDF", (b) openFile write threw silently = "does nothing
+  on installed app". Fixed by importing `expo-file-system/legacy` (same as src/attachments.ts).
+- ROOT CAUSE 2 (web open blank popup): openFile did `window.open('data:...;base64,...')` — browsers
+  BLOCK top-level navigation to data: URLs → blank popup. Fixed: build a Blob → object URL →
+  window.open(url) with an anchor-download fallback if the popup is blocked. Revoke after 60s.
+- ROOT CAUSE 3 (PDF upload on web): pickDocument read base64 via FileSystem.readAsStringAsync which
+  is native-only → failed in the browser. Added readAssetBase64() that uses FileReader on web
+  (asset.file / fetch(uri).blob()) and expo-file-system on native.
+- Native open now uses Sharing.shareAsync (system "Open with…") instead of Linking.openURL(file://)
+  which Android rejects.
+- Verified on WEB (testing iter 37): PDF chip → blob download, image thumb → real blob: tab, 0
+  console errors. Native path uses the proven expo-sharing pattern — verify after a rebuild.

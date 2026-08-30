@@ -1,0 +1,30 @@
+{
+  "summary": "Verified the AttachmentsCard open-attachment fix on WEB as OWNER on /bookings/bk_4936b1b2ab. Card shows the 2 seeded attachments (lab-report.pdf chip + xray.png thumbnail). Tapping the PDF chip triggered a real file download of the decoded blob (a6ebdbcc-...pdf, i.e. window.open on blob URL that the browser served as a download / anchor-download fallback fired). Tapping the image thumbnail opened a NEW browser tab whose URL is a proper blob: object URL (blob:https://urology-pro.preview.emergentagent.com/2ac5f67a-...). No blank popup, no anti-navigation on the data: URL — the reported regression is fixed. Zero JS console errors were emitted during the two open actions. Native / installed-app behaviour (expo-sharing) cannot be exercised in this web-preview environment, per the request — not attempted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/bookings/[id] — Reports & images card", "issues": ["Each attachment footer shows '0 KB · primary_owner' because the seeded files are 197 B and 70 B — (a.size/1024).toFixed(0) rounds sub-KB files to 0. Consider showing '<1 KB' or bytes for tiny files. Cosmetic only.", "The 70-byte xray.png thumbnail renders as a solid black rectangle (its base64 is not a valid image body). Purely a seed-data artefact — not a code bug — but a real patient upload would look fine."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No fix required for the reported bug — the AttachmentsCard.openFile() web path (Blob + URL.createObjectURL + window.open with anchor-download fallback) works: PDF triggered a download of decoded bytes, image opened in a new tab at a blob: URL, and no console errors were produced.",
+    "(Optional cosmetic) In AttachmentsCard.tsx line 314, replace `(a.size/1024).toFixed(0) KB` with a size formatter that shows bytes for sub-KB files (`< 1 KB` or `197 B`), so tiny report chips don't display as '0 KB'."
+  ],
+  "critical_code_review_comments": [
+    "AttachmentsCard now correctly imports 'expo-file-system/legacy' — required because the modern expo-file-system (v19) no longer exports writeAsStringAsync / readAsStringAsync / cacheDirectory. Keep the /legacy suffix until the code is migrated to the new File/Directory API.",
+    "Web open path is defensive: catches atob failures, falls back from window.open → anchor download, revokes the object URL after 60s. Good.",
+    "readAssetBase64 correctly branches on Platform.OS === 'web' and reads via FileReader (fixing the silent PDF-upload failure on browsers).",
+    "openFile still calls Alert.alert on failure paths — fine on native, but on web Alert renders inline; acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only run — attachments GET verified via curl, 200)", "frontend": "100% (2/2 attachment-open flows verified, 0 console errors)"},
+  "seed_data_creation": "None — used pre-seeded booking bk_4936b1b2ab and session token test_session_1781800271528 as provided.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Playwright popup/download listeners are the right way to assert AttachmentsCard.openFile on web — attach page.on('popup') AND page.on('download') because a blob: window.open for a PDF is often handled by Chromium as a download (that's why the PDF click showed a download event, and the image click showed a proper blob: popup URL). Both count as 'opened'. To reproduce: localStorage.setItem('session_token','test_session_1781800271528') then visit /bookings/bk_4936b1b2ab. Native / installed-app open-via-Sharing was NOT exercised here (out of environment scope).",
+  "rca_of_issue": "Root cause of the original bug: (1) On web, the previous implementation navigated top-level to a data: URL, which modern browsers block for cross-origin/top-frame navigations — hence the blank popup that immediately closed. (2) On native, the previous implementation called FileSystem.writeAsStringAsync / cacheDirectory from the modern expo-file-system v19 module, which no longer exports those symbols (moved to a File/Directory API), so the call threw TypeError and the tap did nothing. Fix verified: web now builds a Blob from atob(content_base64), calls URL.createObjectURL, and window.open's the blob URL (with an anchor-download fallback); native imports 'expo-file-system/legacy' whose surface still has writeAsStringAsync/cacheDirectory + hands the file to expo-sharing. Web verification passed; native path cannot be exercised in this preview but the legacy import + Sharing.shareAsync pattern is standard."
+}
