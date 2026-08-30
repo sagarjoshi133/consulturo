@@ -406,6 +406,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
 
   return `
 <html><head><meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@500;600;700&display=swap"/>
 <style>
   /* ---- A4 page setup ------------------------------------------------- */
   @page { size: A4; margin: 0; }
@@ -839,8 +842,8 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     margin-bottom:2px;
   }
   .centerSanskrit{
-    font-family: 'Sanskrit Text', 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit',
-                  'Mangal', 'Hind Vadodara', 'Adobe Devanagari', serif;
+    font-family: 'Noto Serif Devanagari', 'Sanskrit Text', 'Tiro Devanagari Sanskrit',
+                  'Kohinoor Devanagari', 'Mangal', 'Adobe Devanagari', serif;
     font-size:14.5px;
     color:#0A5E6B;
     font-weight:600;

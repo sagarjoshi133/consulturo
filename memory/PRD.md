@@ -763,3 +763,19 @@ Branding & Settings.
 - **Speed.** loadClinicSettings() fired 3 API round-trips on EVERY PDF export (~1.5s on prod). Added
   a 5-min in-memory cache + `invalidateClinicSettingsCache()` (called from branding-panel &
   homepage-panel saves) so back-to-back exports reuse one fetch and edits still reflect immediately.
+
+## FIX: Sanskrit tofu on receipt + clinic-name branding on every PDF (Jun 2026)
+- **Sanskrit mantra rendered as boxes (tofu) on the receipt footer — FIXED.** receipt-pdf.ts
+  `.centerSanskrit` had NO Devanagari font-family (inherited 'Inter' → missing-glyph boxes). Added a
+  Devanagari font stack ('Noto Serif Devanagari','Sanskrit Text','Kohinoor Devanagari','Mangal',…)
+  so real devices render from their system Devanagari font, PLUS a Google Fonts <link> (Noto Serif
+  Devanagari) in the <head> of BOTH receipt-pdf.ts and rx-pdf.ts so web/desktop exports (which lack
+  a local Devanagari font) also render. rx-pdf's stack reordered to prefer 'Noto Serif Devanagari'.
+  Verified via standalone render: "सर्वे सन्तु निरामयाः" renders correctly.
+- **Clinic name on EVERY PDF — gap fixed.** All PDFs display the owner-set clinic_name in the header:
+  rx/receipt/encounter (`settings.clinic_name`), discharge main export + medical cert (map
+  cs.clinic_name→clinic.name), consent (settings.clinic_name). The ONE gap was the IPD
+  Overview-tab discharge export (src/ipd/tabs/overview-tab.tsx) which called
+  buildDischargeSummaryHtml(ds) with NO clinic → defaulted to "ConsultUro Clinic". Now loads
+  clinic settings (cached loadClinicSettings) and passes {name, address, phone, doctor_*,
+  letterhead, signature} so it brands with the owner's clinic name like the other exports.

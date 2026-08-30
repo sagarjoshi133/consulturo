@@ -11,6 +11,7 @@ import { COLORS } from '../../theme';
 import { useToast } from '../../toast';
 import { formatISTShort } from '../../date';
 import { buildDischargeSummaryHtml } from '../../discharge-summary-pdf';
+import { loadClinicSettings } from '../../rx-pdf';
 import { sharePdfFromHtml } from '../../pdf-share';
 import { ipdStyles as styles } from '../styles';
 import { Row, PrivateNoteField } from '../components';
@@ -33,7 +34,23 @@ export default function OverviewTab({
     setBusy('discharge');
     try {
       const { data: ds } = await api.get(`/ipd/admissions/${admissionId}/discharge-summary`);
-      const html = buildDischargeSummaryHtml(ds);
+      // Brand the PDF with the owner-set clinic name / letterhead / signature.
+      let clinic: any = undefined;
+      try {
+        const cs: any = await loadClinicSettings();
+        clinic = {
+          name: cs.clinic_name,
+          address: cs.clinic_address || cs.address,
+          phone: cs.clinic_phone || cs.phone,
+          doctor_name: cs.doctor_name,
+          doctor_degrees: cs.doctor_degrees,
+          doctor_reg_no: cs.doctor_reg_no,
+          letterhead_image_b64: cs.letterhead_image_b64,
+          use_letterhead: cs.use_letterhead,
+          signature_image_b64: cs.signature_image_b64,
+        };
+      } catch { /* non-fatal — template falls back to defaults */ }
+      const html = buildDischargeSummaryHtml({ ...ds, clinic });
       await sharePdfFromHtml(html, `Discharge-${a.ipd_no}.pdf`, `Discharge Summary · ${a.ipd_no}`);
     } catch (e: any) {
       Alert.alert('Export failed', e?.response?.data?.detail || e?.message || 'Unknown error');

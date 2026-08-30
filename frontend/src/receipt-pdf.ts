@@ -214,6 +214,9 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
 <html><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Receipt ${escapeHtml(r.receipt_no)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@500;600;700&display=swap" />
 <style>
   @page { size: ${size === 'A5' ? 'A5' : 'A4'}; margin: ${size === 'A5' ? '6mm 7mm' : '10mm 11mm'}; }
   *, *::before, *::after { box-sizing: border-box; }
@@ -550,7 +553,11 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   .promiseValue { font-size: 8.5px; color: #1A2E35; font-weight: 600; }
 
   .centerMark { font-size: 26px; color: #15803D; line-height: 1; margin-bottom: 2px; }
-  .centerSanskrit { font-size: 11px; color: #1A2E35; font-weight: 700; }
+  .centerSanskrit {
+    font-family: 'Noto Serif Devanagari', 'Sanskrit Text', 'Tiro Devanagari Sanskrit',
+                  'Kohinoor Devanagari', 'Mangal', 'Devanagari Sangam MN', serif;
+    font-size: 13px; color: #0A5E6B; font-weight: 700; line-height: 1.3;
+  }
   .centerTrans { font-size: 8.5px; color: #5E7C81; font-style: italic; margin-top: 1px; }
 
   .signature {
