@@ -852,3 +852,23 @@ All / Registered / Unregistered / Has dues.
 - Frontend: `status` state wired into list + export params; Filters modal shows a Status chips row +
   Month list + "Clear all" + "Done"; the ¼-width Filters button reflects active state ("Has dues",
   a month label, or "2 filters"). Verified on web: selecting "Has dues" filtered to the 1 due patient.
+
+## FIX: Patient invite link → consulturo.com (Jun 2026)
+User: bulk-invite from Unregistered list works, but the invite LINK was wrong/not working; they've
+routed consulturo.com → the Vercel web app.
+- Root cause: both single invite (routers/patient_registry.py) and bulk invite
+  (routers/patient_registry_bulk.py) built the join_url from the BACKEND/preview host
+  (urology-pro.preview.emergentagent.com), and the email path used the backend HTML bridge
+  /auth/magic/redirect whose relative /magic-link link breaks when frontend & backend are on
+  different domains.
+- Fix: added _public_app_url() = env PUBLIC_APP_URL or default https://consulturo.com. Invite links
+  now:
+    • phone-first  → {app_url}/login?ref=walkin
+    • email        → {app_url}/magic-link?token=... (Vercel web app's /magic-link screen exchanges
+                     the token via the API and signs in), deep link consulturo:///magic-link?token=
+  Applied to BOTH single and bulk endpoints. Verified via curl + UI: invite modal shows
+  https://consulturo.com/login?ref=walkin; bulk (/registry/invites/bulk) returns consulturo.com links.
+- Bulk Invite itself already existed end-to-end (Directory /patients → "Select" multi-select →
+  /registry/invites/bulk → queue with per-patient WhatsApp/SMS send). No new UI needed.
+- NOTE for deploy: PUBLIC_APP_URL overrides the domain; the Vercel build's EXPO_PUBLIC_BACKEND_URL
+  must point to the production backend so /login OTP + /magic-link token exchange work.

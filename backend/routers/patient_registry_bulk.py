@@ -52,12 +52,14 @@ def _last10(raw: Optional[str]) -> str:
     return re.sub(r"\D", "", raw or "")[-10:]
 
 
-def _backend_url() -> str:
-    return (
-        os.environ.get("PUBLIC_BACKEND_URL")
-        or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-        or "https://urology-pro.preview.emergentagent.com"
-    ).rstrip("/")
+def _public_app_url() -> str:
+    """Public-facing web-app domain used in patient invite links.
+
+    This is the Vercel-deployed ConsultUro web app (custom domain
+    consulturo.com), NOT the backend/preview host — so the link a
+    walk-in patient receives opens the real app. Override with the
+    PUBLIC_APP_URL env var if the domain changes."""
+    return (os.environ.get("PUBLIC_APP_URL") or "https://consulturo.com").rstrip("/")
 
 
 async def _build_invite_payload(
@@ -78,9 +80,9 @@ async def _build_invite_payload(
                 "error": "no_contact",
                 "error_message": "patient has no phone or email on file"}
 
-    backend = _backend_url()
+    app_url = _public_app_url()
 
-    # Magic link if email available.
+    # Magic link if email available (web app exchanges the token & signs in).
     join_url: str
     if email:
         token = _secrets.token_urlsafe(32)
@@ -92,9 +94,9 @@ async def _build_invite_payload(
             "invited_patient_id": row.get("patient_id"),
             "invited_by_user_id": user.get("user_id"),
         })
-        join_url = f"{backend}/auth/magic/redirect?token={token}"
+        join_url = f"{app_url}/magic-link?token={token}"
     else:
-        join_url = f"{backend}/login?ref=walkin"
+        join_url = f"{app_url}/login?ref=walkin"
 
     if message_override:
         share_message = message_override.strip() + f"\n\n{join_url}"

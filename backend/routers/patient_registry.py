@@ -273,11 +273,9 @@ async def invite_patient(patient_id: str, user=Depends(require_registry_access))
             detail={"error_code": "no_contact",
                     "message": "This patient has no phone or email on file."})
 
-    backend = (
-        os.environ.get("PUBLIC_BACKEND_URL")
-        or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-        or "https://urology-pro.preview.emergentagent.com"
-    ).rstrip("/")
+    # Public web-app domain (Vercel / consulturo.com) for the patient-
+    # facing invite link — NOT the backend host. Override via PUBLIC_APP_URL.
+    app_url = (os.environ.get("PUBLIC_APP_URL") or "https://consulturo.com").rstrip("/")
 
     # Prefer magic-link when we have an email — one-tap sign-in.
     magic_link_web: Optional[str] = None
@@ -295,11 +293,13 @@ async def invite_patient(patient_id: str, user=Depends(require_registry_access))
             "invited_patient_id": patient_id,
             "invited_by_user_id": user.get("user_id"),
         })
-        magic_link_web = f"{backend}/auth/magic/redirect?token={token}"
-        magic_link_deep = f"consulturo://magic-link?token={token}"
+        # Land directly on the web app's /magic-link route — it exchanges
+        # the token via the API and signs the patient in.
+        magic_link_web = f"{app_url}/magic-link?token={token}"
+        magic_link_deep = f"consulturo:///magic-link?token={token}"
 
     # Phone-first patients get the /login web URL (they'll sign up with OTP).
-    signup_web = f"{backend}/login?ref=walkin"
+    signup_web = f"{app_url}/login?ref=walkin"
     join_url = magic_link_web or signup_web
 
     # ── Compose share-ready message ──
