@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import api from './api';
+import { invalidateClinicSettingsCache } from './rx-pdf';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton, SecondaryButton } from './components';
 import { useResponsive } from './responsive';
@@ -112,6 +113,7 @@ export function HomepagePanel() {
         clinic_hours: hours.trim(),
         emergency_note: emergencyNote.trim(),
       });
+      invalidateClinicSettingsCache();
       setMsg('Saved — patients & prescriptions will pick up the update.');
     } catch (e: any) {
       setMsg(e?.response?.data?.detail || 'Could not save.');

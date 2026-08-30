@@ -35,6 +35,7 @@ import api from './api';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { useTier } from './tier';
 import { previewSampleRx } from './rx-pdf-preview';
+import { invalidateClinicSettingsCache } from './rx-pdf';
 import { useTenant } from './tenant-context';
 import { useTheme } from './theme-context';
 import {
@@ -169,6 +170,7 @@ export default function BrandingPanel({ category = 'full' }: { category?: 'full'
     setSaving(true);
     try {
       await api.patch('/clinic-settings', patch);
+      invalidateClinicSettingsCache();
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Save failed';
       if (Platform.OS === 'web') window.alert(msg);

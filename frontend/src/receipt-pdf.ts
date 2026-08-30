@@ -162,7 +162,16 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   const clinicPhone = (s.clinic_phone || '+91 81550 75669').trim();
   const degrees = (s.doctor_degrees || 'MBBS · MS · DrNB (Urology)').trim();
   const drReg = (s.doctor_reg_no || 'G-53149').trim();
+  const doctorName = (s.doctor_name || 'Dr. Sagar Joshi').trim();
+  const doctorTitle = (s.doctor_title || 'Consultant Urologist, Laparoscopic & Transplant Surgeon').trim();
   const signatureUrl = (s.signature_url || '').trim();
+
+  // Footer clinic line — the address field often already begins with the
+  // clinic name (e.g. "ConsultUro Clinic, Gotri…"), which made the footer
+  // read "ConsultUro Clinic · ConsultUro Clinic, Gotri…". De-dupe: if the
+  // address already contains the clinic name, show the address alone.
+  const _addrHasName = clinicAddr.toLowerCase().includes(clinicName.toLowerCase());
+  const footerClinicLine = _addrHasName ? clinicAddr : `${clinicName} · ${clinicAddr}`;
 
   const letterheadOn = !!(s.use_letterhead && (s.letterhead_image_b64 || '').trim());
   const letterheadSrc = letterheadOn ? String(s.letterhead_image_b64 || '').trim() : '';
@@ -274,20 +283,21 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
     border-bottom: 1.5px solid #E2ECEC;
     padding-bottom: 8px;
     position: relative; z-index: 1;
+    gap: 12px;
   }
-  .brand { display: flex; align-items: stretch; gap: 12px; }
+  .brand { display: flex; align-items: flex-start; gap: 12px; flex: 1 1 auto; min-width: 0; }
   .brand img {
     width: 70px; height: 70px; border-radius: 10px;
-    object-fit: cover; flex-shrink: 0; align-self: center;
+    object-fit: cover; flex-shrink: 0; align-self: flex-start;
     box-shadow: 0 2px 4px rgba(0,0,0,0.08);
   }
-  .brand .info { display: flex; flex-direction: column; justify-content: center; }
-  .brand h1 { margin: 0; color: #0E7C8B; font-size: 19px; letter-spacing: .3px; }
-  .brand .degrees { color: #1A2E35; font-size: 11px; font-weight: 600; margin-top: 2px; }
-  .brand p { margin: 1px 0; color: #5E7C81; font-size: 10.5px; line-height: 1.35; }
+  .brand .info { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+  .brand h1 { margin: 0; color: #0E7C8B; font-size: 19px; letter-spacing: .3px; line-height: 1.15; }
+  .brand .degrees { color: #1A2E35; font-size: 11px; font-weight: 600; margin-top: 3px; line-height: 1.3; }
+  .brand p { margin: 2px 0 0; color: #5E7C81; font-size: 10.5px; line-height: 1.4; }
   .brand .regno { font-size: 9.5px; color: #5E7C81; }
 
-  .meta { text-align: right; font-size: 10.5px; color: #5E7C81; align-self: center; }
+  .meta { text-align: right; font-size: 10.5px; color: #5E7C81; align-self: flex-start; flex: 0 0 auto; padding-top: 2px; white-space: nowrap; }
   .meta .line { margin-bottom: 2px; }
   .meta b { color: #1A2E35; }
 
@@ -659,9 +669,9 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
     <div class="brand">
       <img src="${LOGO_URL}" alt="logo"/>
       <div class="info">
-        <h1>Dr. Sagar Joshi</h1>
+        <h1>${escapeHtml(doctorName)}</h1>
         <div class="degrees">${escapeHtml(degrees)}</div>
-        <p>Consultant Urologist, Laparoscopic &amp; Transplant Surgeon</p>
+        <p>${escapeHtml(doctorTitle)}</p>
         <p>${escapeHtml(clinicName)} · ${escapeHtml(clinicPhone)}</p>
         <p class="regno">Reg. No. ${escapeHtml(drReg)}</p>
       </div>
@@ -760,15 +770,15 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
     <div class="footCell">
       ${signatureUrl
         ? `<img class="sigImg" src="${escapeHtml(signatureUrl)}" alt="Signature"/>`
-        : `<div class="signature">Sagar Joshi</div>`}
+        : `<div class="signature">${escapeHtml(doctorName.replace(/^Dr\.?\s*/i, ''))}</div>`}
       <div class="sigLine"></div>
-      <div class="sigName">Dr. Sagar Joshi</div>
+      <div class="sigName">${escapeHtml(doctorName)}</div>
       <div class="sigSub">Reg. No. ${escapeHtml(drReg)}</div>
     </div>
   </div>
 
   <div class="foot">
-    Computer-generated receipt · ${escapeHtml(clinicName)} · ${escapeHtml(clinicAddr)}<br/>
+    Computer-generated receipt · ${escapeHtml(footerClinicLine)}<br/>
     Issued: <b>${escapeHtml(nowIST())}</b> · This is the only valid record of payment. Retain for your records.
     <div class="consulturo-stamp">
       <span class="cu-dot"></span>

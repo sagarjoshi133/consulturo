@@ -124,6 +124,9 @@ export type ClinicSettings = {
   /** Primary doctor name — used to sign the WhatsApp follow-up
    *  message (e.g. "your prescription from Dr. Sagar Joshi is ready"). */
   doctor_name?: string;
+  /** Doctor title / specialty line shown under the name in every PDF
+   *  header (e.g. "Consultant Urologist & Laparoscopic Surgeon"). */
+  doctor_title?: string;
 };
 
 const escapeHtml = (s?: string | number) =>
@@ -208,6 +211,8 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   const clinicPhone = (settings.clinic_phone || '+91 81550 75669').trim();
   const degrees = (settings.doctor_degrees || 'MBBS · MS · DrNB (Urology)').trim();
   const drReg = (settings.doctor_reg_no || 'G-53149').trim();
+  const doctorName = (settings.doctor_name || 'Dr. Sagar Joshi').trim();
+  const doctorTitle = (settings.doctor_title || 'Consultant Urologist, Laparoscopic & Transplant Surgeon').trim();
   const signatureUrl = (settings.signature_url || '').trim();
 
   // Letterhead — when enabled by primary_owner in the Branding panel,
@@ -991,9 +996,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     <div class="brand">
       <img src="${LOGO_URL}"/>
       <div class="info">
-        <h1>Dr. Sagar Joshi</h1>
+        <h1>${escapeHtml(doctorName)}</h1>
         <div class="degrees">${escapeHtml(degrees)}</div>
-        <p>Consultant Urologist, Laparoscopic &amp; Transplant Surgeon</p>
+        <p>${escapeHtml(doctorTitle)}</p>
         <p>${escapeHtml(clinicName)} · ${escapeHtml(clinicPhone)}</p>
         <p style="font-size:9.5px;">Reg. No. ${escapeHtml(drReg)}</p>
       </div>
@@ -1074,9 +1079,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
     <div class="sigBlock footCell">
       ${signatureUrl
         ? `<img class="sigImg" src="${escapeHtml(signatureUrl)}" alt="Signature"/>`
-        : `<div class="signature">Sagar Joshi</div>`}
+        : `<div class="signature">${escapeHtml(doctorName.replace(/^Dr\.?\s*/i, ''))}</div>`}
       <div class="sigLine"></div>
-      <div class="sigName">Dr. Sagar Joshi</div>
+      <div class="sigName">${escapeHtml(doctorName)}</div>
       <div class="sigSub">Reg. No. ${escapeHtml(drReg)}</div>
     </div>
   </div>
@@ -1110,7 +1115,25 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
  *  customisations stored in `clinic_settings`. Either endpoint can fail
  *  independently — we degrade gracefully.
  */
+let _clinicSettingsCache: { at: number; value: ClinicSettings } | null = null;
+const CLINIC_SETTINGS_TTL_MS = 5 * 60 * 1000; // 5 min
+
+/** Force the next loadClinicSettings() to re-fetch (call after the owner
+ *  saves Branding & Settings so PDFs pick up the change immediately). */
+export function invalidateClinicSettingsCache(): void {
+  _clinicSettingsCache = null;
+}
+
 export async function loadClinicSettings(): Promise<ClinicSettings> {
+  // Branding rarely changes but every PDF export calls this (3 parallel
+  // API round-trips). On production each round-trip is ~0.5s, so a fresh
+  // fetch added ~1.5s of latency before the PDF even started rendering.
+  // Cache the resolved settings for a short window so back-to-back exports
+  // (and the same document exported to PDF + WhatsApp) reuse one fetch.
+  const nowMs = Date.now();
+  if (_clinicSettingsCache && nowMs - _clinicSettingsCache.at < CLINIC_SETTINGS_TTL_MS) {
+    return _clinicSettingsCache.value;
+  }
   const [hp, cs, cta] = await Promise.all([
     api.get('/settings/homepage').then((r) => r.data || {}).catch(() => ({})),
     api.get('/clinic-settings').then((r) => r.data || {}).catch(() => ({})),
@@ -1120,7 +1143,7 @@ export async function loadClinicSettings(): Promise<ClinicSettings> {
   // clinic_phone / doctor_degrees fields. clinic-settings adds the
   // letterhead, use_letterhead, patient_education_html, need_help_html
   // (and a parallel clinic_name; homepage wins if both set).
-  return { ...cs, ...hp,
+  const resolved = { ...cs, ...hp,
     letterhead_image_b64: cs.letterhead_image_b64 || hp.letterhead_image_b64,
     use_letterhead: cs.use_letterhead ?? hp.use_letterhead,
     // Rx Print Mode — passed through to buildRxHtml so the PDF can
@@ -1142,7 +1165,10 @@ export async function loadClinicSettings(): Promise<ClinicSettings> {
     whatsapp_auto_prompt_enabled: (cs.whatsapp_auto_prompt_enabled ?? hp.whatsapp_auto_prompt_enabled) !== false,
     country_code: cs.country_code || hp.country_code || '+91',
     doctor_name: cs.doctor_name || hp.doctor_name || cs.primary_doctor_name || '',
+    doctor_title: cs.doctor_title || hp.doctor_title || '',
   } as ClinicSettings;
+  _clinicSettingsCache = { at: Date.now(), value: resolved };
+  return resolved;
 }
 
 // Sanitises any error/value into a short, plain-text message safe to put into

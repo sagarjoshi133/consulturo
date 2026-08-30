@@ -741,3 +741,25 @@ Three user-reported items:
    reachable via More → "Dup-Merge Accounts" and web-shell) already has the quarantined email/phone
    Merge/Restore section backed by GET /api/admin/users/quarantined-duplicates + POST
    /api/admin/users/resolve-quarantine. Renders cleanly for owner (testing iteration 35).
+
+## FIX: PDF branding (header overlap / footer dup) + settings-driven + speed (Jun 2026)
+User: receipt PDF header had overlapping text (wrapped doctor tagline collided with the clinic
+line), footer duplicated the clinic name, PDF gen felt slow, and all branding must come from
+Branding & Settings.
+- **Header overlap FIXED (receipt-pdf.ts).** The receipt header used `align-items:stretch` +
+  `justify-content:center` without `flex:1 1 auto; min-width:0`, so the wrapped tagline overlapped
+  the next line. Rewrote `.head/.brand/.brand .info/.brand p/.meta` to mirror the proven rx-pdf
+  flex layout (min-width:0, flex-start, line-height 1.4). Verified via standalone render: 5 header
+  lines stack cleanly, no overlap.
+- **Footer duplication FIXED.** Footer was `clinicName · clinicAddr`, but the address field already
+  begins with the clinic name → "ConsultUro Clinic · ConsultUro Clinic, Gotri…". Added `footerClinicLine`
+  dedupe: if the address already contains the clinic name, show the address alone.
+- **Settings-driven branding.** receipt-pdf.ts + rx-pdf.ts no longer hardcode "Dr. Sagar Joshi" /
+  "Consultant Urologist, Laparoscopic & Transplant Surgeon" / "Sagar Joshi" signature — all pulled
+  from settings (`doctor_name`, new `doctor_title`, degrees, reg-no, signature). Added `doctor_title`
+  to ClinicSettings type + loadClinicSettings (from clinic_settings.doctor_title / homepage). Other
+  PDFs (encounter/discharge/cert/consent) already read clinic name/address/degrees/doctor_name from
+  settings.
+- **Speed.** loadClinicSettings() fired 3 API round-trips on EVERY PDF export (~1.5s on prod). Added
+  a 5-min in-memory cache + `invalidateClinicSettingsCache()` (called from branding-panel &
+  homepage-panel saves) so back-to-back exports reuse one fetch and edits still reflect immediately.
