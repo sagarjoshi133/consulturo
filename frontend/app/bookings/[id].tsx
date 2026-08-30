@@ -122,6 +122,7 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [linkedEncounter, setLinkedEncounter] = useState<{ encounter_id: string } | null>(null);
   const [clinicPhone, setClinicPhone] = useState<string>('');
   // Reason modal (for reschedule / reject by staff)
@@ -634,43 +635,7 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
           <AttachmentsCard bookingId={rx.booking_id} isStaff={isStaff} />
         )}
 
-        {/* Same-patient history — staff only */}
-        {isStaff && historyLoaded && history.length > 0 && (
-          <View style={styles.card} testID="bk-history-card">
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={styles.sectionTitle}>Same patient history ({history.length})</Text>
-            </View>
-            {history.slice(0, 8).map((h: any) => {
-              const hColor =
-                h.status === 'requested' ? COLORS.warning :
-                h.status === 'confirmed' ? COLORS.success :
-                h.status === 'completed' ? COLORS.primaryDark :
-                COLORS.accent;
-              return (
-                <TouchableOpacity
-                  key={h.booking_id}
-                  style={styles.hxRow}
-                  onPress={() => router.push(`/bookings/${h.booking_id}` as any)}
-                  testID={`bk-history-row-${h.booking_id}`}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.hxDate}>
-                      {displayDateLong(h.booking_date)} · {display12h(h.booking_time)}
-                    </Text>
-                    {h.reason ? <Text style={styles.hxReason} numberOfLines={1}>{h.reason}</Text> : null}
-                  </View>
-                  <View style={[styles.hxPill, { backgroundColor: hColor + '22' }]}>
-                    <Text style={[styles.hxPillText, { color: hColor }]}>{h.status}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} style={{ marginLeft: 4 }} />
-                </TouchableOpacity>
-              );
-            })}
-            {history.length > 8 && (
-              <Text style={styles.hxMore}>+ {history.length - 8} more</Text>
-            )}
-          </View>
-        )}
+        {/* Same-patient history moved to the bottom (collapsible) — see below */}
 
         {/* Contact actions */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
@@ -783,6 +748,58 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
                 <ActionButton icon="checkmark-done" label="Mark Done" color={COLORS.primaryDark} onPress={() => patch({ status: 'completed' })} />
                 <ActionButton icon="calendar" label="Reschedule" color={COLORS.primary} onPress={() => setReasonModal('reschedule')} />
                 <ActionButton icon="close" label="Cancel" color={COLORS.accent} onPress={() => openReasonFor('cancel')} />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Same-patient history — staff only, collapsible, at the bottom */}
+        {isStaff && historyLoaded && history.length > 0 && (
+          <View style={styles.card} testID="bk-history-card">
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              onPress={() => setHistoryExpanded((v) => !v)}
+              activeOpacity={0.7}
+              testID="bk-history-toggle"
+            >
+              <Text style={styles.sectionTitle}>Same patient history ({history.length})</Text>
+              <Ionicons
+                name={historyExpanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {historyExpanded && (
+              <View style={{ marginTop: 8 }}>
+                {history.slice(0, 8).map((h: any) => {
+                  const hColor =
+                    h.status === 'requested' ? COLORS.warning :
+                    h.status === 'confirmed' ? COLORS.success :
+                    h.status === 'completed' ? COLORS.primaryDark :
+                    COLORS.accent;
+                  return (
+                    <TouchableOpacity
+                      key={h.booking_id}
+                      style={styles.hxRow}
+                      onPress={() => router.push(`/bookings/${h.booking_id}` as any)}
+                      testID={`bk-history-row-${h.booking_id}`}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.hxDate}>
+                          {displayDateLong(h.booking_date)} · {display12h(h.booking_time)}
+                        </Text>
+                        {h.reason ? <Text style={styles.hxReason} numberOfLines={1}>{h.reason}</Text> : null}
+                      </View>
+                      <View style={[styles.hxPill, { backgroundColor: hColor + '22' }]}>
+                        <Text style={[styles.hxPillText, { color: hColor }]}>{h.status}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                  );
+                })}
+                {history.length > 8 && (
+                  <Text style={styles.hxMore}>+ {history.length - 8} more</Text>
+                )}
               </View>
             )}
           </View>

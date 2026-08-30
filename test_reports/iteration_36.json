@@ -1,0 +1,22 @@
+{
+  "summary": "Verified two frontend UI fixes in ConsultUro: (Item 3) i18n keys for the booking success 'What's next?' section — all keys (book.whatsNext, book.nextBodyInPerson, book.nextBodyOnline, book.call, book.directions) exist in en.ts, hi.ts, gu.ts with proper localized strings; book.tsx already resolves them via t() with English fallbacks so raw keys no longer appear. (Item 4) Same-patient history on /bookings/[id] is now rendered AFTER the Actions section, wrapped in a collapsible with testID bk-history-card + bk-history-toggle; default state is COLLAPSED (0 rows), tap on the header EXPANDS to reveal 3 bk-history-row-* rows, tap again COLLAPSES back to 0 rows. Chevron toggles between chevron-down (collapsed) and chevron-up (expanded). Both fixes work correctly on mobile viewport (390x844) using owner session test_session_1781800271528 against booking bk_74afa82207 with 3 sibling bookings on +919990001234.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Duplicate 'call' key inside the more:{} block of all 3 locale files (en/hi/gu) — the first 'call' at book.call is fine, but there is also more.call (Call Clinic). Not a bug, harmless duplicate namespace but noted for cleanliness."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only)", "frontend": "100%" },
+  "seed_data_creation": "Created 3 bookings via POST /api/bookings for patient_phone=9990001234 (booking_ids: bk_74afa82207, bk_7cf77c6867, bk_eb06af06d0) on 2026-12-15/20/22 to populate same-patient-history card.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner session test_session_1781800271528 valid; booking bk_74afa82207 has 3 sibling bookings with phone 9990001234 for reproducing history-card scenarios.",
+  "rca_of_issue": "Both fixes verified as correctly applied. Item 3: main agent added missing translation keys to all three locale bundles. Item 4: history block moved from mid-page to the bottom of /bookings/[id].tsx (line ~756, after the Actions card at ~728), wrapped in a TouchableOpacity toggling historyExpanded state (default false) which conditionally renders the rows."
+}

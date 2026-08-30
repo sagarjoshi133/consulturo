@@ -779,3 +779,27 @@ Branding & Settings.
   buildDischargeSummaryHtml(ds) with NO clinic → defaulted to "ConsultUro Clinic". Now loads
   clinic settings (cached loadClinicSettings) and passes {name, address, phone, doctor_*,
   letterhead, signature} so it brands with the owner's clinic name like the other exports.
+
+## FIX: Appointment push delivery + deep-link + booking success i18n + history collapse (Jun 2026)
+1&2. **Appointment pushes not delivered + tap didn't open the appointment — FIXED (native-only).**
+   Root cause: booking events (new_booking, confirmed, rejected, cancelled, rescheduled, completed,
+   reminder) fire via legacy push_to_user/push_to_owner (Emergent relay → Expo fallback), but the
+   deployed app registers its REAL native token via the Comm-V2 FCM pipeline (comm_installations),
+   and the Expo fallback can't send to native FCM tokens. Added a Comm-2 FCM v1 fanout to BOTH
+   push_to_user and push_to_owner (services/notifications.py): when the relay isn't configured /
+   delivers nothing, enqueue a comm_outbox 'push.send' (aggregate_type 'legacy_push', payload
+   {user_id,title,body,category,data}) so the FCM v1 handler delivers to the registered device.
+   Gracefully no-ops when comm_fcm not configured (preview). Verified confirm flow returns 200 with
+   no errors.
+   Deep-link (app/_layout.tsx): booking_confirmed/rejected/cancelled/completed/note/rescheduled/
+   reminder/missed now open /bookings/[id] (the concerned appointment) via data.booking_id (fallback
+   /my-bookings); new_booking/booking_cancelled_by_patient open /bookings/[id] for staff (fallback
+   /dashboard). /bookings/[id] already supports the patient (non-staff) view.
+   NOTE: push DELIVERY is native-only — verify on a rebuilt device build.
+3. **Booking success screen showed raw i18n keys — FIXED.** Added missing book.* keys to
+   en/hi/gu (whatsNext, nextBodyInPerson, nextBodyOnline, call, directions, addEmail,
+   emailNeededTitle, cancel). Verified: readable text now shows. (testing iter 36 PASS)
+4. **Same-patient history reordered + collapsible — FIXED.** app/bookings/[id].tsx: moved the
+   'Same patient history' card to the BOTTOM (after Actions), wrapped in a collapsible
+   (historyExpanded state, default COLLAPSED) with a chevron toggle (testIDs bk-history-toggle,
+   bk-history-card, bk-history-row-*). Verified expand/collapse (testing iter 36 PASS).

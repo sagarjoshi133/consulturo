@@ -399,6 +399,37 @@ async def push_to_owner(title: str, body: str, data: Optional[Dict[str, Any]] = 
             return
     except Exception:
         pass
+    # Comm-2 FCM v1 fanout — reach owner devices registered via the V2
+    # installation pipeline when the Emergent relay isn't configured.
+    try:
+        from services import comm_fcm
+        from services import comm_outbox
+        if comm_fcm.is_configured():
+            d = data or {}
+            action = d.get("type") or d.get("kind") or "notification"
+            enqueued_any = False
+            for uid in owner_ids:
+                try:
+                    await comm_outbox.enqueue(
+                        db,
+                        event_type="push.send",
+                        aggregate_type="legacy_push",
+                        aggregate_id=str(uid),
+                        payload={
+                            "user_id": uid,
+                            "title": title,
+                            "body": body,
+                            "category": action,
+                            "data": {k: str(v) for k, v in d.items() if v is not None},
+                        },
+                    )
+                    enqueued_any = True
+                except Exception:
+                    continue
+            if enqueued_any:
+                return
+    except Exception:
+        pass
     # Fallback: Expo direct path (works only in dev / Expo Go).
     tokens = await collect_role_tokens(["owner", "primary_owner", "partner"])
     if tokens:
@@ -448,7 +479,47 @@ async def push_to_user(user_id: Optional[str], phone: Optional[str], title: str,
     except Exception:
         pass
 
-    # 2) Fallback: legacy direct-Expo (dev-only path).
+    # 2) Comm-2 FCM v1 fanout. The deployed app registers its real
+    #    native device token via the V2 installation pipeline
+    #    (comm_installations). Booking/appointment events historically
+    #    only went through the Emergent relay, so if the relay wasn't
+    #    configured (or delivered nothing) the patient got no push even
+    #    though their device WAS registered for FCM. Enqueue a direct
+    #    FCM push so these events actually reach the device.
+    try:
+        from services import comm_fcm
+        from services import comm_outbox
+        if comm_fcm.is_configured():
+            d = data or {}
+            action = d.get("type") or d.get("kind") or "notification"
+            booking_id = d.get("booking_id") or d.get("id") or ""
+            enqueued_any = False
+            for uid in user_ids:
+                dedupe = f"legacypush:{uid}:{action}:{booking_id}" if booking_id else None
+                try:
+                    await comm_outbox.enqueue(
+                        db,
+                        event_type="push.send",
+                        aggregate_type="legacy_push",
+                        aggregate_id=str(uid),
+                        payload={
+                            "user_id": uid,
+                            "title": title,
+                            "body": body,
+                            "category": action,
+                            "data": {k: str(v) for k, v in d.items() if v is not None},
+                        },
+                        dedupe_key=dedupe,
+                    )
+                    enqueued_any = True
+                except Exception:
+                    continue
+            if enqueued_any:
+                return True
+    except Exception:
+        pass
+
+    # 3) Fallback: legacy direct-Expo (dev-only path).
     tokens = await collect_user_tokens(user_ids)
     if tokens:
         await send_expo_push_batch(tokens, title, body, data)

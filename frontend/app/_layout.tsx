@@ -287,16 +287,25 @@ function RootNav() {
         return;
       }
       if (type === 'new_booking' || type === 'booking_cancelled_by_patient') {
-        router.replace('/dashboard' as any);
+        // Staff-facing: open the specific appointment so the doctor can
+        // act on it directly; fall back to the dashboard worklist.
+        const bid = data?.booking_id;
+        if (bid) {
+          router.push({ pathname: '/bookings/[id]', params: { id: String(bid) } } as any);
+        } else {
+          router.replace('/dashboard' as any);
+        }
         return;
       }
-      if (type === 'booking_confirmed' || type === 'booking_rejected' || type === 'booking_cancelled' || type === 'booking_completed' || type === 'booking_note' || type === 'booking_rescheduled') {
-        router.push('/my-bookings' as any);
-        return;
-      }
-      if (type === 'booking_reminder') {
-        // 24h / 2h reminder for a confirmed appointment.
-        router.push('/my-bookings' as any);
+      if (type === 'booking_confirmed' || type === 'booking_rejected' || type === 'booking_cancelled' || type === 'booking_completed' || type === 'booking_note' || type === 'booking_rescheduled' || type === 'booking_reminder' || type === 'booking_missed') {
+        // Patient/staff-facing appointment update → open the concerned
+        // appointment; fall back to the patient's bookings list.
+        const bid = data?.booking_id;
+        if (bid) {
+          router.push({ pathname: '/bookings/[id]', params: { id: String(bid) } } as any);
+        } else {
+          router.push('/my-bookings' as any);
+        }
         return;
       }
       if (type === 'note_reminder') {
