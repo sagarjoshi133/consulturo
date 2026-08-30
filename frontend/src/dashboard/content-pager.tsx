@@ -1,7 +1,8 @@
 /**
  * ContentPager — horizontally-swipable tab pager with:
  *   • lazy panel mounting (active + immediate neighbours only)
- *   • once-visited-stays-mounted to preserve scroll + in-tab state
+ *   • windowed mounting — far-away panels are unmounted to bound peak
+ *     memory (prevents native OOM crashes on constrained Android)
  *   • per-tab pull-to-refresh via PanelRefreshContext
  *   • desktop-aware inner padding (wider + capped max-width on web)
  *
@@ -52,22 +53,33 @@ export default function ContentPager({
   // render — each one fired its own /api/* request and ran its own
   // useFocusEffect, which on Android APK starved the JS thread and
   // could trigger a silent native crash back to the home tab.
-  const [mountedIds, setMountedIds] = React.useState<Set<string>>(() => {
-    const s = new Set<string>();
-    if (tabs[activeIndex]?.id) s.add(tabs[activeIndex].id);
-    if (tabs[activeIndex + 1]?.id) s.add(tabs[activeIndex + 1].id);
-    if (activeIndex > 0 && tabs[activeIndex - 1]?.id) s.add(tabs[activeIndex - 1].id);
-    return s;
-  });
+  // Only the active tab + its immediate neighbours stay mounted. Panels
+  // that scroll far out of view are UNMOUNTED to release their memory
+  // (native views, cached API payloads, timers). Previously every
+  // visited panel stayed mounted for the whole session, so a doctor who
+  // browsed through all ~13 heavy panels accumulated the memory of all
+  // of them at once — on a constrained Android device this eventually
+  // triggered a native OOM crash that reloaded the JS bundle and dumped
+  // the user back on the Home tab ("dashboard keeps crashing to home").
+  // Keeping only active ± 1 mounted bounds peak memory to 3 panels.
+  const computeWindow = React.useCallback(
+    (idx: number): Set<string> => {
+      const s = new Set<string>();
+      if (tabs[idx]?.id) s.add(tabs[idx].id);
+      if (tabs[idx + 1]?.id) s.add(tabs[idx + 1].id);
+      if (idx > 0 && tabs[idx - 1]?.id) s.add(tabs[idx - 1].id);
+      return s;
+    },
+    [tabs],
+  );
+  const [mountedIds, setMountedIds] = React.useState<Set<string>>(() => computeWindow(activeIndex));
   React.useEffect(() => {
+    const next = computeWindow(activeIndex);
     setMountedIds((prev) => {
-      const next = new Set(prev);
-      if (tabs[activeIndex]?.id) next.add(tabs[activeIndex].id);
-      if (tabs[activeIndex + 1]?.id) next.add(tabs[activeIndex + 1].id);
-      if (activeIndex > 0 && tabs[activeIndex - 1]?.id) next.add(tabs[activeIndex - 1].id);
-      return next.size === prev.size ? prev : next;
+      if (prev.size === next.size && [...next].every((id) => prev.has(id))) return prev;
+      return next;
     });
-  }, [activeIndex, tabs]);
+  }, [activeIndex, computeWindow]);
 
   // Desktop-aware inner padding & max-width so dashboard panels feel
   // compact + centred on wide web viewports. Mobile keeps the existing

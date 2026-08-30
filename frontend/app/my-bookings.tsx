@@ -32,6 +32,7 @@ import { displayDate, displayDateLong, display12h } from '../src/date';
 import { haptics } from '../src/haptics';
 import { cancelBookingReminders } from '../src/booking-reminders';
 import { useScreenBg } from '../src/dark-mode';
+import { AppErrorBoundary } from '../src/error-boundary';
 
 type Booking = {
   booking_id: string;
@@ -64,6 +65,23 @@ const statusColorFor = (s?: string) =>
   COLORS.textSecondary;
 
 export default function MyBookings() {
+  const router = useRouter();
+  return (
+    <AppErrorBoundary
+      label="My Bookings"
+      onBack={() => {
+        try {
+          if (router.canGoBack && router.canGoBack()) router.back();
+          else router.replace('/' as any);
+        } catch {}
+      }}
+    >
+      <MyBookingsImpl />
+    </AppErrorBoundary>
+  );
+}
+
+function MyBookingsImpl() {
   const __darkBg = useScreenBg();
   const router = useRouter();
   const { user } = useAuth();

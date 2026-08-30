@@ -890,3 +890,50 @@ Patients invited ≥7 days ago who still haven't signed up are auto-flagged for 
     and tab reflect immediately.
 - Verified (backend curl + web UI): backdated NoteTest → summary stale_invite=1, Re-invite tab lists
   it with the badge + Re-invite button; needs_reinvite=True.
+
+## FIX+FEATURE: Dashboard crash-hardening, tab-bar trim, Directory fix, Video UX (Jun 2026)
+User report: on the PRODUCTION Android APK the Dashboard, My Bookings and My Records
+"crash" back to the Home tab; also wanted the Dashboard lightened (keep Analytics) and a
+Video-consultation UX polish. Root-cause of the "crash-to-home": a NATIVE crash (JS bundle
+reload → Expo Router lands at "/"), most consistent with memory pressure from the dashboard
+keeping every visited panel mounted for the whole session + two screens lacking a top-level
+error boundary.
+
+Changes (frontend only):
+- src/dashboard/content-pager.tsx: WINDOWED mounting. Previously every visited panel stayed
+  mounted forever (all ~13). Now only the active tab ± 1 neighbour stays mounted; far panels
+  are UNMOUNTED to release memory (native views, cached payloads, timers). Bounds peak memory
+  to 3 panels → removes the OOM that dumped users to Home.
+- app/dashboard.tsx:
+  • Trimmed the horizontal tab bar to 6 PRIMARY tabs (Today, Bookings, Consults, Rx,
+    Availability, Analytics — module-scoped PRIMARY_TAB_IDS). Analytics KEPT per user.
+  • Less-frequent tabs (Surgeries, IPD, Referrers, Invites, Broadcasts, Team, Notifs, Backups)
+    are reached from the More tab + web sidebar (already deep-link via /dashboard?tab=X) and
+    still render on demand.
+  • barTabs = primary + a PINNED `extraTabId`. extraTabId is stored in its OWN state (set when
+    `tab` becomes non-primary) so a transient tab change (web pager scroll-settle) can never
+    drop the deep-linked tab's pill / unmount its panel. Passed to BOTH the tab bar and
+    ContentPager.
+  • Guarded `user.name.split(' ')` → `(user.name || '')` (hard-crash if name ever missing).
+  NOTE (web-preview only): ContentPager's web `onScroll` settle can mis-land the horizontal
+  page for a deep-linked non-primary tab (shows a primary panel's content). Native is
+  unaffected — settle fires only on real gestures (onMomentumScrollEnd/onScrollEndDrag), never
+  on programmatic scrollTo — so ?tab=surgeries/broadcasts/team open the correct panel on device.
+- app/my-bookings.tsx & app/my-records.tsx: bodies wrapped in a top-level AppErrorBoundary
+  (label + onBack) — a render error now shows the "Try again / Go back" card instead of
+  appearing to crash to Home. (Dashboard already had one.)
+- app/patients/index.tsx: FIXED "setUpdatedAt is not defined" crash left over from the WIP
+  Directory refactor — added the missing `updatedAt` state + rendered <UpdatedHint>. Directory
+  layout confirmed: Analytics conversion chip pinned top, Search (¾) + Filters dropdown (¼) on
+  one row.
+- app/video/[code].tsx (in-call screen): Leave button re-themed to a COLORS.primary pill with
+  "Leave" label, repositioned to insets.top+12 so it clears the notch/status bar; callShell
+  padded by safe-area top+bottom so the 100ms WebView controls clear the Android home/gesture bar.
+
+Verified: iteration_38 frontend testing PASS for dashboard 6-tab bar, tab switching, /my-bookings,
+/my-records, /patients (no setUpdatedAt error). Deep-link pinned-pill regression fixed & re-verified
+via screenshots. Video screen: lint clean; visual verify recommended on a real device (no live 100ms
+room code in seed).
+
+STILL BLOCKED (infra, not code): production Android network timeouts / 429s = Cloudflare edge block —
+requires Emergent Support escalation. Fixes above apply to PREVIEW; user must redeploy for APK.

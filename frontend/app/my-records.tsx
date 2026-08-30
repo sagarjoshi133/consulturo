@@ -32,6 +32,23 @@ import { AppErrorBoundary } from '../src/error-boundary';
 import { useScreenBg, useDarkOverrides } from '../src/dark-mode';
 
 export default function MyRecords() {
+  const router = useRouter();
+  return (
+    <AppErrorBoundary
+      label="My Records"
+      onBack={() => {
+        try {
+          if (router.canGoBack && router.canGoBack()) router.back();
+          else router.replace('/' as any);
+        } catch {}
+      }}
+    >
+      <MyRecordsImpl />
+    </AppErrorBoundary>
+  );
+}
+
+function MyRecordsImpl() {
   const __darkBg = useScreenBg();
   const d = useDarkOverrides();
   const router = useRouter();

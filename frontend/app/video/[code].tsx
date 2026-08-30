@@ -294,13 +294,21 @@ export default function VideoCallScreen() {
 
   /* ── In-call view ────────────────────────────────────────────── */
   return (
-    <View style={[styles.callShell, { paddingTop: insets.top * 0.4 }]}>
+    <View style={[styles.callShell, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      {/* Floating Leave button — visible on BOTH web & native so the
-       * patient can trigger the post-call feedback modal regardless
+      {/* Floating Leave button — themed pill, kept clear of the notch /
+       * status bar via the safe-area top inset so it's always tappable
+       * on devices with a camera cutout. Visible on BOTH web & native so
+       * the patient can trigger the post-call feedback modal regardless
        * of whether they tapped Prebuilt's own "Leave" button first. */}
-      <TouchableOpacity style={styles.exitBtn} onPress={handleLeaveCall} testID="video-exit">
-        <Ionicons name="close" size={20} color="#fff" />
+      <TouchableOpacity
+        style={[styles.exitBtn, { top: insets.top + 12 }]}
+        onPress={handleLeaveCall}
+        testID="video-exit"
+        hitSlop={8}
+      >
+        <Ionicons name="close" size={18} color="#fff" />
+        <Text style={styles.exitBtnText}>Leave</Text>
       </TouchableOpacity>
 
       {loadingRoom ? (
@@ -401,7 +409,15 @@ const styles = StyleSheet.create({
 
   /* In-call shell */
   callShell: { flex: 1, backgroundColor: '#000' },
-  exitBtn: { position: 'absolute', top: 14, right: 14, zIndex: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  exitBtn: {
+    position: 'absolute', right: 14, zIndex: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    height: 40, paddingHorizontal: 14, borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
+  exitBtnText: { color: '#fff', ...FONTS.bodyMedium, fontSize: 14 },
   loaderWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', zIndex: 5 },
   loaderText: { color: '#fff', marginTop: 10, fontSize: 13 },
   fallbackBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: RADIUS.pill, backgroundColor: COLORS.primary },

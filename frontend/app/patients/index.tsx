@@ -88,6 +88,7 @@ export default function UnregisteredPatientsScreen() {
     conversion_rate_total: number;
     converted_within_7d: number; converted_within_30d: number;
   } | null>(() => getCached('patients:analytics') ?? null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [err, setErr] = useState<string | null>(null);
   // ── Multi-select mode ──
@@ -348,74 +349,76 @@ export default function UnregisteredPatientsScreen() {
         )}
       </View>
 
-      {updatedAt > 0 && !selectMode ? (
-        <UpdatedHint at={updatedAt} style={styles.updatedHint} />
-      ) : null}
-
-      {/* Analytics tile (owner-only insight; hidden when empty) */}
+      {/* Analytics chip — compact, pinned to the top */}
       {analytics && analytics.total_invited > 0 && !selectMode ? (
-        <View style={styles.analyticsTile}>
-          <View style={styles.analyticsIcon}>
-            <Ionicons name="trending-up" size={22} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.analyticsTitle}>Invite → sign-up conversion</Text>
-            <Text style={styles.analyticsSub}>
-              <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
-                {analytics.converted_total}
-              </Text>
-              {' of '}
-              <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
-                {analytics.total_invited}
-              </Text>
-              {' invited walk-ins signed up'}
-              {' · '}
-              <Text style={{ fontWeight: '700', color: COLORS.success }}>
-                {(analytics.conversion_rate_total * 100).toFixed(0)}%
-              </Text>
-            </Text>
-            {analytics.converted_within_7d || analytics.converted_within_30d ? (
-              <Text style={styles.analyticsMeta}>
-                Last 7d: {analytics.converted_within_7d} ·
-                Last 30d: {analytics.converted_within_30d}
-              </Text>
-            ) : null}
-          </View>
+        <View style={styles.analyticsChip}>
+          <Ionicons name="trending-up" size={15} color={COLORS.primary} />
+          <Text style={styles.analyticsChipTxt} numberOfLines={1}>
+            <Text style={{ fontWeight: '800', color: COLORS.textPrimary }}>{analytics.converted_total}</Text>
+            {'/'}
+            <Text style={{ fontWeight: '800', color: COLORS.textPrimary }}>{analytics.total_invited}</Text>
+            {' signed up · '}
+            <Text style={{ fontWeight: '800', color: COLORS.success }}>{(analytics.conversion_rate_total * 100).toFixed(0)}%</Text>
+          </Text>
         </View>
       ) : null}
 
-      {/* Tab pills */}
-      <View style={styles.tabRow}>
-        {TAB_ORDER.map((t) => (
-          <Pressable
-            key={t}
-            onPress={() => setTab(t)}
-            style={[styles.tab, tab === t && styles.tabActive]}
-          >
-            <Text style={[styles.tabTxt, tab === t && styles.tabTxtActive]}>
-              {TAB_LABEL[t]}
-              {badge(t) != null ? ` · ${badge(t)}` : ''}
-            </Text>
-          </Pressable>
-        ))}
+      {/* Search (¾) + Filters dropdown (¼) on one line */}
+      <View style={styles.controlsRow}>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={16} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
+          <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder="Name, phone, email, reg no…"
+            placeholderTextColor={COLORS.textDisabled}
+            style={styles.searchInput}
+          />
+          {q ? (
+            <Pressable onPress={() => setQ('')} hitSlop={10}>
+              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          style={[styles.filterBtn, tab !== 'unregistered' ? styles.filterBtnActive : null]}
+          onPress={() => setFilterOpen(true)}
+          testID="directory-filter"
+        >
+          <Ionicons name="options-outline" size={15} color={COLORS.primary} />
+          <Text style={styles.filterBtnTxt} numberOfLines={1}>
+            {TAB_LABEL[tab]}{badge(tab) != null ? ` · ${badge(tab)}` : ''}
+          </Text>
+          <Ionicons name="chevron-down" size={13} color={COLORS.primary} />
+        </Pressable>
       </View>
 
-      {/* Search box */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          placeholder="Name, phone, email, reg no…"
-          placeholderTextColor={COLORS.textDisabled}
-          style={styles.searchInput}
-        />
-        {q ? (
-          <Pressable onPress={() => setQ('')} hitSlop={10}>
-            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-          </Pressable>
-        ) : null}
-      </View>
+      {updatedAt ? <UpdatedHint at={updatedAt} style={styles.updatedHint} /> : null}
+
+      {/* Filters dropdown */}
+      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setFilterOpen(false)}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Show</Text>
+            {TAB_ORDER.map((t) => {
+              const active = tab === t;
+              return (
+                <Pressable
+                  key={t}
+                  onPress={() => { setTab(t); setFilterOpen(false); }}
+                  style={[styles.filterOption, active && styles.filterOptionActive]}
+                  testID={`directory-filter-opt-${t}`}
+                >
+                  <Text style={[styles.filterOptionTxt, active && styles.filterOptionTxtActive]}>
+                    {TAB_LABEL[t]}{badge(t) != null ? ` · ${badge(t)}` : ''}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Contextual hint for the Unregistered tab */}
       {tab === 'unregistered' && !q && !loading ? (
@@ -865,13 +868,47 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   tabTxt: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
   tabTxtActive: { color: '#fff' },
+  analyticsChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginHorizontal: 12, marginTop: 8, paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: COLORS.primary + '10', borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
+  analyticsChipTxt: { fontSize: 12, color: COLORS.textSecondary },
+  controlsRow: {
+    flexDirection: 'row', alignItems: 'stretch', gap: 8,
+    marginHorizontal: 12, marginTop: 8,
+  },
   searchRow: {
+    flex: 3,
     flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 12, marginTop: 10,
     paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 6,
     backgroundColor: COLORS.surface, borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
   },
+  filterBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingHorizontal: 8,
+    backgroundColor: COLORS.surface, borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  filterBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' },
+  filterBtnTxt: { fontSize: 11.5, fontWeight: '700', color: COLORS.primary, flexShrink: 1 },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 28,
+  },
+  modalSheet: { backgroundColor: '#fff', borderRadius: 16, padding: 8, paddingTop: 12 },
+  modalTitle: {
+    fontSize: 12, color: COLORS.textSecondary, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, paddingHorizontal: 10,
+  },
+  filterOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10,
+  },
+  filterOptionActive: { backgroundColor: COLORS.primary + '10' },
+  filterOptionTxt: { fontSize: 14, color: COLORS.textPrimary },
+  filterOptionTxtActive: { color: COLORS.primary, fontWeight: '700' },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary, padding: 0 },
   hintBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,

@@ -1,0 +1,52 @@
+{
+  "summary": "Frontend-only mobile Playwright pass on 6 fork items (dashboard trimming + panel deep-links, my-bookings/my-records error boundaries, patients dropdown + setUpdatedAt fix). Dashboard bar shows the EXPECTED 6 primary tabs on default load (today, bookings, consultations, prescriptions, availability, analytics) — no error boundary. Deep-link /dashboard?tab=backups correctly splices the Backups pill in and renders BackupHealthPanel content. My Bookings + My Records both render (Upcoming/Past and Overview/Visits/Rx/Surgeries/Scores tabs) without the 'Something went wrong' card. Patients directory: NO 'setUpdatedAt is not defined' or red error, Analytics chip is pinned top-left, Search (¾) + Filters (¼) sit on a single row, and Filters dropdown lists Unregistered/Re-invite/Registered/All + switches filter cleanly. Tab switching across the 6 primary bar tabs on dashboard is crash-free. HOWEVER — the tab-pill for /dashboard?tab=surgeries, broadcasts and team was not detected visible in the bar during the automated pass while /dashboard?tab=backups was; screenshots suggest surgeries/broadcasts/team may have visually fallen back to the Today panel. This might be a real regression in the barTabs splicing for those three ids, or a lazy-module load timing quirk on web preview — worth a manual retest with longer wait / real device.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Dashboard deep-link splicing",
+        "issue": "/dashboard?tab=surgeries, /dashboard?tab=broadcasts and /dashboard?tab=team — automated check for the spliced tab pill returned not-visible while /dashboard?tab=backups worked. Screenshots for the surgeries link show the Today panel content instead of the Surgeries panel. Please verify barTabs memo is including the active non-primary id at first mount (initialTab is computed from params.tab) and that lazy panels (SurgeriesPanel, BroadcastsPanel, TeamPanelV2) don't fail-open on web. Reference: /app/frontend/app/dashboard.tsx:342 + /app/frontend/src/dashboard/content-pager.tsx:65",
+        "testID": "dashboard-tab-surgeries|broadcasts|team",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Patients list keys",
+        "issue": "React warning during /patients render: 'Each child in a list should have a unique \"key\" prop' coming from a VirtualizedList child in patients/index.tsx (likely the analytics chip inline Text spans or the queueRow / dupList rendering). Not user-visible but should be silenced. Reference: /app/frontend/app/patients/index.tsx",
+        "testID": "",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard hero (390x844)",
+        "issues": [
+          "Modal 'Call now' card overlaps the tab bar area at mobile width in some screenshots — content is still tappable but the card should probably be dismissed / not auto-shown for owners on load."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      { "component": "shadow* deprecated", "issue": "Console warning: 'shadow* style props are deprecated. Use \"boxShadow\"'. Not blocking. Reference: repeated across StyleSheets" },
+      { "component": "textShadow* deprecated", "issue": "Console warning: 'textShadow* style props are deprecated. Use \"textShadow\"'. Reference: repeated across StyleSheets" },
+      { "component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: RNAnimated.View in dashboard.tsx line 452" }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_38.json"],
+  "action_items": [
+    "Manually re-verify /dashboard?tab=surgeries, /dashboard?tab=broadcasts, /dashboard?tab=team on a real device — check whether the correct panel actually renders (not Today) and whether the spliced pill actually appears at the right of the bar. If Today is shown instead, it means initialTab isn't picking up the ?tab= or barTabs isn't including the active non-primary id at first mount.",
+    "Fix VirtualizedList unique-key warning on /patients (likely a fragment or inline Text/View without key inside the analytics chip or one of the modals).",
+    "Migrate shadow*/textShadow*/pointerEvents props to their non-deprecated equivalents (Expo SDK deprecation) — bulk update recommended."
+  ],
+  "critical_code_review_comments": [
+    "dashboard.tsx is 743 lines and still doing a lot inline — content-pager extraction helped but the file should be further trimmed (User card block, FAB block).",
+    "content-pager.tsx computeWindow correctly bounds mounted panels to active ± 1 — good fix for the Android OOM crash. Consider raising to ± 2 on desktop to make swipe smoother.",
+    "The barTabs memo in dashboard.tsx line 342 depends on 'tab' — verify that when tab is a non-primary id (e.g. 'surgeries'), the splice actually happens on first render and not only after a state update."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only)", "frontend": "80%" },
+  "seed_data_creation": "None — used existing test_session_1781800271528.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Playwright hits 390x844 viewport at https://urology-pro.preview.emergentagent.com. Inject localStorage.setItem('session_token','test_session_1781800271528') before navigating. Key testIDs: dashboard-tab-<id>, bookings-tab-upcoming, records-tab-overview, directory-filter, directory-filter-opt-<id>. Fork feature confirmed working: 6-tab primary bar, my-bookings/my-records error boundaries, patients Analytics chip + single-row Search+Filter, setUpdatedAt state fix. Retest surgeries/broadcasts/team deep-link path.",
+  "rca_of_issue": "The setUpdatedAt crash in patients/index.tsx is confirmed FIXED — the new declaration 'const [updatedAt, setUpdatedAt] = useState<number>(0);' is present at line 92 and the UpdatedHint is rendered under the controls row. Dashboard-home-fallback crash mitigation is in place: (1) top-level AppErrorBoundary wraps DashboardImpl with router.back fallback, (2) ContentPager only mounts active ± 1 panels, (3) each panel is wrapped in a panelMode AppErrorBoundary to isolate render failures. My-bookings and my-records now have their own top-level AppErrorBoundary wrappers. The remaining risk is the barTabs splicing for non-primary deep-links (surgeries/broadcasts/team) which needs manual confirmation."
+}

@@ -92,6 +92,13 @@ import { STAFF, ROLES, roleDisplayLabel } from '../src/dashboard/role-labels';
 import BookingsPanel from "../src/dashboard/bookings-panel";
 import { styles } from "../src/dashboard/dashboard-styles";
 
+// Tabs that stay in the dashboard's own horizontal bar. Everything else
+// (Surgeries, IPD, Referrers, Invites, Broadcasts, Team, Notifs, Backups)
+// is reached from the More tab / web sidebar, which deep-link back here
+// via ?tab=… and still render on demand. Module-scoped so its identity
+// is stable across renders (safe as a hook dependency).
+const PRIMARY_TAB_IDS = ['today', 'bookings', 'consultations', 'prescriptions', 'availability', 'analytics'];
+
 export default function Dashboard() {
   // Wraps the (massive) DashboardImpl component below in a local error
   // boundary. When a widget / panel (branding, broadcasts, team, etc.)
@@ -330,6 +337,30 @@ function DashboardImpl() {
     [canPrescribe, isOwner, allowTab, pendingCount, tier.canCreateBlog, canViewAnalytics, canManageIpd, canManageSurgery]
   );
 
+  // Keep the dashboard tab bar focused on daily clinical work + Analytics.
+  // Less-frequent / admin sections (Surgeries, IPD, Referrers, Invites,
+  // Broadcasts, Team, Notifs, Backups) are reached from the "More" tab and
+  // the web sidebar (both deep-link back here via ?tab=…). They still
+  // render in the pager when opened directly — we splice the active one
+  // into the visible bar so it highlights + mounts. This trims the bar
+  // from ~14 tabs to 6, which (a) declutters and (b) shrinks the mounted
+  // panel window that previously starved memory on Android APK.
+  // The currently-pinned non-primary tab (opened via a More/sidebar
+  // deep-link, the FAB, or a panel "jump"). Kept in its OWN state so a
+  // transient tab change (e.g. the web pager's scroll-settle) can never
+  // drop it from the bar / unmount its panel. Native never mis-settles,
+  // so this is really a web-preview robustness guard.
+  const [extraTabId, setExtraTabId] = useState<string | null>(
+    !PRIMARY_TAB_IDS.includes(initialTab) ? initialTab : null,
+  );
+  React.useEffect(() => {
+    if (!PRIMARY_TAB_IDS.includes(tab)) setExtraTabId(tab);
+  }, [tab]);
+  const barTabs = React.useMemo(
+    () => tabs.filter((t) => PRIMARY_TAB_IDS.includes(t.id) || t.id === extraTabId),
+    [tabs, extraTabId],
+  );
+
   // Keep the active tab pill centered both on tap and on swipe.
   // Uses measured x positions (set via onLayout on each tab pill) so the
   // active chip lands at the visible center regardless of label width.
@@ -450,7 +481,7 @@ function DashboardImpl() {
                 <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
                 <View style={{ flex: 1.2, marginLeft: 12, minWidth: 0 }}>
                   <Text style={styles.heroName} numberOfLines={1}>
-                    {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
+                    {(user.name || '').split(' ')[0] ? `Hello, Dr. ${(user.name || '').split(' ').slice(-1)[0]}` : 'Hello'}
                   </Text>
                   <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
                   <View style={styles.heroBadgeRow}>
@@ -506,7 +537,7 @@ function DashboardImpl() {
               <Image source={{ uri: user.picture || DOCTOR_PHOTO_URL }} style={styles.heroPhoto} />
               <View style={{ flex: 1.2, marginLeft: 12, minWidth: 0 }}>
                 <Text style={styles.heroName} numberOfLines={1}>
-                  {user.name.split(' ')[0] ? `Hello, Dr. ${user.name.split(' ').slice(-1)[0]}` : 'Hello'}
+                  {(user.name || '').split(' ')[0] ? `Hello, Dr. ${(user.name || '').split(' ').slice(-1)[0]}` : 'Hello'}
                 </Text>
                 <Text style={styles.heroEmail} numberOfLines={1}>{user.email}</Text>
                 <View style={styles.heroBadgeRow}>
@@ -565,7 +596,7 @@ function DashboardImpl() {
           contentContainerStyle={[styles.tabBarScroll, isWebDesktop && { paddingHorizontal: 24, gap: 6 }]}
           style={styles.tabBarWrap}
         >
-          {tabs.map((tb, idx) => (
+          {barTabs.map((tb, idx) => (
             <TouchableOpacity
               key={tb.id}
               onPress={() => {
@@ -603,7 +634,7 @@ function DashboardImpl() {
         // injected. Cheaper to bust + re-render than to wire clinic
         // state into each individual panel's loader.
         key={`tenant-${currentClinicIdForPanels}`}
-        tabs={tabs.filter((x) => x.id !== 'blog')}
+        tabs={barTabs}
         activeId={tab}
         onChange={(id) => setTab(id as any)}
         onVerticalScroll={onContentScroll}
