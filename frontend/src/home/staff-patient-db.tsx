@@ -30,6 +30,7 @@ import {
   RefreshControl,
   Platform,
   Linking,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,6 +94,7 @@ export default function StaffPatientDb() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [month, setMonth] = useState<string>('');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [items, setItems] = useState<PatientRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,29 +104,20 @@ export default function StaffPatientDb() {
   const [summary, setSummary] = useState<{
     total: number; registered: number; unregistered: number;
   } | null>(null);
-  const [analytics, setAnalytics] = useState<{
-    total_invited: number; converted_total: number;
-    conversion_rate_total: number;
-    converted_within_7d: number; converted_within_30d: number;
-  } | null>(null);
 
   const months = useMemo(() => recentMonths(6), []);
 
-  // Load Unregistered summary + invite analytics from the same call
-  // pattern as /app/patients — this way the Patients bottom tab
-  // exposes the new directory tile and conversion insights inline.
+  // Load the Unregistered/Registered summary for the compact Directory
+  // button subtitle. (Invite → sign-up conversion analytics live only on
+  // the Directory page /patients now, so we no longer fetch them here.)
   React.useEffect(() => {
     if (!canAccess) return;
     let cancelled = false;
     (async () => {
       try {
-        const [sumRes, anaRes] = await Promise.all([
-          api.get('/registry/patients/summary').catch(() => ({ data: null })),
-          api.get('/registry/invites/analytics').catch(() => ({ data: null })),
-        ]);
+        const sumRes = await api.get('/registry/patients/summary').catch(() => ({ data: null }));
         if (cancelled) return;
         if (sumRes?.data) setSummary(sumRes.data);
-        if (anaRes?.data) setAnalytics(anaRes.data);
       } catch { /* non-fatal */ }
     })();
     return () => { cancelled = true; };
@@ -244,116 +237,96 @@ export default function StaffPatientDb() {
             {month ? ` · ${months.find((m) => m.key === month)?.label || month}` : ''}
           </Text>
         </View>
-        {canExport && (
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            onPress={onExport}
-            style={styles.exportBtn}
-            disabled={exporting}
+            onPress={() => router.push('/patients' as any)}
             activeOpacity={0.85}
-            testID="patient-db-export"
+            style={styles.dirPill}
+            testID="patient-db-open-directory"
           >
-            {exporting ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="download" size={14} color="#fff" />
-                <Text style={styles.exportBtnText}>Export CSV</Text>
-              </>
-            )}
+            <Ionicons name="people-circle" size={16} color={COLORS.primary} />
+            <Text style={styles.dirPillTxt}>Directory</Text>
+            {summary && summary.unregistered > 0 ? (
+              <View style={styles.dirBadge}>
+                <Text style={styles.dirBadgeTxt}>{summary.unregistered}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
-        )}
+          {canExport && (
+            <TouchableOpacity
+              onPress={onExport}
+              style={styles.exportIconBtn}
+              disabled={exporting}
+              activeOpacity={0.85}
+              testID="patient-db-export"
+            >
+              {exporting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="download" size={16} color="#fff" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
-      {/* ── Directory tile (Unregistered / Duplicates / Bulk invite) ── */}
-      <TouchableOpacity
-        onPress={() => router.push('/patients' as any)}
-        activeOpacity={0.85}
-        style={styles.dirTile}
-        testID="patient-db-open-directory"
-      >
-        <View style={styles.dirIcon}>
-          <Ionicons name="people-circle" size={26} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.dirTitle}>Patient directory</Text>
-          <Text style={styles.dirSub}>
-            {summary
-              ? `Unregistered · ${summary.unregistered}   ·   Registered · ${summary.registered}`
-              : 'Registered · Unregistered · Duplicates · Bulk invite'}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
-      </TouchableOpacity>
-
-      {/* ── Invite conversion insight (owner-only via /invites/analytics) ── */}
-      {analytics && analytics.total_invited > 0 ? (
-        <TouchableOpacity
-          onPress={() => router.push('/patients' as any)}
-          activeOpacity={0.85}
-          style={styles.analyticsTile}
-          testID="patient-db-invite-analytics"
-        >
-          <View style={styles.analyticsIcon}>
-            <Ionicons name="trending-up" size={20} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.analyticsLbl}>Invite → sign-up conversion</Text>
-            <Text style={styles.analyticsVal}>
-              {analytics.converted_total} of {analytics.total_invited}{' '}
-              walk-ins signed up ·{' '}
-              <Text style={{ color: COLORS.success, fontWeight: '700' }}>
-                {(analytics.conversion_rate_total * 100).toFixed(0)}%
-              </Text>
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-      ) : null}
-
-      {/* Search */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search name, mobile, reg-no or email"
-          placeholderTextColor={COLORS.textDisabled}
-          style={styles.searchInput}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-        />
-        {!!query && (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={6}>
-            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Month pills — wrapped in a fixed-height container so the
-          horizontal ScrollView doesn't flex-grow vertically when its
-          parent SafeAreaView still has remaining space (web bug). */}
-      <View style={styles.pillsWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pills}
-        >
-          <PillToggle
-            label="All months"
-            active={month === ''}
-            onPress={() => setMonth('')}
+      {/* ── Search (¾) + Filters dropdown (¼) on one line ── */}
+      <View style={styles.controlsRow}>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={16} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search name, mobile, reg-no or email"
+            placeholderTextColor={COLORS.textDisabled}
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
           />
-          {months.map((m) => (
-            <PillToggle
-              key={m.key}
-              label={m.label}
-              active={month === m.key}
-              onPress={() => setMonth(m.key)}
-            />
-          ))}
-        </ScrollView>
+          {!!query && (
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={6}>
+              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.filterBtn, month ? styles.filterBtnActive : null]}
+          onPress={() => setFilterOpen(true)}
+          activeOpacity={0.85}
+          testID="patient-db-filter"
+        >
+          <Ionicons name="options-outline" size={15} color={month ? COLORS.primary : COLORS.textSecondary} />
+          <Text style={[styles.filterBtnTxt, month ? { color: COLORS.primary } : null]} numberOfLines={1}>
+            {month ? (months.find((m) => m.key === month)?.label || 'Filter') : 'All'}
+          </Text>
+          <Ionicons name="chevron-down" size={13} color={month ? COLORS.primary : COLORS.textSecondary} />
+        </TouchableOpacity>
       </View>
+
+      {/* Filters dropdown — month picker */}
+      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setFilterOpen(false)}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Filter by month</Text>
+            <ScrollView style={{ maxHeight: 340 }}>
+              <FilterOption
+                label="All months"
+                active={month === ''}
+                onPress={() => { setMonth(''); setFilterOpen(false); }}
+              />
+              {months.map((m) => (
+                <FilterOption
+                  key={m.key}
+                  label={m.label}
+                  active={month === m.key}
+                  onPress={() => { setMonth(m.key); setFilterOpen(false); }}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* List */}
       {loading ? (
@@ -398,14 +371,16 @@ export default function StaffPatientDb() {
   );
 }
 
-function PillToggle({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function FilterOption({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.85}
-      style={[styles.pill, active && styles.pillActive]}
+      activeOpacity={0.7}
+      style={[styles.filterOption, active && styles.filterOptionActive]}
+      testID={`patient-db-filter-opt-${label}`}
     >
-      <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
+      <Text style={[styles.filterOptionTxt, active && styles.filterOptionTxtActive]}>{label}</Text>
+      {active ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
     </TouchableOpacity>
   );
 }
@@ -465,20 +440,31 @@ const styles = StyleSheet.create({
   },
   title: { ...FONTS.h2, fontSize: 19, color: COLORS.textPrimary },
   subtitle: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  exportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dirPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.primary + '12',
+    borderWidth: 1, borderColor: COLORS.primary + '40',
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: RADIUS.pill,
   },
-  exportBtnText: { ...FONTS.body, fontSize: 12, fontWeight: '700', color: '#fff' },
+  dirPillTxt: { ...FONTS.body, fontSize: 12.5, fontWeight: '700', color: COLORS.primary },
+  dirBadge: {
+    minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5,
+    backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  dirBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  exportIconBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  controlsRow: {
+    flexDirection: 'row', alignItems: 'stretch', gap: 8,
+    marginHorizontal: 14, marginBottom: 2,
+  },
   searchRow: {
+    flex: 3,
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: '#fff',
@@ -493,33 +479,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     padding: 0,
   },
-  pillsWrap: {
-    // Constrain the horizontal scroll bar to its intrinsic height so
-    // it doesn't expand to fill remaining vertical space (a flex-row
-    // parent quirk on web).
-    height: 50,
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  pills: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 8,
-    alignItems: 'center',
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 18,
+  filterBtn: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingHorizontal: 8,
     backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    height: 34,
-    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  pillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  pillText: { ...FONTS.body, fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
-  pillTextActive: { color: '#fff' },
+  filterBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' },
+  filterBtnTxt: { ...FONTS.body, fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, flexShrink: 1 },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center', paddingHorizontal: 28,
+  },
+  modalSheet: {
+    backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: 8, paddingTop: 14,
+    maxHeight: '70%',
+  },
+  modalTitle: {
+    ...FONTS.h4, fontSize: 13, color: COLORS.textSecondary, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, paddingHorizontal: 10,
+  },
+  filterOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 12, borderRadius: RADIUS.md,
+  },
+  filterOptionActive: { backgroundColor: COLORS.primary + '10' },
+  filterOptionTxt: { ...FONTS.body, fontSize: 14, color: COLORS.textPrimary },
+  filterOptionTxtActive: { color: COLORS.primary, fontWeight: '700' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -564,36 +552,4 @@ const styles = StyleSheet.create({
   empty: { padding: 32, alignItems: 'center', gap: 8 },
   emptyTitle: { ...FONTS.h2, fontSize: 16, color: COLORS.textPrimary, marginTop: 12, textAlign: 'center' },
   emptySub: { ...FONTS.body, fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', maxWidth: 320, lineHeight: 18 },
-  // ── Directory tile + invite conversion insight ──
-  dirTile: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 16, marginTop: 10, padding: 12,
-    backgroundColor: '#fff', borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
-  },
-  dirIcon: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.primary + '18',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  dirTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
-  dirSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  analyticsTile: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 16, marginTop: 8, padding: 12,
-    backgroundColor: '#fff', borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
-    borderLeftWidth: 3, borderLeftColor: COLORS.primary,
-  },
-  analyticsIcon: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.primary + '15',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  analyticsLbl: {
-    fontSize: 11, fontWeight: '700', color: COLORS.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2,
-  },
-  analyticsVal: { fontSize: 13, color: COLORS.textSecondary },
-
 });

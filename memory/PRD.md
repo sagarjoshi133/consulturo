@@ -821,3 +821,21 @@ Booking detail (/bookings/[id]) 'Reports & images' card (src/video/AttachmentsCa
   which Android rejects.
 - Verified on WEB (testing iter 37): PDF chip → blob download, image thumb → real blob: tab, 0
   console errors. Native path uses the proven expo-sharing pattern — verify after a rebuild.
+
+## REVAMP: Patient Database screen (src/home/staff-patient-db.tsx) (Jun 2026)
+User: two buttons (Directory tile + Invite-conversion tile) both opened the SAME /patients page — keep
+only ONE (Directory); conversion analytics chip should show ONLY on the Directory page; put search +
+filters on one line (search ¾ left, filters ¼ right); make a compact space-saving Directory button.
+- Removed the redundant big "Invite → sign-up conversion" tile from the Patient DB home (the chip
+  already lives on the Directory page /patients/index.tsx — now shown ONLY there). Also removed the
+  now-unused analytics fetch/state here.
+- Replaced the large "Patient directory" tile with a COMPACT header pill (people icon + "Directory" +
+  a small badge showing the unregistered count) → saves a full card's height. testID
+  patient-db-open-directory preserved.
+- Export CSV button condensed to a compact icon-only button beside the Directory pill.
+- Search + Filters now share one row (styles.controlsRow): search input flex:3 (¾) left, a Filters
+  dropdown button flex:1 (¼) right showing the active month (or "All") with options/chevron icons.
+  Replaced the horizontal month "pills" scroller with a Modal month picker (FilterOption rows,
+  checkmark on active). testIDs patient-db-filter, patient-db-filter-opt-*.
+- Verified on web (desktop shell): single Directory pill w/ badge, one-line search+filter, modal opens
+  and lists All months + last 6 months. Renders full-width on mobile (flexbox).
