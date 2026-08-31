@@ -937,3 +937,17 @@ room code in seed).
 
 STILL BLOCKED (infra, not code): production Android network timeouts / 429s = Cloudflare edge block —
 requires Emergent Support escalation. Fixes above apply to PREVIEW; user must redeploy for APK.
+
+## FIX: "Backup server comes into force very early" on installed app (Jun 2026)
+User report (installed/production APK): the DR "Connected to backup server" fallback kicked in
+too eagerly, especially when opening the Dashboard / heavy pages a couple of times.
+Root cause: src/api.ts DR interceptor called activateFallback() on ANY network/timeout error on
+ANY path (network errors bypassed the infra allowlist). Heavy screens fire many parallel requests;
+a single one hitting the 15s axios timeout (or a transient blip) flipped the WHOLE session onto the
+backup (preview) backend and showed the sticky banner.
+Fix: src/backend-health.ts — activateFallback() now FIRST confirms the primary is genuinely down via
+a dedicated lightweight primaryIsHealthy() probe of PRIMARY /api/health (4s). If the primary answers
+200, we DO NOT fail over (return null) — a slow/timed-out individual request no longer switches
+servers while the primary is healthy. Genuine primary-down (health probe fails) still fails over as
+before. Boot-time ensureHealthyBackend() is unchanged but now benefits from the same re-probe guard.
+Lint clean; verified dashboard boots with no backup banner in preview. NEEDS REDEPLOY to reach the APK.

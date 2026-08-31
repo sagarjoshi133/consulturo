@@ -89,16 +89,44 @@ async function probeFallback(): Promise<string | null> {
   return null;
 }
 
+/**
+ * Lightweight liveness probe of the PRIMARY origin. Used to CONFIRM
+ * the primary is genuinely down before we fail over. A single slow or
+ * timed-out data request (common on heavy screens like the Dashboard,
+ * where many requests fire in parallel) must NOT flip the whole session
+ * onto the backup server while the primary is actually healthy — that
+ * was the "backup server comes into force very early" complaint.
+ */
+async function primaryIsHealthy(timeoutMs = 4000): Promise<boolean> {
+  if (!PRIMARY) return false;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${PRIMARY}/api/health`, { method: 'GET', signal: ctrl.signal });
+      return !!resp && resp.ok;
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return false;
+  }
+}
+
 /** Attempt to activate a working fallback. Returns the new base URL. */
 export async function activateFallback(): Promise<string | null> {
   if (isOnFallback()) return _activeBase;
+  // Gate: only fail over once we've CONFIRMED the primary origin is
+  // actually unreachable via a dedicated lightweight /api/health probe.
+  // This stops a single per-request timeout on a heavy page from
+  // switching the session to the backup server while the primary is up.
+  if (await primaryIsHealthy()) return null;
   const winner = await probeFallback();
   if (!winner) return null;
   _activeBase = winner;
   try { _onFallback?.(true, winner); } catch {}
   // Best-effort log so devs see the switch in browser DevTools.
-  // eslint-disable-next-line no-console
-  console.warn(`[backend-health] Primary unreachable — failed over to ${winner}`);
+  console.warn(`[backend-health] Primary confirmed unreachable — failed over to ${winner}`);
   return winner;
 }
 
