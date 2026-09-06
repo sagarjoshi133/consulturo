@@ -134,9 +134,14 @@ function formatLocalStamp(iso?: string): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    // 31 May 2026, 7:23 AM
-    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    // 31 May 2026, 7:23 AM — always rendered in clinic-local time (IST)
+    // so the stamp matches the wall-clock time the consent was signed.
+    // Without an explicit timeZone the formatter falls back to the PDF
+    // renderer's runtime zone (UTC on the server), which showed a time
+    // ~5.5 h behind the real signing time.
+    const TZ = 'Asia/Kolkata';
+    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: TZ });
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: TZ });
     return `${date} · ${time}`;
   } catch {
     return iso;
@@ -319,6 +324,9 @@ export function buildConsentHtml(c: ConsentDoc, settings: ClinicSettings = {}): 
 
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"/>
 <title>Surgical Consent · ${escapeHtml(c.consent_id)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&display=swap"/>
 <style>
   /* ── A4 page + running header/footer ─────────────────────────────── */
   @page {

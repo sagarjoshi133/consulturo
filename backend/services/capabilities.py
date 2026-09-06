@@ -59,7 +59,10 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
     "send_personal_messages": {
         "label": "Send personal messages",
         "flag": "can_send_personal_messages",
-        "policy": "staff_default_true",
+        # In-app messaging is ON for EVERYONE by default (staff AND
+        # patients). The owner can revoke an individual account by
+        # setting `can_send_personal_messages` = False on that user.
+        "policy": "all_default_true",
     },
     "access_patient_db": {
         "label": "Access patient database",
@@ -115,6 +118,13 @@ def has_capability(user: Optional[Dict[str, Any]], cap: str) -> bool:
         if role and role != "patient":
             return explicit is not False
         return bool(explicit)
+    if policy == "all_default_true":
+        # Everyone (staff AND patients) is allowed unless the owner has
+        # explicitly revoked the flag (set it to False). Owner tier is
+        # always allowed regardless of the stored flag.
+        if role in OWNER_TIER_ROLES:
+            return True
+        return user.get(flag) is not False
     # owner_implicit (default)
     if role in OWNER_TIER_ROLES:
         return True

@@ -893,13 +893,16 @@ async def get_booking(
         is_staff = role in {"owner", "doctor", "assistant", "staff"} or user.get("can_approve_bookings")
         if is_staff:
             return doc
-        # Patient: allow if either user_id or phone matches
+        # Patient: allow if either user_id or phone matches. Compare the
+        # LAST 10 digits so a stored "9876543210" still matches a booking
+        # saved as "+919876543210" / "919876543210" (country-code prefix
+        # mismatch previously caused a valid owner to get "not found").
         uid_match = doc.get("user_id") == user["user_id"]
-        phone_match = (
-            user.get("phone")
-            and doc.get("patient_phone")
-            and re.sub(r"\D", "", user["phone"]) == re.sub(r"\D", "", doc["patient_phone"])
-        )
+        _u = re.sub(r"\D", "", user.get("phone") or "")
+        _b = re.sub(r"\D", "", doc.get("patient_phone") or "")
+        _u = _u[-10:] if len(_u) >= 10 else _u
+        _b = _b[-10:] if len(_b) >= 10 else _b
+        phone_match = bool(_u) and _u == _b
         if uid_match or phone_match:
             return doc
         raise HTTPException(status_code=403, detail="Not allowed")
@@ -1088,6 +1091,44 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
             final_time=final_time,
         )
     elif status_just_changed and status_label == "completed":
+        # Surface this completed consultation in the Encounters worklist.
+        # A doctor may complete a visit directly ("Mark done" without a
+        # prescription); if no encounter exists yet the visit would
+        # otherwise vanish from Encounters (the worklist only lists
+        # confirmed-bookings-without-encounters + real encounters). So
+        # upsert a completed encounter tied to this booking.
+        try:
+            _now_enc = datetime.now(timezone.utc)
+            _enc = await db.encounters.find_one({"booking_id": booking_id})
+            if _enc:
+                await db.encounters.update_one(
+                    {"encounter_id": _enc["encounter_id"]},
+                    {"$set": {"stage": "completed", "updated_at": _now_enc}},
+                )
+            else:
+                await db.encounters.insert_one({
+                    "encounter_id": f"enc_{uuid.uuid4().hex[:12]}",
+                    "clinic_id": existing.get("clinic_id"),
+                    "patient_name": existing.get("patient_name") or "",
+                    "patient_phone": existing.get("patient_phone") or "",
+                    "patient_age": existing.get("patient_age") or "",
+                    "patient_sex": existing.get("patient_sex") or "",
+                    "booking_id": booking_id,
+                    "booking_date": final_date,
+                    "booking_time": final_time,
+                    "patient_user_id": existing.get("user_id"),
+                    "diagnoses": [],
+                    "stage": "completed",
+                    "payment_status": "pending",
+                    "prescription_id": existing.get("draft_rx_id") or None,
+                    "created_by": user.get("user_id"),
+                    "created_by_name": user.get("name") or user.get("email") or "",
+                    "created_at": _now_enc,
+                    "updated_at": _now_enc,
+                })
+        except Exception:
+            # Never block booking completion on the encounter mirror.
+            pass
         # Newly-introduced notification for when staff marks a visit as
         # completed so the patient gets a gentle acknowledgement in their
         # bell + push (e.g. "your visit is marked complete; here are next

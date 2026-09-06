@@ -11,6 +11,8 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,8 +116,17 @@ export default function Book() {
     // Backend stores phone as digits (or E.164). Strip whatever prefix
     // matches the current country code so the digits field is clean.
     let nextPhone = String(anyUser.phone || '').replace(/\D/g, '');
-    const cc = String(anyUser.country_code || '').replace(/\D/g, '');
-    if (cc && nextPhone.startsWith(cc)) nextPhone = nextPhone.slice(cc.length);
+    // Strip a leading country-dial prefix so the digits field stays
+    // clean and we don't render "91xxxxxxxxxx" next to the +91 picker.
+    // Use the stored country_code when present, else fall back to the
+    // currently-selected country's dial code (defaults to India +91).
+    // Only strip when what remains still looks like a full local number
+    // (≥6 digits) so we never mangle a genuinely short number.
+    const storedCc = String(anyUser.country_code || '').replace(/\D/g, '');
+    const dial = storedCc || String(country.dial || '').replace(/\D/g, '');
+    if (dial && nextPhone.startsWith(dial) && nextPhone.length - dial.length >= 6) {
+      nextPhone = nextPhone.slice(dial.length);
+    }
     if (!patientName && nextName) setPatientName(nextName);
     if (!phone && nextPhone) setPhone(nextPhone);
     if (!age && anyUser.age) setAge(String(anyUser.age));
@@ -153,6 +164,7 @@ export default function Book() {
   const dates = useMemo(() => Array.from({ length: 90 }, (_, i) => addDays(new Date(), i)), []);
   const [date, setDate] = useState(dates[0]);
   const [slot, setSlot] = useState('10:00');
+  const [slotSheetOpen, setSlotSheetOpen] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
 
@@ -808,49 +820,33 @@ export default function Book() {
               </Text>
             </View>
           ) : (
-            <View style={styles.slotGrid}>
-              {availableSlots.map((s) => {
-                const selected = s === slot;
-                const count = bookedCounts[s] || 0;
-                const isFilling = count > 0;
-                const isNearFull = count >= maxPerSlot - 1; // 4/5 → highlight as nearly full
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    onPress={() => { haptics.select(); setSlot(s); }}
-                    style={[styles.slot, selected && styles.slotActive, !selected && d.surface]}
-                    testID={`booking-slot-${s}`}
-                  >
-                    <Text style={[styles.slotText, selected && { color: '#fff' }]}>{display12h(s)}</Text>
-                    {/* Capacity badge — only render when there's at
-                        least one existing booking, so empty slots stay
-                        visually clean. Shows "3/5" with colour shifting
-                        from green → orange → red as it fills up. */}
-                    {isFilling && (
-                      <View
-                        style={[
-                          styles.slotCapBadge,
-                          isNearFull
-                            ? styles.slotCapBadgeNearFull
-                            : styles.slotCapBadgeOk,
-                          selected && styles.slotCapBadgeOnActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.slotCapText,
-                            isNearFull && styles.slotCapTextNearFull,
-                            selected && { color: '#fff' },
-                          ]}
-                        >
-                          {count}/{maxPerSlot}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <>
+              <TouchableOpacity
+                onPress={() => { haptics.select(); setSlotSheetOpen(true); }}
+                style={[styles.slotSelectBtn, d.surface]}
+                testID="booking-slot-select"
+                activeOpacity={0.8}
+              >
+                <Ionicons name="time-outline" size={18} color={COLORS.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.slotSelectText}>{slot ? display12h(slot) : t('book.selectSlot')}</Text>
+                  {slot && (bookedCounts[slot] || 0) > 0 ? (
+                    <Text style={styles.slotSelectSub}>{bookedCounts[slot]}/{maxPerSlot} booked</Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+              <SlotSheet
+                visible={slotSheetOpen}
+                onClose={() => setSlotSheetOpen(false)}
+                slots={availableSlots}
+                selected={slot}
+                onSelect={(s) => { haptics.select(); setSlot(s); setSlotSheetOpen(false); }}
+                bookedCounts={bookedCounts}
+                maxPerSlot={maxPerSlot}
+                bottomInset={insets.bottom}
+              />
+            </>
           )}
 
           {/* Form Fields */}
@@ -966,6 +962,109 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
   );
 }
 
+// ── Time-slot picker (grouped bottom-sheet select) ──────────────────
+// Replaces the old flat slot grid. Slots are grouped into Morning /
+// Afternoon / Evening and shown in a tap-to-open sheet so long slot
+// lists stay compact and scannable.
+function SlotSheet({
+  visible, onClose, slots, selected, onSelect, bookedCounts, maxPerSlot, bottomInset,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  slots: string[];
+  selected: string;
+  onSelect: (s: string) => void;
+  bookedCounts: Record<string, number>;
+  maxPerSlot: number;
+  bottomInset: number;
+}) {
+  const groups = useMemo(() => {
+    const g: { key: string; label: string; items: string[] }[] = [
+      { key: 'morning', label: 'Morning', items: [] },
+      { key: 'afternoon', label: 'Afternoon', items: [] },
+      { key: 'evening', label: 'Evening', items: [] },
+    ];
+    for (const s of slots) {
+      const hh = parseInt(String(s).split(':')[0], 10) || 0;
+      if (hh < 12) g[0].items.push(s);
+      else if (hh < 17) g[1].items.push(s);
+      else g[2].items.push(s);
+    }
+    return g.filter((x) => x.items.length > 0);
+  }, [slots]);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={sheetStyles.backdrop} onPress={onClose} testID="booking-slot-backdrop" />
+      <View style={[sheetStyles.sheet, { paddingBottom: 16 + bottomInset }]}>
+        <View style={sheetStyles.handle} />
+        <View style={sheetStyles.head}>
+          <Text style={sheetStyles.title}>Select a time slot</Text>
+          <TouchableOpacity onPress={onClose} testID="booking-slot-close" hitSlop={8}>
+            <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 8 }}>
+          {groups.map((grp) => (
+            <View key={grp.key} style={{ marginTop: 12 }}>
+              <Text style={sheetStyles.groupLabel}>{grp.label.toUpperCase()}</Text>
+              <View style={sheetStyles.grid}>
+                {grp.items.map((s) => {
+                  const sel = s === selected;
+                  const count = bookedCounts[s] || 0;
+                  const nearFull = count >= maxPerSlot - 1;
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      onPress={() => onSelect(s)}
+                      style={[sheetStyles.pill, sel && sheetStyles.pillActive]}
+                      testID={`booking-slot-${s}`}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[sheetStyles.pillText, sel && { color: '#fff' }]}>{display12h(s)}</Text>
+                      {count > 0 && (
+                        <Text style={[sheetStyles.pillCap, sel && { color: 'rgba(255,255,255,0.85)' }, nearFull && !sel && { color: COLORS.warning }]}>
+                          {count}/{maxPerSlot}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' },
+  sheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingHorizontal: 18, paddingTop: 10,
+  },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, marginBottom: 8 },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 16 },
+  groupLabel: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10.5, letterSpacing: 0.6, marginBottom: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1, borderColor: COLORS.primary + '44',
+    backgroundColor: '#fff',
+  },
+  pillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  pillText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 13.5 },
+  pillCap: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 10.5 },
+});
+
+
 const styles = StyleSheet.create({
   referBanner: {
     flexDirection: 'row',
@@ -1032,6 +1131,16 @@ const styles = StyleSheet.create({
   dateNum: { ...FONTS.h2, color: COLORS.textPrimary, fontSize: 22, marginTop: 2 },
   dateMon: { ...FONTS.body, fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  slotSelectBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.primary + '44',
+    backgroundColor: '#fff',
+  },
+  slotSelectText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 15 },
+  slotSelectSub: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11, marginTop: 1 },
   slot: {
     paddingVertical: 10,
     paddingHorizontal: 16,

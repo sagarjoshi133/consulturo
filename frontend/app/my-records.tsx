@@ -304,65 +304,8 @@ function MyRecordsImpl() {
           contentContainerStyle={{ padding: 20, paddingBottom: 80 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         >
-          {/* Phone link banner */}
-          {!hasPhone && (
-            <View style={styles.phoneBanner}>
-              <Ionicons name="information-circle" size={20} color={COLORS.warning} />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={styles.phoneTitle}>Link your phone number</Text>
-                <Text style={styles.phoneSub}>
-                  Prescriptions & surgeries created offline will auto-link to your account when your phone matches.
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {phoneEdit ? (
-            <View style={styles.phoneEditCard}>
-              <Text style={styles.fieldLabel}>Your phone number</Text>
-              <TextInput
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="+91 91234 56789"
-                placeholderTextColor={COLORS.textDisabled}
-                keyboardType="phone-pad"
-                style={styles.input}
-                testID="records-phone-input"
-              />
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                <PrimaryButton
-                  title={savingPhone ? 'Saving…' : 'Save Phone'}
-                  onPress={savePhone}
-                  disabled={savingPhone}
-                  style={{ flex: 1 }}
-                  testID="records-phone-save"
-                />
-                <SecondaryButton
-                  title="Cancel"
-                  onPress={() => {
-                    setPhoneEdit(false);
-                    setPhone(user?.phone || '');
-                  }}
-                  style={{ flex: 1 }}
-                />
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.phoneRow}
-              onPress={() => {
-                setPhone(user?.phone || '');
-                setPhoneEdit(true);
-              }}
-              testID="records-phone-edit"
-            >
-              <Ionicons name="call" size={16} color={COLORS.primary} />
-              <Text style={styles.phoneRowText}>
-                {hasPhone ? `Linked phone: ${user.phone || phone}` : 'Add my phone number'}
-              </Text>
-              <Ionicons name="create-outline" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          )}
+          {/* Phone number is managed from Profile → "Change Mobile No".
+              We intentionally do NOT expose a phone editor here. */}
 
           {tab === 'overview' && (
             <>

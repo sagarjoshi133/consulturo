@@ -61,6 +61,7 @@ export default function DischargeTab({
   // can disable all OTHER AI buttons + show a per-field spinner.
   const [busyAi, setBusyAi] = useState<string | null>(null);
   const [drugPickerOpen, setDrugPickerOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   // Seed final diagnosis + procedures from the admission so the
   // clinician doesn't retype what's already on the chart. Also pull
@@ -212,9 +213,17 @@ export default function DischargeTab({
           testID="dis-condition"
         />
 
-        {/* Discharge medications — AI + drug picker */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        {/* Discharge medications — AI + drug picker + templates */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <Text style={[styles.fieldLabel, { marginTop: 0, flex: 1 }]}>Discharge medications</Text>
+          <TouchableOpacity
+            onPress={() => setTemplatesOpen(true)}
+            style={inline.pickBtn}
+            testID="dis-meds-templates"
+          >
+            <Ionicons name="albums" size={12} color={COLORS.primary} />
+            <Text style={inline.pickBtnText}>Templates</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setDrugPickerOpen(true)}
             style={inline.pickBtn}
@@ -292,6 +301,21 @@ export default function DischargeTab({
         visible={drugPickerOpen}
         onClose={() => setDrugPickerOpen(false)}
         onPick={appendDrug}
+      />
+
+      <TemplatesModal
+        visible={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        currentMeds={discharge.discharge_meds}
+        onApply={(meds) => {
+          setDischarge((d) => ({
+            ...d,
+            discharge_meds: d.discharge_meds?.trim()
+              ? `${d.discharge_meds.trim()}\n${meds.trim()}`
+              : meds.trim(),
+          }));
+          setTemplatesOpen(false);
+        }}
       />
     </View>
   );
@@ -475,6 +499,138 @@ function DrugPickerModal({
     </Modal>
   );
 }
+
+// ───────────────── Discharge-med templates modal ─────────────────
+
+type MedTemplate = { template_id: string; name: string; meds: string; created_by?: string };
+
+function TemplatesModal({
+  visible, onClose, currentMeds, onApply,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  currentMeds: string;
+  onApply: (meds: string) => void;
+}) {
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<MedTemplate[]>([]);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api.get('/discharge-med-templates');
+      setItems(r.data?.items || []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visible) { setName(''); load(); }
+  }, [visible, load]);
+
+  const saveCurrent = async () => {
+    const nm = name.trim();
+    if (!nm) { toast.error('Give the template a name.'); return; }
+    if (!(currentMeds || '').trim()) { toast.error('Add medications first, then save as a template.'); return; }
+    setSaving(true);
+    try {
+      await api.post('/discharge-med-templates', { name: nm, meds: currentMeds });
+      toast.success('Template saved.');
+      setName('');
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Could not save template.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = (tpl: MedTemplate) => {
+    confirmAction({
+      title: 'Delete template?',
+      message: `"${tpl.name}" will be removed for the whole clinic.`,
+      confirmText: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/discharge-med-templates/${tpl.template_id}`);
+          setItems((xs) => xs.filter((x) => x.template_id !== tpl.template_id));
+        } catch {
+          toast.error('Delete failed.');
+        }
+      },
+    });
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView edges={['top', 'bottom']} style={inline.modalRoot}>
+        <View style={inline.modalHeader}>
+          <Text style={inline.modalTitle}>Discharge med templates</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        </View>
+
+        <View style={tpl.saveRow}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Save current meds as… (e.g. Post-TURP)"
+            placeholderTextColor={COLORS.textTertiary}
+            style={tpl.saveInput}
+            testID="dis-tmpl-name"
+          />
+          <TouchableOpacity onPress={saveCurrent} style={[inline.ctaPrimary, { paddingHorizontal: 14 }, saving && { opacity: 0.6 }]} disabled={saving} testID="dis-tmpl-save">
+            <Ionicons name="save" size={15} color="#fff" />
+            <Text style={inline.ctaPrimaryText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 60 }}>
+          {loading ? (
+            <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 24 }} />
+          ) : items.length === 0 ? (
+            <Text style={{ ...FONTS.body, color: COLORS.textSecondary, marginTop: 24, textAlign: 'center' }}>
+              No templates yet. Save a set of discharge meds above to reuse it later.
+            </Text>
+          ) : items.map((it) => (
+            <View key={it.template_id} style={tpl.card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={tpl.cardName}>{it.name}</Text>
+                <TouchableOpacity onPress={() => remove(it)} hitSlop={8} style={{ marginLeft: 'auto' }} testID={`dis-tmpl-del-${it.template_id}`}>
+                  <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                </TouchableOpacity>
+              </View>
+              <Text style={tpl.cardMeds} numberOfLines={4}>{it.meds}</Text>
+              <TouchableOpacity onPress={() => onApply(it.meds)} style={[inline.ctaSecondary, { marginTop: 8 }]} testID={`dis-tmpl-apply-${it.template_id}`}>
+                <Ionicons name="add" size={15} color={COLORS.primary} />
+                <Text style={[inline.ctaSecondaryText, { color: COLORS.primary }]}>Insert into discharge meds</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const tpl = {
+  saveRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, margin: 12, marginBottom: 0 },
+  saveInput: {
+    flex: 1, height: 42, paddingHorizontal: 12,
+    borderRadius: RADIUS.md, backgroundColor: '#fff',
+    borderWidth: 1, borderColor: COLORS.border, color: COLORS.textPrimary, ...FONTS.body,
+  },
+  card: { padding: 12, marginBottom: 10, backgroundColor: '#fff', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },
+  cardName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14 },
+  cardMeds: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 6, lineHeight: 18 },
+};
+
 
 // Local styles (kept inline to avoid bloating ipdStyles for one screen).
 const inline = {

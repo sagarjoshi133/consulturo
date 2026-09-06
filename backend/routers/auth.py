@@ -184,20 +184,18 @@ async def auth_me(user=Depends(require_user)):
     # Personal messaging permissions:
     #   • Owner → always permitted.
     #   • Team members (any non-patient role) → permitted BY DEFAULT.
-    #     Owner can explicitly revoke a team member by setting
-    #     `can_send_personal_messages` to False on that user.
-    #   • Patients → not permitted by default. Owner can authorize an
-    #     individual patient by setting the flag to True.
+    #   • Patients → also permitted BY DEFAULT (in-app messaging is on
+    #     for everyone). Owner can revoke an individual patient by
+    #     setting the flag to False.
     role = user.get("role", "")
     explicit = user.get("can_send_personal_messages")
     if role in ("owner", "primary_owner", "super_owner", "partner"):
         # Owner tier — always permitted per hierarchy.
         out["can_send_personal_messages"] = True
-    elif role and role != "patient":
-        # Default-True for staff. Only False if explicitly set to False.
-        out["can_send_personal_messages"] = (explicit is not False)
     else:
-        out["can_send_personal_messages"] = bool(explicit)
+        # Everyone else (staff + patients) — enabled unless explicitly
+        # revoked (set to False) by the owner.
+        out["can_send_personal_messages"] = (explicit is not False)
     # Account-deletion grace window — surfaced so the app can show the
     # "scheduled for deletion" banner with a one-tap Cancel.
     out["pending_deletion"] = bool(user.get("pending_deletion"))

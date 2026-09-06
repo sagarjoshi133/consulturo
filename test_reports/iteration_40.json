@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 40 — Phase-3 verification pass. Backend items 8/9/12/13 all green: 17/17 assertions in test_iteration40_phase3.py. Frontend items 9 & 15 plus 6 regression pages render without an AppErrorBoundary card. Item 15: /inbox correctly hard-redirects to /comm-v2/conversations. Item 9: /ot-calendar/schedule renders with step controls. Item 8: PATCH /api/bookings/{id} status=completed upserts a completed encounter tied to the booking and it appears in /api/encounters/worklist?scope=completed&date=<booking_date>; booking status reverted and test-created encounter deleted in teardown. Item 9 backend: POST /api/surgeries with a scheduling payload works, GET /api/surgeries/conflicts correctly detects overlap and correctly excludes non-overlapping slots, /procedures and /ot-rooms return data; test surgery deleted in teardown. Item 12: /api/drug-repository items[] non-empty and q=para returns matches. Item 13: create → list → re-POST upsert (no duplicate, same template_id) → delete → 404 for missing id, all clinic-scoped under require_staff.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration40_phase3.py",
+    "/app/test_reports/pytest/iteration40_results.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: /patients page emits a React 'unique key prop' warning from a VirtualizedList child (does not crash, but worth adding a stable keyExtractor).",
+    "Optional cleanup: /dashboard emits a benign 'React does not recognize the %s prop on a DOM element' warning — likely an untranslated debug-format placeholder that leaked to a DOM prop; harmless but worth chasing."
+  ],
+  "critical_code_review_comments": [
+    "drug_repository._ensure_global_seed uses a per-process guard (_global_seed_checked) and count-based short-circuit — correct and idempotent; failures are swallowed and won't wedge list requests.",
+    "discharge-med-templates upsert key is (clinic_id, name, deleted_at=None) with $setOnInsert on template_id/created_at — safe against duplicates across re-saves, template_id remains stable across upserts (verified).",
+    "bookings.PATCH → completed branch upserts by encounters.booking_id and only mirrors when status transitioned; the try/except correctly prevents the encounter mirror from ever blocking booking completion.",
+    "surgeries.conflicts filter is scoped to surgery_status in {scheduled,in_progress} and same ot_room+scheduled_date — overlap check works as expected for both hit and miss cases."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% (8/8 page checks)"},
+  "seed_data_creation": "Ephemeral only, all cleaned up: (a) 1 discharge-med template TEST_dmt_<uid> — deleted in test_04; (b) 1 scheduled surgery TEST_TURP_SCHED on 2026-02-15 10:00 OT-1 — deleted in test_99_cleanup; (c) 1 confirmed booking PATCHed to completed then reverted back to confirmed and the newly-created encounter row deleted in test_99_cleanup_revert_and_delete.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Owner session token test_session_1781800271528 (primary_owner sagar.joshi133@gmail.com). Legacy /api/bookings list endpoint does not exist — use /api/bookings/all for staff listings and /api/bookings/me for the patient's own bookings. /api/encounters supports booking_id, patient_phone, patient_user_id, q filters. /api/surgeries/conflicts requires scheduled_date, scheduled_time (HH:MM 24h), duration_min, ot_room; returns {conflicts:[...]}. Comm-V2 cutover is live: /inbox does a hard <Redirect> to /comm-v2/conversations (see /app/frontend/app/inbox.tsx L157).",
+  "rca_of_issue": "N/A — verification pass only. No code changes were required. One initial pytest failure was caused by my test using GET /api/bookings which is not a route; corrected to GET /api/bookings/all and all 17 assertions pass."
+}

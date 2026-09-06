@@ -41,11 +41,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams, Redirect } from 'expo-router';
 import api from '../src/api';
 import { getCached, setCached, hasCached } from '../src/data-cache';
 import { goBackSafe } from '../src/nav';
 import { useAuth } from '../src/auth';
+import { AppErrorBoundary } from '../src/error-boundary';
 import { COLORS, FONTS, RADIUS } from '../src/theme';
 import { displayDateLong } from '../src/date';
 import MessageComposer from '../src/message-composer-lazy';
@@ -147,6 +148,18 @@ function ReceiptTicks({ item, size = 13 }: { item: InboxItem; size?: number }) {
 }
 
 export default function Inbox() {
+  // Messaging has moved to the Comm-V2 single-conversation-per-patient
+  // model. The legacy inbox below (InboxImpl) is retired for SENDING
+  // (POST /api/messages/send now returns 410), so every entry point that
+  // still targets /inbox is transparently forwarded to the live
+  // conversations surface. The old implementation is kept in-file only
+  // for reference and is no longer rendered.
+  return <Redirect href={'/comm-v2/conversations' as any} />;
+}
+
+// Retained for reference only — no longer rendered (see redirect above).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LegacyInbox() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, refresh: refreshAuth } = useAuth();

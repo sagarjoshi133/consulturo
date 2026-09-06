@@ -217,13 +217,10 @@ def build_ipd_file_html(
     else:
         certs_body = '<p class="muted">No medical certificates issued.</p>'
 
-    # ── 9. Doctor's private note ─────────────────────────────────
-    priv = a.get("private_note") or ""
-    priv_body = (
-        f'<div class="prose">{_esc(priv).replace(chr(10), "<br/>")}</div>'
-        if priv
-        else '<p class="muted">No private note. (Visible only to clinical staff inside the app — never shown to patients.)</p>'
-    )
+    # ── (Doctor's private note intentionally EXCLUDED) ───────────
+    # The private note is staff-only clinical shorthand and must never
+    # appear in the generated IPD / discharge summary PDF that is shared
+    # with the patient. It stays viewable in-app on the Overview tab.
 
     sections_html = "".join([
         section("1 · Admission Form", admission_table),
@@ -234,7 +231,6 @@ def build_ipd_file_html(
         section("6 · Operative Note", op_body, "#DB2777"),
         section("7 · Discharge Summary", ds_body, "#16A34A"),
         section("8 · Medical Certificates", certs_body, "#CA8A04"),
-        section("9 · Doctor's Private Note", priv_body, "#6B7280"),
     ])
 
     css = """

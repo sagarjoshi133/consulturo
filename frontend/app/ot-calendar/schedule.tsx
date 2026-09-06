@@ -152,20 +152,34 @@ export default function ScheduleSurgery() {
     }
   }, []);
 
-  // ── Load procedures + rooms ──
+  // ── Load procedures + rooms (independently) ──
+  // These are fetched separately on purpose: a transient failure on one
+  // endpoint (e.g. a 429 on the OT-rooms call) must NOT wipe out the
+  // procedures list. Previously a single Promise.all meant either
+  // failure left step 2 empty, so the clinician could never pick a
+  // procedure and thus never reach / complete step 3.
   useEffect(() => {
     (async () => {
       try {
-        const [p, r] = await Promise.all([
-          api.get('/surgeries/procedures'),
-          api.get('/surgeries/ot-rooms'),
-        ]);
+        const p = await api.get('/surgeries/procedures');
         setProcedures(p.data?.procedures || []);
-        const roomList = (r.data?.rooms && Array.isArray(r.data.rooms)) ? r.data.rooms : ['OT-1'];
-        setRooms(roomList);
-        if (!form.ot_room && roomList[0]) setForm((f) => ({ ...f, ot_room: roomList[0] }));
       } catch {
-        // best-effort
+        // best-effort — leave existing list
+      }
+    })();
+    (async () => {
+      try {
+        const r = await api.get('/surgeries/ot-rooms');
+        const roomList = (r.data?.rooms && Array.isArray(r.data.rooms) && r.data.rooms.length > 0)
+          ? r.data.rooms
+          : ['OT-1'];
+        setRooms(roomList);
+        setForm((f) => (f.ot_room ? f : { ...f, ot_room: roomList[0] }));
+      } catch {
+        // Fall back to the default single room so a room can always be
+        // selected and the Confirm button never gets stuck disabled.
+        setRooms(['OT-1']);
+        setForm((f) => (f.ot_room ? f : { ...f, ot_room: 'OT-1' }));
       }
     })();
   }, []);

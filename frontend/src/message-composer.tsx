@@ -104,9 +104,17 @@ export default function MessageComposer({
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
 
-  // Reset state on visible toggle.
+  // Reset state ONLY on the closed→open transition. Previously this
+  // effect also re-ran whenever `initialRecipient`'s object identity
+  // changed (it's often an inline object literal from the parent), so a
+  // parent re-render could wipe the subject/body mid-compose — the
+  // "fields go blank while typing" bug on web. Gating on a visibility
+  // ref makes the reset fire exactly once per open.
+  const wasVisibleRef = React.useRef(false);
   useEffect(() => {
-    if (!visible) return;
+    const justOpened = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (!justOpened) return;
     setRecipient(initialRecipient);
     setSelected([]);
     setComposing(!!initialRecipient);

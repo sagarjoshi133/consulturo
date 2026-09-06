@@ -23,6 +23,7 @@ import { useRouter } from 'expo-router';
 import { COLORS, FONTS, RADIUS } from '../theme';
 import { useAuth } from '../auth';
 import { useNotifications } from '../notifications';
+import { useResponsive } from '../responsive';
 import { roleDisplayLabel } from '../dashboard/role-labels';
 
 // ─── Animated Number ────────────────────────────────────────────────
@@ -101,6 +102,10 @@ export function CockpitHeader({
   const router = useRouter();
   const { user } = useAuth();
   const { unread, personalUnread } = useNotifications();
+  // On web-desktop the persistent WebShell topbar already provides
+  // Language / Inbox / Notifications / Profile, so hide this in-hero
+  // action cluster there to avoid a doubled set of buttons.
+  const isWebDesktop = useResponsive().isWebDesktop;
 
   const firstName = (user?.name || '').trim().split(/\s+/)[0] || '';
   const hour = new Date().getHours();
@@ -134,6 +139,7 @@ export function CockpitHeader({
           )}
         </View>
 
+        {!isWebDesktop && (
         <View style={styles.headerActions}>
           {onLangPress && (
             <TouchableOpacity
@@ -192,6 +198,7 @@ export function CockpitHeader({
             )}
           </TouchableOpacity>
         </View>
+        )}
       </View>
     </LinearGradient>
   );

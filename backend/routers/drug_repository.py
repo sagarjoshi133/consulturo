@@ -19,6 +19,7 @@ POST   /api/drug-repository/seed         — idempotent seed of the 100 Rx
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
@@ -56,6 +57,37 @@ class DrugEntry(BaseModel):
 
 
 # ─── Endpoints ───────────────────────────────────────────────────
+_global_seed_checked = False
+
+
+async def _ensure_global_seed() -> None:
+    """Lazily seed the global urology drug library the first time the
+    repository is read on a fresh deployment. Without this, a clinic
+    whose owner never tapped the manual "seed" action saw an empty
+    picker ("Pick discharge medication" showed no matches). Runs at most
+    once per process and only inserts when the global library is empty.
+    """
+    global _global_seed_checked
+    if _global_seed_checked:
+        return
+    try:
+        cnt = await db.drug_repository.count_documents({"clinic_id": None, "deleted_at": None})
+        if cnt == 0:
+            seed = get_seed_drugs()
+            now = datetime.now(timezone.utc)
+            docs = [
+                {**d, "clinic_id": None, "custom": False,
+                 "created_at": now, "updated_at": now, "deleted_at": None}
+                for d in seed
+            ]
+            if docs:
+                await db.drug_repository.insert_many(docs)
+        _global_seed_checked = True
+    except Exception:
+        # Best-effort — never block the list request on a seed failure.
+        pass
+
+
 @router.get("/api/drug-repository")
 async def list_drugs(
     request: Request,
@@ -73,6 +105,7 @@ async def list_drugs(
     Filters compose with AND semantics — `q` matches name OR brands.
     """
     clinic_id = await resolve_clinic_id(request, user) or "default"
+    await _ensure_global_seed()
     query: Dict[str, Any] = {
         "$or": [{"clinic_id": clinic_id}, {"clinic_id": None}, {"clinic_id": {"$exists": False}}],
         "deleted_at": None,
@@ -225,3 +258,78 @@ async def seed_repository(user=Depends(require_owner)):
         await db.drug_repository.insert_one(doc)
         inserted += 1
     return {"ok": True, "inserted": inserted, "skipped": skipped, "total": inserted + skipped}
+
+
+
+# ─── Discharge-medication templates (clinic-wide) ─────────────────
+# Doctors AND staff can save a set of discharge medications as a named
+# template and reuse it for similar patient cohorts. Templates are
+# clinic-scoped and shared across the whole team.
+
+class DischargeMedTemplate(BaseModel):
+    name: str
+    meds: str = ""
+
+
+@router.get("/api/discharge-med-templates")
+async def list_discharge_templates(request: Request, user=Depends(require_staff)):
+    clinic_id = await resolve_clinic_id(request, user) or "default"
+    cursor = (
+        db.discharge_med_templates
+        .find({"clinic_id": clinic_id, "deleted_at": None})
+        .sort("name", 1)
+    )
+    items: List[Dict[str, Any]] = []
+    async for d in cursor:
+        items.append(_clean(d))
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/api/discharge-med-templates")
+async def create_discharge_template(
+    request: Request, body: DischargeMedTemplate, user=Depends(require_staff)
+):
+    clinic_id = await resolve_clinic_id(request, user) or "default"
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Template name is required")
+    meds = (body.meds or "").strip()
+    if not meds:
+        raise HTTPException(400, "Add at least one medication before saving a template")
+    now = datetime.now(timezone.utc)
+    by = user.get("name") or user.get("user_id")
+    tid = f"dmt_{uuid.uuid4().hex[:12]}"
+    # Upsert on (clinic_id, name) so re-saving a same-named template
+    # overwrites rather than duplicating.
+    await db.discharge_med_templates.update_one(
+        {"clinic_id": clinic_id, "name": name, "deleted_at": None},
+        {
+            "$set": {"meds": meds, "updated_at": now, "created_by": by},
+            "$setOnInsert": {
+                "template_id": tid,
+                "clinic_id": clinic_id,
+                "name": name,
+                "created_at": now,
+                "deleted_at": None,
+            },
+        },
+        upsert=True,
+    )
+    saved = await db.discharge_med_templates.find_one(
+        {"clinic_id": clinic_id, "name": name, "deleted_at": None}
+    )
+    return {"ok": True, "template": _clean(saved)}
+
+
+@router.delete("/api/discharge-med-templates/{template_id}")
+async def delete_discharge_template(
+    request: Request, template_id: str, user=Depends(require_staff)
+):
+    clinic_id = await resolve_clinic_id(request, user) or "default"
+    res = await db.discharge_med_templates.update_one(
+        {"template_id": template_id, "clinic_id": clinic_id},
+        {"$set": {"deleted_at": datetime.now(timezone.utc)}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Template not found")
+    return {"ok": True}

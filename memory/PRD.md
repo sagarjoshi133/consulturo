@@ -951,3 +951,64 @@ a dedicated lightweight primaryIsHealthy() probe of PRIMARY /api/health (4s). If
 servers while the primary is healthy. Genuine primary-down (health probe fails) still fails over as
 before. Boot-time ensureHealthyBackend() is unchanged but now benefits from the same re-probe guard.
 Lint clean; verified dashboard boots with no backup banner in preview. NEEDS REDEPLOY to reach the APK.
+
+## BUG BATCH (Jun 2026) — Phase 1 & 2 (items 1-7, 15) — DONE & tested (iteration_39)
+- item1/15 crash-to-home: wrapped /inbox, /messages/[id], /my-bookings, /my-records,
+  /calculators/bladder-diary in top-level AppErrorBoundary. ContentPager windowed mounting
+  (earlier). Guarded user.name.split.
+- item15 messaging-for-all: backend capabilities.py new policy 'all_default_true' for
+  send_personal_messages; auth.py /auth/me returns can_send_personal_messages=(explicit is not
+  False) for everyone except owner-tier (always True). Owner can revoke by setting flag False.
+  Composer reset now fires only on closed→open transition (fixes web "fields go blank on typing").
+- item4 booking "91": book.tsx strips leading country-dial (stored country_code OR selected
+  country.dial, default +91) only when ≥6 digits remain.
+- item7 booking "not found": bookings.py get_booking patient ownership now compares LAST-10
+  phone digits (was exact-string) so 9876543210 matches +919876543210.
+- item5 slot picker: book.tsx replaced flat grid with a SlotSheet bottom-sheet grouped
+  Morning/Afternoon/Evening; trigger testID booking-slot-select.
+- item2 phone edit: removed editor from /my-records; /profile Phone row now has a "Change"
+  button (testID profile-change-phone) opening the phone-auth modal.
+- item3: Connection Diagnostics moved from More>Account to More>App (testID more-netcheck).
+- item6: web doubled top-right buttons — cockpit-ui hides its in-hero action cluster on
+  web-desktop; web-shell topbar gained a Profile button (testID web-topbar-profile).
+
+### OPEN ARCHITECTURE FINDING (messaging) — needs product decision
+Legacy POST /api/messages/send returns 410 Gone (COMMUNICATIONS_V2_LEGACY_RUNTIME_DISABLED on).
+The legacy MessageComposer (used by /inbox and /messages/[id]) therefore CANNOT send. Live
+messaging is Comm-V2 single-conversation-per-patient: POST /api/v2/communications/conversations/
+{id}/messages (perm = _can_access_conversation; patients can already message the clinic — no
+per-patient flag). Most UI entry points (dashboard, profile, home, more, cockpit) still route to
+legacy /inbox. RECOMMENDATION: repoint the primary "Inbox"/compose to the Comm-V2 surface (or
+make the legacy composer send via V2). Deferred pending user confirmation.
+
+### PENDING — Phase 3 clinical/PDF (items 8-14) NOT yet started
+8 walk-in consult → encounters=completed; 9 OT schedule step-3; 10 consent wrong time;
+11 consent Hindi/Gujarati glyphs in PDF; 12 pick discharge medication broken;
+13 discharge med templates (doctors+staff, clinic-wide); 14 remove doctor private-note from
+discharge summary PDF.
+
+## BUG BATCH (Jun 2026) — Phase 3 (items 8-14) + messaging repoint (item 15) — DONE
+- item15 messaging repoint: /inbox now Redirects to /comm-v2/conversations (live Comm-V2
+  single-conversation surface). Legacy inbox impl retained as unused LegacyInbox for reference.
+- item10 consent time: consent-pdf.ts formatLocalStamp now formats in Asia/Kolkata (was UTC →
+  showed ~5.5h behind).
+- item11 consent Hindi/Gujarati: added Google Fonts <link> for Noto Sans Devanagari + Noto Sans
+  Gujarati in the consent PDF <head> (was only naming the families, never loading them).
+- item14 discharge PDF: removed section 9 "Doctor's Private Note" from services/ipd_file_bundler.py
+  (staff-only note must never appear in the shared discharge/IPD file PDF). Still viewable in-app.
+- item12 pick discharge medication: added lazy _ensure_global_seed() in drug_repository.list_drugs
+  so a fresh deployment auto-seeds the global drug library (empty repo → picker showed "No matches").
+  Verified endpoint returns drugs.
+- item13 discharge med templates (clinic-wide, doctors+staff): new endpoints in drug_repository.py:
+  GET/POST /api/discharge-med-templates, DELETE /api/discharge-med-templates/{id} (require_staff,
+  clinic-scoped, upsert by name). Frontend: TemplatesModal in ipd/tabs/discharge-tab.tsx (Templates
+  button next to "Pick from drug list") — save current meds as named template, list, insert, delete.
+  Verified create+list via curl.
+- item9 OT schedule step 3: decoupled the procedures + ot-rooms fetch (were a single Promise.all —
+  one endpoint failing left step 2 empty so step 3 was unreachable); ot_room now always defaults to
+  'OT-1' so Confirm never stays disabled. Backend POST /surgeries + /surgeries/conflicts verified OK.
+- item8 walk-in/completed consult → Encounters: PATCH /api/bookings when status→completed now upserts
+  a completed encounter (stage='completed') tied to the booking, so a directly-completed consult
+  ("Mark done" without Rx) shows in the Encounters worklist. Verified end-to-end via curl+worklist.
+
+All items 1-15 now addressed. NEEDS REDEPLOY for production APK.

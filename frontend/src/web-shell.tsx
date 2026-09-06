@@ -733,6 +733,21 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
               )}
             </View>
           )}
+          {user && (
+            <TouchableOpacity
+              onPress={() => router.push('/profile' as any)}
+              style={styles.topbarBtn}
+              accessibilityLabel="Profile"
+              testID="web-topbar-profile"
+              {...(Platform.OS === 'web' ? { title: user.name || 'Profile' } as any : {})}
+            >
+              {user.picture ? (
+                <Image source={{ uri: user.picture }} style={{ width: 26, height: 26, borderRadius: 13 }} />
+              ) : (
+                <Ionicons name="person-circle" size={22} color={COLORS.primary} />
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Page content — centered with a comfortable max-width on

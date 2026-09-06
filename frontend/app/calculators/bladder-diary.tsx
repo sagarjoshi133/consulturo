@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/api';
+import { AppErrorBoundary } from '../../src/error-boundary';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useAuth } from '../../src/auth';
 import { useI18n } from '../../src/i18n';
@@ -73,6 +74,23 @@ function to12h(hhmm: string): string {
 }
 
 export default function BladderDiary() {
+  const nav = useRouter();
+  return (
+    <AppErrorBoundary
+      label="Bladder Diary"
+      onBack={() => {
+        try {
+          if (nav.canGoBack && nav.canGoBack()) nav.back();
+          else nav.replace('/' as any);
+        } catch {}
+      }}
+    >
+      <BladderDiaryImpl />
+    </AppErrorBoundary>
+  );
+}
+
+function BladderDiaryImpl() {
   const __darkBg = useScreenBg();
   const router = useRouter();
   const { user } = useAuth();

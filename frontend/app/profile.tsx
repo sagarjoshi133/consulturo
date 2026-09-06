@@ -312,9 +312,20 @@ export default function ProfileScreen() {
               </Text>
             </View>
             {u.phone ? (
-              <View style={styles.linkedBadge}>
-                <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
-                <Text style={styles.linkedText}>{t('profile.verified') || 'Verified'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.linkedBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                  <Text style={styles.linkedText}>{t('profile.verified') || 'Verified'}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setLinkingPhone(true)}
+                  style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.primary + '66', backgroundColor: COLORS.primary + '10' }}
+                  testID="profile-change-phone"
+                >
+                  <Text style={{ ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 12 }}>
+                    {t('profile.changeMobile') || 'Change'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity onPress={() => setLinkingPhone(true)} style={styles.linkBtn} testID="profile-link-phone">

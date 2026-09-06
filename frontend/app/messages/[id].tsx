@@ -27,6 +27,7 @@ import api from '../../src/api';
 import { goBackSafe } from '../../src/nav';
 import { COLORS, FONTS, RADIUS } from '../../src/theme';
 import { useAuth } from '../../src/auth';
+import { AppErrorBoundary } from '../../src/error-boundary';
 import LinkifiedText from '../../src/linkified-text';
 import { useToast } from '../../src/toast';
 import { displayDateLong } from '../../src/date';
@@ -107,6 +108,18 @@ function formatDT(iso?: string | null) {
 }
 
 export default function MessageDetail() {
+  const nav = useRouter();
+  return (
+    <AppErrorBoundary
+      label="Message"
+      onBack={() => { try { goBackSafe(nav, '/inbox'); } catch {} }}
+    >
+      <MessageDetailImpl />
+    </AppErrorBoundary>
+  );
+}
+
+function MessageDetailImpl() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();

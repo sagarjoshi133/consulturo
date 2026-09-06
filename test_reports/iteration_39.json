@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 39 — verified 2 backend fixes (item 15 messaging capability with all_default_true, item 7 last-10-digit phone booking ownership) and 5 frontend fixes (crash-guarded pages, /book phone-strip + slot bottom-sheet, /my-records phone editor removed, /profile change-phone button, Connection Diagnostics moved under More > App). 12/12 backend pytest assertions pass and all 7 frontend UI checks pass. NOTE: Legacy POST /api/messages/send is retired (410 Gone from Comm-V2 cutover) BEFORE the capability check runs — I therefore exercise the send_personal_messages capability gate via /api/messages/recipients which shares the exact same _can_send_personal_messages() helper.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration39_messaging_and_booking_ownership.py",
+    "/app/test_reports/pytest/iteration39_results.xml"
+  ],
+  "action_items": [
+    "Consider aligning the review-request wording for item 15: legacy /api/messages/send is 410-retired before the capability gate; state-of-the-world is that the equivalent V2 endpoint POST /api/v2/communications/conversations/{id}/messages carries the send. If patient-default-true also needs to be verified inside V2 send, add an explicit send test there.",
+    "Optional polish: /book Select-slot control uses uppercase group headers (MORNING/AFTERNOON/EVENING) — matches the review spec case-insensitively; keep in mind for future text assertions."
+  ],
+  "critical_code_review_comments": [
+    "capabilities.py all_default_true policy is clean and reused correctly by _can_send_personal_messages in server.py (delegates to has_capability).",
+    "bookings.get_booking last-10-digit match uses re.sub(r'\\D','',...)[-10:] on both sides — safe against country-code prefixes.",
+    "auth_me now explicitly forces can_send_personal_messages=True for owner-tier roles and treats 'explicit is not False' as default-on for everyone else — matches the frontend gating expectation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created one throwaway booking (patient_phone='+919876543210') via POST /api/bookings inside the fixture; teardown DELETEs it with the owner token so the DB stays clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Session tokens used: OWNER=test_session_1781800271528 (primary_owner sagar.joshi133@gmail.com), PATIENT_DEFAULT=pat_session_1781803137372 (test-patient-1776494002311, phone 9876543210, no send_personal_messages flag → default true), PATIENT_REVOKED=sagar_p_session_1781806225518 (user_9a7a0666e873, phone 9099985459, can_send_personal_messages=False). Comm-V2 cutover is live — legacy /api/messages/send returns 410; use /api/messages/recipients for capability gate probes.",
+  "rca_of_issue": "N/A — this iteration was a fix-verification pass. All 7 batched fixes are functioning as designed. Booking bottom-sheet UI renders correct testIDs (booking-slot-select, booking-slot-<HH:MM>, booking-slot-backdrop, booking-slot-close) and groups slots under MORNING/AFTERNOON/EVENING headers; selecting a slot closes the sheet and updates the button label (e.g. '10:00 AM'). Phone prefill on /book shows '9876543210' (no duplicated 91). /my-records has zero phone-related testIDs and no 'Add my phone' text. /profile shows profile-change-phone. /more's APP section exposes more-netcheck (Connection Diagnostics)."
+}
