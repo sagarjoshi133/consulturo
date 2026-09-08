@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, usePathname } from 'expo-router';
 import { COLORS, FONTS, RADIUS } from './theme';
+import { WebTooltip } from './web-tooltip';
 import { useResponsive, DESKTOP, getForcedView, setForcedView, type ForceView } from './responsive';
 import { useAuth } from './auth';
 import { useNotifications } from './notifications';
@@ -690,21 +691,26 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
         <View style={styles.topbar}>
           <Text style={styles.topbarTitle}>ConsultUro</Text>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={cycleLang} style={styles.topbarBtn} testID="web-topbar-lang">
-            <Text style={styles.topbarLangBadge}>{langBadge}</Text>
-          </TouchableOpacity>
-          {user && (
-            <TouchableOpacity onPress={() => router.push('/inbox' as any)} style={styles.topbarBtn}>
-              <Ionicons name="chatbubbles" size={18} color={COLORS.primary} />
-              {personalUnread > 0 && (
-                <View style={styles.topbarBadge}>
-                  <Text style={styles.topbarBadgeText}>{personalUnread > 9 ? '9+' : String(personalUnread)}</Text>
-                </View>
-              )}
+          <WebTooltip label="Change language">
+            <TouchableOpacity onPress={cycleLang} style={styles.topbarBtn} testID="web-topbar-lang">
+              <Text style={styles.topbarLangBadge}>{langBadge}</Text>
             </TouchableOpacity>
+          </WebTooltip>
+          {user && (
+            <WebTooltip label="Messages">
+              <TouchableOpacity onPress={() => router.push('/inbox' as any)} style={styles.topbarBtn}>
+                <Ionicons name="chatbubbles" size={18} color={COLORS.primary} />
+                {personalUnread > 0 && (
+                  <View style={styles.topbarBadge}>
+                    <Text style={styles.topbarBadgeText}>{personalUnread > 9 ? '9+' : String(personalUnread)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </WebTooltip>
           )}
           {user && (
             <View style={{ position: 'relative' }}>
+              <WebTooltip label="Notifications">
               <TouchableOpacity
                 onPress={() => setBellOpen((v) => !v)}
                 style={[styles.topbarBtn, bellOpen && { backgroundColor: COLORS.primary + '15' }]}
@@ -718,6 +724,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
                   </View>
                 )}
               </TouchableOpacity>
+              </WebTooltip>
               {bellOpen && (
                 <NotificationPopover
                   items={(notifs || []).slice(0, 12)}
@@ -734,12 +741,12 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
             </View>
           )}
           {user && (
+            <WebTooltip label={user.name || 'Profile'}>
             <TouchableOpacity
               onPress={() => router.push('/profile' as any)}
               style={styles.topbarBtn}
               accessibilityLabel="Profile"
               testID="web-topbar-profile"
-              {...(Platform.OS === 'web' ? { title: user.name || 'Profile' } as any : {})}
             >
               {user.picture ? (
                 <Image source={{ uri: user.picture }} style={{ width: 26, height: 26, borderRadius: 13 }} />
@@ -747,6 +754,7 @@ function DesktopShell({ children }: { children: React.ReactNode }) {
                 <Ionicons name="person-circle" size={22} color={COLORS.primary} />
               )}
             </TouchableOpacity>
+            </WebTooltip>
           )}
         </View>
 

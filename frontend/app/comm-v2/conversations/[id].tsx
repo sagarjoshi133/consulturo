@@ -12,7 +12,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View, Alert, FlatList} from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../../src/api';
@@ -47,6 +47,7 @@ function newIdempotencyKey(): string {
 export default function ConversationDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { refresh } = useCommunicationsV2();
   const isStaff = user?.role !== 'patient';
@@ -145,13 +146,13 @@ export default function ConversationDetail() {
   const replyToMap = useMemo(() => new Map(msgs.map((m) => [m.id, m])), [msgs]);
 
   return (
-    <SafeAreaView edges={['top']} style={shared.screen}>
+    <View style={[shared.screen, { paddingTop: Math.max(insets.top, 8) }]}>
       <View style={shared.headerRow}>
         <Pressable onPress={() => router.back()} style={shared.headerBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={V2.fg} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={shared.headerTitle}>
+          <Text style={shared.headerTitle} numberOfLines={1}>
             {isStaff ? (conv?.patient_display_name || 'Patient') : 'ConsultUro Clinic'}
           </Text>
           {conv?.state ? (
@@ -244,7 +245,7 @@ export default function ConversationDetail() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 

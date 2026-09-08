@@ -8,7 +8,7 @@
 // format so callers don't need to change their state shape.
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { format, parse, isValid } from 'date-fns';
@@ -59,6 +59,21 @@ export function DateField({
   style,
 }: DateFieldProps) {
   const [show, setShow] = useState(false);
+  const inputRef = React.useRef<any>(null);
+  // Open the browser's native date picker on click. Many browsers only
+  // open it when the tiny built-in indicator is clicked; wiring
+  // showPicker() (with focus/click fallback) makes the whole field +
+  // the calendar icon open it — fixes "calendar icon not working" on web.
+  const openPicker = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    try {
+      if (typeof el.showPicker === 'function') el.showPicker();
+      else { el.focus(); el.click(); }
+    } catch {
+      try { el.focus(); } catch {}
+    }
+  };
 
   const handleChange = (_e: DateTimePickerEvent, d?: Date) => {
     if (Platform.OS === 'android') setShow(false);
@@ -80,9 +95,10 @@ export function DateField({
     return (
       <View style={[styles.wrap, style]}>
         {label ? <Text style={styles.lbl}>{label}</Text> : null}
-        <View style={styles.webInputWrap}>
+        <Pressable style={styles.webInputWrap} onPress={openPicker}>
           {/* eslint-disable-next-line react/no-unknown-property */}
           {React.createElement('input' as any, {
+            ref: inputRef,
             type: 'date',
             value: toIso(value),
             onChange: (e: any) => onChange(fromIso(e.target.value)),
@@ -95,13 +111,14 @@ export function DateField({
               fontSize: 15,
               color: COLORS.textPrimary,
               padding: 0,
+              cursor: 'pointer',
             },
             min: minimumDate ? format(minimumDate, 'yyyy-MM-dd') : undefined,
             max: maximumDate ? format(maximumDate, 'yyyy-MM-dd') : undefined,
             'data-testid': testID,
           })}
           <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
-        </View>
+        </Pressable>
       </View>
     );
   }
@@ -162,6 +179,17 @@ export function TimeField({
   style,
 }: TimeFieldProps) {
   const [show, setShow] = useState(false);
+  const inputRef = React.useRef<any>(null);
+  const openPicker = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    try {
+      if (typeof el.showPicker === 'function') el.showPicker();
+      else { el.focus(); el.click(); }
+    } catch {
+      try { el.focus(); } catch {}
+    }
+  };
 
   const handleChange = (_e: DateTimePickerEvent, d?: Date) => {
     if (Platform.OS === 'android') setShow(false);
@@ -172,9 +200,10 @@ export function TimeField({
     return (
       <View style={[styles.wrap, style]}>
         {label ? <Text style={styles.lbl}>{label}</Text> : null}
-        <View style={styles.webInputWrap}>
+        <Pressable style={styles.webInputWrap} onPress={openPicker}>
           {/* eslint-disable-next-line react/no-unknown-property */}
           {React.createElement('input' as any, {
+            ref: inputRef,
             type: 'time',
             value: value || '',
             onChange: (e: any) => onChange(e.target.value),
@@ -187,11 +216,12 @@ export function TimeField({
               fontSize: 15,
               color: COLORS.textPrimary,
               padding: 0,
+              cursor: 'pointer',
             },
             'data-testid': testID,
           })}
           <Ionicons name="time-outline" size={18} color={COLORS.primary} />
-        </View>
+        </Pressable>
       </View>
     );
   }

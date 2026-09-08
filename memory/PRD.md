@@ -1032,3 +1032,25 @@ Chosen: adaptive polling + real-time SSE + keep in-app toast + native browser po
     unread item shows new Notification(title,{body,tag:id}) in addition to the in-app toast.
   • refreshAuth kept on its original ~60s cadence.
 Mobile background/closed delivery still handled by FCM push (unchanged). NEEDS REDEPLOY for prod.
+
+## BUG BATCH (Jun 2026) — arrow keys / tooltips / date-picker / chat header
+- item1 arrow keys (web): VERIFIED the app does NOT break arrow-key cursor movement — Playwright
+  test on a real text input: type "abcd", ArrowLeft x2, type "X" → "abXcd" (correct). No global
+  arrow interceptor exists in code (only Cmd/Ctrl+K and "/"). Conclusion: environment-specific to
+  the user's laptop/browser (extension/OS/keyboard) — advise incognito / another browser / disable
+  extensions. No code change.
+- item2 hover tooltips (web icon buttons): RN-Web does NOT forward a `title` prop to the DOM, so
+  added src/web-tooltip.tsx <WebTooltip label> — wraps children in a View and sets the host <div>'s
+  .title via ref on web (pass-through on native). Applied to web-shell topbar Language/Messages/
+  Notifications/Profile. VERIFIED title attrs render in DOM.
+- item3/date-picker (web): FIX in src/date-picker.tsx — the <input type=date|time> calendar/clock
+  icon did nothing because the Ionicons icon was decorative and browsers only open the picker from
+  their tiny built-in indicator. Now the whole field is a Pressable whose onPress calls
+  input.showPicker() (fallback focus()+click()); input has cursor:pointer and a ref. Applies to
+  BOTH DateField and TimeField, fixing the picker everywhere (incl. Schedule Surgery from Rx = item3
+  earlier). Also item9's procedures/rooms decouple already helped reach step 3.
+- item4 chat header clipped: app/comm-v2/conversations/[id].tsx — replaced SafeAreaView edges=top
+  with a View padded by Math.max(insets.top,8) via useSafeAreaInsets, title numberOfLines={1}, and
+  headerTitle lineHeight:22 in ui-tokens — so "ConsultUro Clinic" no longer clips under the status
+  bar / notch.
+NEEDS REDEPLOY for production.

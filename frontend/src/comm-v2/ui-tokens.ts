@@ -102,7 +102,7 @@ export const shared = StyleSheet.create({
     borderBottomColor: V2.border,
   },
   headerTitle: {
-    fontSize: 17, fontWeight: '700', color: V2.fg, flex: 1,
+    fontSize: 17, fontWeight: '700', color: V2.fg, flex: 1, lineHeight: 22,
   },
   headerBtn: {
     width: 32, height: 32, borderRadius: 16,
