@@ -1012,3 +1012,23 @@ discharge summary PDF.
   ("Mark done" without Rx) shows in the Encounters worklist. Verified end-to-end via curl+worklist.
 
 All items 1-15 now addressed. NEEDS REDEPLOY for production APK.
+
+## FEATURE (Jun 2026) — Live notifications on web + mobile (Tier 1 + Tier 2)
+User: notifications must be served on web too and feel live (as early as possible) on web & mobile.
+Chosen: adaptive polling + real-time SSE + keep in-app toast + native browser pop-up on web.
+- Backend: new GET /api/inbox/stream?token=... (routers/messaging.py) — Server-Sent Events.
+  Auth via ?token= query param (EventSource can't set headers) validated by resolve_session_user.
+  Emits `event: ready` on connect, then `event: notify {changed:true}` whenever the user's
+  notifications/broadcast_inbox signature (count+latest created_at) changes; server-polls DB every
+  3s; heartbeat ": ping" ~21s; stops on client disconnect. Route is /api/inbox/stream (NOT
+  /api/notifications/stream — that collided with GET /api/notifications/{id}). Verified: streams
+  `ready` + fires `notify` within ~3s of a new notif, works through the preview proxy.
+- Frontend src/notifications.tsx:
+  • Adaptive polling — 15s ONLY while app/tab active; instant refresh on web focus/visibilitychange
+    and native AppState 'active'; pauses when hidden/backgrounded. (was a flat 60s interval)
+  • SSE client — web uses native EventSource, native uses react-native-sse (added dep); on `notify`
+    it calls refresh(). Opens on active, closes on inactive. Polling is the graceful fallback.
+  • Web browser pop-up — requests Notification permission once for signed-in web users; on a new
+    unread item shows new Notification(title,{body,tag:id}) in addition to the in-app toast.
+  • refreshAuth kept on its original ~60s cadence.
+Mobile background/closed delivery still handled by FCM push (unchanged). NEEDS REDEPLOY for prod.

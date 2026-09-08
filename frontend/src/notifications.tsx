@@ -11,7 +11,11 @@
 //   • Exposes `refresh()` to force an immediate fetch (e.g. after an action).
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import RNEventSource from 'react-native-sse';
 import api from './api';
+import { getActiveBase } from './backend-health';
 import { useAuth } from './auth';
 import { useToast } from './toast';
 
@@ -105,6 +109,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const fresh = sorted.filter((n) => !n.read && !toasted.current.has(n.id));
         fresh.slice(0, 3).forEach((n) => {
           toast.info(n.title);
+          // Web: also raise a native browser notification pop-up so the
+          // user is alerted even when this tab isn't focused. Requires
+          // one-time permission (requested on mount); silently skipped
+          // otherwise. `tag` de-dupes if the same item fires twice.
+          if (
+            Platform.OS === 'web' &&
+            typeof Notification !== 'undefined' &&
+            Notification.permission === 'granted'
+          ) {
+            try {
+              new Notification(n.title, { body: n.body || undefined, tag: n.id });
+            } catch {}
+          }
           toasted.current.add(n.id);
         });
       } else {
@@ -120,19 +137,99 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [user, toast]);
 
-  // Initial + poll
+  // Ask for web browser-notification permission once (contextually, for
+  // a signed-in user) so we can raise native pop-ups for new items.
   useEffect(() => {
-    refresh();
+    if (
+      Platform.OS === 'web' &&
+      user &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'default'
+    ) {
+      try { Notification.requestPermission(); } catch {}
+    }
+  }, [user]);
+
+  // Live updates: adaptive polling + a real-time SSE stream.
+  //   • Polls every 15s ONLY while the app/tab is active; pauses when
+  //     hidden/backgrounded (saves battery + requests).
+  //   • Refreshes instantly on focus / foreground so returning users
+  //     see the latest immediately.
+  //   • Opens an SSE stream (web: EventSource, native: react-native-sse)
+  //     that pushes a `notify` event within a few seconds of any new
+  //     item — the "live app" feel. Polling is the graceful fallback if
+  //     the stream can't hold open (e.g. a buffering proxy).
+  useEffect(() => {
     if (!user) return;
-    const timer = setInterval(() => {
-      refresh();
-      // Also re-fetch the user object so permission/role changes made
-      // by the Owner (e.g. unlocking messaging) propagate to the
-      // affected user within ≤60 s — without requiring a re-login.
-      // Fire-and-forget; never throws.
-      try { refreshAuth?.(); } catch {}
-    }, 60_000);
-    return () => clearInterval(timer);
+    refresh();
+
+    let pollTimer: any = null;
+    let authTimer: any = null;
+    let es: any = null;
+    let closed = false;
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      pollTimer = setInterval(() => { refresh(); }, 15_000);
+    };
+    const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
+
+    const connectStream = async () => {
+      if (closed || es) return;
+      try {
+        const token = await AsyncStorage.getItem('session_token');
+        if (!token) return;
+        const url = `${getActiveBase()}/api/inbox/stream?token=${encodeURIComponent(token)}`;
+        if (Platform.OS === 'web') {
+          if (typeof EventSource === 'undefined') return;
+          es = new EventSource(url);
+        } else {
+          es = new RNEventSource(url);
+        }
+        es.addEventListener('notify', () => { refresh(); });
+      } catch { es = null; }
+    };
+    const disconnectStream = () => {
+      if (es) {
+        try { es.removeAllEventListeners?.(); } catch {}
+        try { es.close?.(); } catch {}
+        es = null;
+      }
+    };
+
+    const onActive = () => { refresh(); startPolling(); connectStream(); };
+    const onInactive = () => { stopPolling(); disconnectStream(); };
+
+    // Keep auth/permission propagation on the original ~60s cadence.
+    authTimer = setInterval(() => { try { refreshAuth?.(); } catch {} }, 60_000);
+
+    let cleanupActivity = () => {};
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const visHandler = () => {
+        if (document.visibilityState === 'visible') onActive(); else onInactive();
+      };
+      document.addEventListener('visibilitychange', visHandler);
+      window.addEventListener('focus', onActive);
+      cleanupActivity = () => {
+        document.removeEventListener('visibilitychange', visHandler);
+        window.removeEventListener('focus', onActive);
+      };
+      if (document.visibilityState === 'visible') onActive(); else startPolling();
+    } else {
+      const sub = AppState.addEventListener('change', (s) => {
+        if (s === 'active') onActive(); else onInactive();
+      });
+      cleanupActivity = () => { try { sub.remove(); } catch {} };
+      onActive();
+    }
+
+    return () => {
+      closed = true;
+      stopPolling();
+      if (authTimer) clearInterval(authTimer);
+      disconnectStream();
+      cleanupActivity();
+    };
   }, [user, refresh, refreshAuth]);
 
   const markRead = useCallback(async (id: string) => {

@@ -15,7 +15,10 @@ Behaviour preserved EXACTLY.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import re
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import json
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from db import db
 from auth_deps import is_owner_or_partner, require_owner, require_user
 from models import MessagingPermissionBody, PersonalMessageBody
@@ -162,6 +165,79 @@ async def inbox_all(user=Depends(require_user), limit: int = 100):
 
     unread_total = sum(1 for f in feed if not f.get("read"))
     return {"items": feed, "unread": unread_total}
+
+@router.get("/api/inbox/stream")
+async def notifications_stream(request: Request, token: str = ""):
+    """Server-Sent Events stream that emits a lightweight `notify` event
+    whenever this user gets a new notification / inbox item, so the web
+    and foreground-mobile apps feel live (sub-few-seconds) instead of
+    waiting for the next poll.
+
+    Auth: EventSource (web) cannot send an Authorization header, so the
+    session token is passed as a `?token=` query param and validated
+    here. The stream only signals "something changed" — the client then
+    calls the normal /inbox/all to fetch the actual items (so we never
+    duplicate the aggregation logic).
+    """
+    from server import resolve_session_user
+
+    user = await resolve_session_user(token) if token else None
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = user["user_id"]
+
+    async def _signature() -> str:
+        parts: List[str] = []
+        for coll, q in (
+            (db.notifications, {"user_id": user_id}),
+            (db.broadcast_inbox, {"user_id": user_id}),
+        ):
+            try:
+                latest = await coll.find_one(q, {"_id": 0, "created_at": 1}, sort=[("created_at", -1)])
+                cnt = await coll.count_documents(q)
+                ts = str(latest.get("created_at")) if latest and latest.get("created_at") else ""
+                parts.append(f"{cnt}:{ts}")
+            except Exception:
+                parts.append("?")
+        return "|".join(parts)
+
+    async def event_gen():
+        # Tell the client the stream is open.
+        yield "event: ready\ndata: {}\n\n"
+        last_sig: Optional[str] = None
+        ticks = 0
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                sig = await _signature()
+            except Exception:
+                sig = last_sig
+            if last_sig is None:
+                # Baseline on connect — don't fire immediately (the client
+                # already fetched the current list on mount).
+                last_sig = sig
+            elif sig != last_sig:
+                last_sig = sig
+                yield f"event: notify\ndata: {json.dumps({'changed': True})}\n\n"
+            # Heartbeat comment every ~21s keeps proxies from closing the
+            # idle connection.
+            ticks += 1
+            if ticks % 7 == 0:
+                yield ": ping\n\n"
+            await asyncio.sleep(3)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 
 @router.post("/api/inbox/all/read")
 async def inbox_all_mark_read(user=Depends(require_user)):
