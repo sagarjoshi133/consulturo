@@ -44,7 +44,7 @@ import {
 } from './cockpit-ui';
 import PatientHero from './patient-hero';
 import AssistantBubble from '../assistant-bubble';
-import { parseBackendDate, formatISTTime } from '../date';
+import { parseBackendDate, formatISTTime, display12h } from '../date';
 
 type QuickStats = {
   role: string;
@@ -58,6 +58,7 @@ type Booking = {
   booking_date?: string;
   slot?: string;
   start_time?: string;
+  booking_time?: string;
   status?: string;
   consultation_done?: boolean;
 };
@@ -113,7 +114,7 @@ export default function OwnerHome({
         const filtered = arr
           .filter((x) => (x.booking_date || '').startsWith(today))
           .filter((x) => x.status !== 'cancelled' && x.status !== 'rejected')
-          .sort((x, y) => (x.start_time || x.slot || '').localeCompare(y.start_time || y.slot || ''))
+          .sort((x, y) => (x.booking_time || x.start_time || x.slot || '').localeCompare(y.booking_time || y.start_time || y.slot || ''))
           .slice(0, 3);
         setTodayList(filtered);
       }
@@ -322,7 +323,7 @@ export default function OwnerHome({
               >
                 <View style={styles.timeBubble}>
                   <Text style={styles.timeText}>
-                    {b.start_time || b.slot || '--:--'}
+                    {display12h(b.booking_time || b.start_time || b.slot) || '--:--'}
                   </Text>
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
