@@ -40,6 +40,7 @@ import { useRouter } from 'expo-router';
 import { COLORS, FONTS, RADIUS, DOCTOR_PHOTO_URL } from '../theme';
 import { useAuth } from '../auth';
 import { useNotifications } from '../notifications';
+import { useResponsive } from '../responsive';
 import { useI18n } from '../i18n';
 import { useThemeColors } from '../theme-context';
 import api from '../api';
@@ -56,6 +57,10 @@ export default function PatientHero({ scrollY }: { scrollY?: SharedValue<number>
   const { user } = useAuth();
   const { t, lang, setLang } = useI18n();
   const { unread, personalUnread } = useNotifications();
+  // On web-desktop the persistent WebShell topbar already shows
+  // Language / Inbox / Notifications / Profile, so hide this in-hero
+  // cluster there to avoid a duplicated set of buttons.
+  const isWebDesktop = useResponsive().isWebDesktop;
   const themeColors = useThemeColors();
 
   // Web-only hero parallax — doctor photo drifts up at 0.4× scroll
@@ -223,6 +228,7 @@ export default function PatientHero({ scrollY }: { scrollY?: SharedValue<number>
                 </View>
               </View>
             </View>
+            {!isWebDesktop && (
             <View style={styles.heroActions}>
               <TouchableOpacity
                 onPress={cycleLang}
@@ -286,6 +292,7 @@ export default function PatientHero({ scrollY }: { scrollY?: SharedValue<number>
                 )}
               </TouchableOpacity>
             </View>
+            )}
           </View>
 
           {/* Doctor card — same identity card for every role per Dr.
