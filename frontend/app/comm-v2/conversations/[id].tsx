@@ -9,9 +9,10 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView,
+  ActivityIndicator, Platform, Pressable, ScrollView,
   StatusBar as RNStatusBar,
   StyleSheet, Text, TextInput, View, Alert, FlatList} from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -154,7 +155,8 @@ export default function ConversationDetail() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: V2.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="translate-with-padding"
+      keyboardVerticalOffset={0}
     >
       <View style={[shared.screen, { paddingTop: topPad }]}>
         <View style={[shared.headerRow, styles.headerRow]}>
