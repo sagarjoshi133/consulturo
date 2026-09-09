@@ -352,6 +352,7 @@ const gu = {
     rowPhoneEmpty:         'હજી સુધી લિંક નથી',
     verified:              'ચકાસાયેલ',
     link:                  'લિંક કરો',
+    changeMobile:          'બદલો',
     rowLanguage:           'ભાષા',
     rowLanguageSub:        'કોઈ પણ સમયે એપ ભાષા બદલો',
     rowPush:               'પુશ સૂચનાઓ',

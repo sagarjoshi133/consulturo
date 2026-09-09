@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView,
+  StatusBar as RNStatusBar,
   StyleSheet, Text, TextInput, View, Alert, FlatList} from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -145,87 +146,95 @@ export default function ConversationDetail() {
 
   const replyToMap = useMemo(() => new Map(msgs.map((m) => [m.id, m])), [msgs]);
 
+  const topPad = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) + 4 : 8,
+  );
+
   return (
-    <View style={[shared.screen, { paddingTop: Math.max(insets.top, 8) }]}>
-      <View style={shared.headerRow}>
-        <Pressable onPress={() => router.back()} style={shared.headerBtn} hitSlop={12}>
-          <Ionicons name="chevron-back" size={22} color={V2.fg} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={shared.headerTitle} numberOfLines={1}>
-            {isStaff ? (conv?.patient_display_name || 'Patient') : 'ConsultUro Clinic'}
-          </Text>
-          {conv?.state ? (
-            <View style={[shared.chip, { alignSelf: 'flex-start', backgroundColor: (stateTint[conv.state] || {}).bg, marginTop: 2 }]}>
-              <Text style={[shared.chipTxt, { color: (stateTint[conv.state] || {}).fg }]}>
-                {stateLabel[conv.state] || conv.state}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Staff action bar */}
-      {isStaff && conv ? (
-        <View style={styles.actionBar}>
-          {conv.state !== 'escalated_to_doctor' ? (
-            <Pressable style={styles.actionBtn} onPress={() => doStaffAction('escalate')}>
-              <Ionicons name="alert-circle-outline" size={14} color={V2.danger} />
-              <Text style={[styles.actionTxt, { color: V2.danger }]}>Escalate</Text>
-            </Pressable>
-          ) : null}
-          {conv.state !== 'resolved' ? (
-            <Pressable style={styles.actionBtn} onPress={() => doStaffAction('resolve')}>
-              <Ionicons name="checkmark-done" size={14} color={V2.success} />
-              <Text style={[styles.actionTxt, { color: V2.success }]}>Resolve</Text>
-            </Pressable>
-          ) : (
-            <Pressable style={styles.actionBtn} onPress={() => doStaffAction('reopen')}>
-              <Ionicons name="refresh" size={14} color={V2.accent} />
-              <Text style={[styles.actionTxt, { color: V2.accent }]}>Reopen</Text>
-            </Pressable>
-          )}
-        </View>
-      ) : null}
-
-      {loading ? (
-        <View style={{ paddingVertical: 40 }}><ActivityIndicator color={V2.accent} /></View>
-      ) : (
-        <FlatList
-          ref={listRef}
-          data={msgs}
-          keyExtractor={(x) => x.id}
-          renderItem={({ item }) => (
-            <MessageBubble
-              msg={item}
-              isMine={item.sender_user_id === user?.user_id}
-              replyParent={item.reply_to_message_id ? replyToMap.get(item.reply_to_message_id) : undefined}
-              onSetReply={() => setReplyTo(item)}
-            />
-          )}
-          
-          contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 12 }}
-          onViewableItemsChanged={onViewable}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 70 }}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.2}
-        />
-      )}
-
-      {replyTo ? (
-        <View style={styles.replyBar}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.replyLabel}>Replying to {replyTo.sender_display}</Text>
-            <Text numberOfLines={1} style={styles.replyBody}>{replyTo.body}</Text>
-          </View>
-          <Pressable onPress={() => setReplyTo(null)} hitSlop={10}>
-            <Ionicons name="close" size={18} color={V2.fgMuted} />
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: V2.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={[shared.screen, { paddingTop: topPad }]}>
+        <View style={[shared.headerRow, styles.headerRow]}>
+          <Pressable onPress={() => router.back()} style={shared.headerBtn} hitSlop={12}>
+            <Ionicons name="chevron-back" size={22} color={V2.fg} />
           </Pressable>
+          <View style={{ flex: 1, marginLeft: 4 }}>
+            <Text style={[shared.headerTitle, styles.headerTitle]} numberOfLines={1}>
+              {isStaff ? (conv?.patient_display_name || 'Patient') : 'ConsultUro Clinic'}
+            </Text>
+            {conv?.state ? (
+              <View style={[shared.chip, { alignSelf: 'flex-start', backgroundColor: (stateTint[conv.state] || {}).bg, marginTop: 4 }]}>
+                <Text style={[shared.chipTxt, { color: (stateTint[conv.state] || {}).fg }]}>
+                  {stateLabel[conv.state] || conv.state}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
-      ) : null}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.composer}>
+        {/* Staff action bar */}
+        {isStaff && conv ? (
+          <View style={styles.actionBar}>
+            {conv.state !== 'escalated_to_doctor' ? (
+              <Pressable style={styles.actionBtn} onPress={() => doStaffAction('escalate')}>
+                <Ionicons name="alert-circle-outline" size={14} color={V2.danger} />
+                <Text style={[styles.actionTxt, { color: V2.danger }]}>Escalate</Text>
+              </Pressable>
+            ) : null}
+            {conv.state !== 'resolved' ? (
+              <Pressable style={styles.actionBtn} onPress={() => doStaffAction('resolve')}>
+                <Ionicons name="checkmark-done" size={14} color={V2.success} />
+                <Text style={[styles.actionTxt, { color: V2.success }]}>Resolve</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.actionBtn} onPress={() => doStaffAction('reopen')}>
+                <Ionicons name="refresh" size={14} color={V2.accent} />
+                <Text style={[styles.actionTxt, { color: V2.accent }]}>Reopen</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
+
+        {loading ? (
+          <View style={{ paddingVertical: 40 }}><ActivityIndicator color={V2.accent} /></View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            style={{ flex: 1 }}
+            data={msgs}
+            keyExtractor={(x) => x.id}
+            renderItem={({ item }) => (
+              <MessageBubble
+                msg={item}
+                isMine={item.sender_user_id === user?.user_id}
+                replyParent={item.reply_to_message_id ? replyToMap.get(item.reply_to_message_id) : undefined}
+                onSetReply={() => setReplyTo(item)}
+              />
+            )}
+            contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 12 }}
+            onViewableItemsChanged={onViewable}
+            viewabilityConfig={{ itemVisiblePercentThreshold: 70 }}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.2}
+          />
+        )}
+
+        {replyTo ? (
+          <View style={styles.replyBar}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.replyLabel}>Replying to {replyTo.sender_display}</Text>
+              <Text numberOfLines={1} style={styles.replyBody}>{replyTo.body}</Text>
+            </View>
+            <Pressable onPress={() => setReplyTo(null)} hitSlop={10}>
+              <Ionicons name="close" size={18} color={V2.fgMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -244,8 +253,8 @@ export default function ConversationDetail() {
               : <Ionicons name="send" size={18} color="#fff" />}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -283,6 +292,15 @@ function MessageBubble({ msg, isMine, replyParent, onSetReply }: {
 }
 
 const styles = StyleSheet.create({
+  headerRow: {
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+  },
+  headerTitle: {
+    flex: 0,
+    lineHeight: 24,
+    paddingTop: 2,
+  },
   actionBar: {
     flexDirection: 'row', gap: 12, backgroundColor: V2.card,
     paddingHorizontal: 16, paddingVertical: 8,

@@ -133,6 +133,26 @@ async def get_conversation(db, conversation_id: str) -> Optional[Dict[str, Any]]
     )
 
 
+async def _enrich_conv(db, conv: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Attach patient_display_name so the thread header shows the real
+    patient name instead of a generic 'Patient'."""
+    if not conv:
+        return conv
+    if conv.get("patient_display_name"):
+        return conv
+    pid = conv.get("patient_user_id")
+    if pid:
+        up = await db.users.find_one(
+            {"user_id": pid},
+            {"_id": 0, "name": 1, "email": 1, "phone": 1},
+        )
+        if up:
+            conv["patient_display_name"] = (
+                up.get("name") or up.get("email") or up.get("phone") or "Patient"
+            )
+    return conv
+
+
 async def _can_access_conversation(db, *, user: Dict[str, Any],
                                     conv: Dict[str, Any]) -> bool:
     """Patients: only their own. Staff/owner-tier: any conversation."""
@@ -465,7 +485,8 @@ async def send_message(
 
     # Refresh the conversation snapshot for the caller.
     new_conv = await get_conversation(db, conversation_id)
-    return {"idempotent": False, "message": msg, "conversation": new_conv}
+    return {"idempotent": False, "message": msg,
+            "conversation": await _enrich_conv(db, new_conv)}
 
 
 def _inbox_title_body(*, sender_role: str, patient_name: str,
@@ -572,7 +593,7 @@ async def list_messages(
     # Reverse to newest-last for natural chat rendering.
     rows.reverse()
     return {"items": rows, "next_cursor": next_cursor, "count": len(rows),
-            "conversation": conv}
+            "conversation": await _enrich_conv(db, conv)}
 
 
 # ── Read receipts ──────────────────────────────────────────────
@@ -678,7 +699,7 @@ async def _transition_state(db, *, conv_id: str, new_state: str,
         )
     except Exception:
         pass
-    return await get_conversation(db, conv_id)
+    return await _enrich_conv(db, await get_conversation(db, conv_id))
 
 
 async def assign_conversation(db, *, conv_id: str,
@@ -709,7 +730,7 @@ async def assign_conversation(db, *, conv_id: str,
         )
     except Exception:
         pass
-    return await get_conversation(db, conv_id)
+    return await _enrich_conv(db, await get_conversation(db, conv_id))
 
 
 async def escalate_to_doctor(db, *, conv_id: str,

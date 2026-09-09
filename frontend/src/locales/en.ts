@@ -365,6 +365,7 @@ const en = {
     rowPhoneEmpty:         'Not linked yet',
     verified:              'Verified',
     link:                  'Link',
+    changeMobile:          'Change',
     rowLanguage:           'Language',
     rowLanguageSub:        'Switch app language any time',
     rowPush:               'Push notifications',

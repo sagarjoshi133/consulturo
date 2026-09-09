@@ -353,6 +353,7 @@ const hi = {
     rowPhoneEmpty:         'अभी तक लिंक नहीं',
     verified:              'सत्यापित',
     link:                  'लिंक करें',
+    changeMobile:          'बदलें',
     rowLanguage:           'भाषा',
     rowLanguageSub:        'किसी भी समय ऐप की भाषा बदलें',
     rowPush:               'पुश सूचनाएँ',

@@ -15,7 +15,7 @@ import {
   ActivityIndicator, Alert, FlatList, Linking, Modal, Platform, Pressable,
   RefreshControl, Share, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -75,6 +75,7 @@ const TAB_STATUS: Record<Tab, string> = {
 
 export default function UnregisteredPatientsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('unregistered');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<Patient[]>(() => getCached<Patient[]>('patients:items:unregistered') ?? []);
@@ -586,7 +587,7 @@ export default function UnregisteredPatientsScreen() {
         onRequestClose={() => setBulkModal(null)}
       >
         <Pressable style={styles.backdrop} onPress={() => setBulkModal(null)} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Send bulk invite</Text>
           <Text style={styles.sheetSub}>
@@ -646,7 +647,7 @@ export default function UnregisteredPatientsScreen() {
       >
         <Pressable style={styles.backdrop}
           onPress={() => { setBulkModal(null); exitSelectMode(); }} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Invite queue ready</Text>
           <Text style={styles.sheetSub}>
@@ -706,7 +707,7 @@ export default function UnregisteredPatientsScreen() {
         onRequestClose={() => { setInviteFor(null); setInvite(null); }}
       >
         <Pressable style={styles.backdrop} onPress={() => { setInviteFor(null); setInvite(null); }} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Invite {inviteFor?.name?.split(' ')[0] || 'this patient'}</Text>
           <Text style={styles.sheetSub}>
@@ -761,7 +762,7 @@ export default function UnregisteredPatientsScreen() {
         onRequestClose={() => { setDupFor(null); setDupList([]); }}
       >
         <Pressable style={styles.backdrop} onPress={() => { setDupFor(null); setDupList([]); }} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>
             Possible duplicates
