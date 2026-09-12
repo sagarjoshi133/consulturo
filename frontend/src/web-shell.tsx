@@ -139,6 +139,11 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     pathname === '/signed-out' ||
     pathname.startsWith('/auth-callback');
 
+  // Full-screen immersive screens — the in-app video consultation must
+  // take the entire viewport (no desktop sidebar) so the call is a clean,
+  // standalone experience.
+  const isFullScreen = pathname.startsWith('/video/');
+
   // Embedded mode — when a screen is loaded inside an iframe (e.g. the
   // tablet two-pane Bookings layout opens /bookings/[id]?embedded=1
   // in an iframe), suppress the desktop sidebar so the iframe shows
@@ -148,7 +153,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     (window.location?.search || '').includes('embedded=1');
 
   // Mobile-first: pass through unchanged.
-  if (!r.isWebDesktop || isAuthScreen || isEmbedded) {
+  if (!r.isWebDesktop || isAuthScreen || isEmbedded || isFullScreen) {
     return <>{children}</>;
   }
 

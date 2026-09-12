@@ -46,7 +46,7 @@ import { useAuth } from '../auth';
 import { COLORS, FONTS, RADIUS } from '../theme';
 import { Skeleton } from '../skeleton';
 import { whatsappLink, telLink } from '../phone';
-import { useResponsive, useTwoPaneLayout } from '../responsive';
+import { useResponsive } from '../responsive';
 import { useToast } from '../toast';
 import { resolvePatientRecipient } from '../message-recipient';
 import { EmptyState } from '../empty-state';
@@ -62,11 +62,9 @@ import { styles } from './dashboard-styles';
 
 export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?: (r: { user_id: string; name?: string; phone?: string; email?: string; role?: string }) => void } = {}) {
   const { isWebDesktop } = useResponsive();
-  // Phase 5.24 — Tablet two-pane (iPad landscape & web desktop). When
-  // active, tapping a booking sets `selectedBookingId` instead of
-  // pushing a new route, and a right pane renders the detail inline.
-  const tp = useTwoPaneLayout();
-  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  // 2026-06 — Two-pane iframe split removed: the Bookings tab now renders
+  // full-width and tapping a booking opens the standalone /bookings/[id]
+  // page while "Join Video" opens the full-screen /video/[code] route.
   const [items, setItems] = useState<any[]>(() => getCached<any[]>('bookings-all') ?? []);
   const [loading, setLoading] = useState(!hasCached('bookings-all'));
   const [updatedAt, setUpdatedAt] = useState<number>(0);
@@ -388,22 +386,6 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
     completed: items.filter((b) => b.status === 'completed').length,
     cancelled: items.filter((b) => b.status === 'cancelled' || b.status === 'rejected').length,
   };
-
-  // Auto-select the first booking in two-pane mode so the right pane
-  // isn't blank on first render. MUST come before the early `loading`
-  // return guard otherwise React errors with "Rendered more hooks
-  // than during the previous render."
-  // We use useMemo (rather than useEffect → setState) to compute the
-  // effective selected ID synchronously each render, avoiding a
-  // re-render that briefly leaves the right pane empty.
-  const effectiveSelectedId = React.useMemo(() => {
-    if (!tp.twoPane) return selectedBookingId;
-    if (selectedBookingId && (items || []).some((b: any) => b.booking_id === selectedBookingId)) {
-      return selectedBookingId;
-    }
-    const first = (items || [])[0];
-    return first ? first.booking_id : null;
-  }, [tp.twoPane, selectedBookingId, items]);
 
   if (loading) {
     // Skeletons mimic the layout: 4 stat tiles, view-mode toggle, then 3 booking cards
@@ -831,10 +813,6 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
               onPress={() => {
                 if (bulkMode) {
                   toggleSelect(b.booking_id);
-                } else if (tp.twoPane) {
-                  // Two-pane mode — select the card and render its
-                  // detail in the right pane instead of pushing route.
-                  setSelectedBookingId(b.booking_id);
                 } else {
                   router.push({ pathname: '/bookings/[id]', params: { id: b.booking_id } } as any);
                 }
@@ -1100,69 +1078,6 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
     </>
   );
 
-  if (tp.twoPane) {
-    return (
-      <View style={{ flex: 1, flexDirection: 'row', minHeight: 600 }}>
-        <View
-          style={{
-            width: tp.listWidth,
-            borderRightWidth: 1,
-            borderRightColor: COLORS.border,
-            backgroundColor: '#fff',
-          }}
-        >
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: 80 }}
-            showsVerticalScrollIndicator={false}
-            testID="bk-two-pane-list"
-          >
-            {innerContent}
-          </ScrollView>
-        </View>
-        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-          {effectiveSelectedId ? (
-            // Render the booking detail in an iframe (web only) so the
-            // detail screen's hooks live in their own React tree —
-            // avoids cross-tree "hooks order" instabilities and lets
-            // us reuse the existing /bookings/[id] route 1:1.
-            Platform.OS === 'web' ? (
-              <View
-                // eslint-disable-next-line react-native/no-inline-styles
-                style={{ flex: 1, overflow: 'hidden' as any }}
-              >
-                {React.createElement('iframe' as any, {
-                  src: `/bookings/${effectiveSelectedId}?embedded=1`,
-                  key: effectiveSelectedId,
-                  style: {
-                    border: 0,
-                    width: '100%',
-                    height: '100%',
-                    minHeight: 600,
-                    background: COLORS.bg,
-                  },
-                  title: 'Booking detail',
-                  testID: 'bk-two-pane-detail',
-                })}
-              </View>
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-                <Text style={{ color: COLORS.textSecondary, fontFamily: FONTS.regular, textAlign: 'center' }}>
-                  Two-pane layout is web-only. Tap a booking to open it on mobile.
-                </Text>
-              </View>
-            )
-          ) : (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-              <Ionicons name="calendar-outline" size={48} color={COLORS.textDisabled} />
-              <Text style={{ marginTop: 12, color: COLORS.textSecondary, fontFamily: FONTS.regular, textAlign: 'center' }}>
-                Select a booking from the left to view its details.
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  }
   return innerContent;
 }
 /** Compact month calendar for the Dashboard Bookings panel. */
