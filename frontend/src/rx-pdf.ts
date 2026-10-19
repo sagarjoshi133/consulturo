@@ -22,6 +22,7 @@ import { Platform, Alert } from 'react-native';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
 import { LOGO_URL } from './theme';
+import { getDocHeaderCfg, headerLogoSrc, renderHeaderInner } from './pdf-header';
 import { displayDate, parseUIDate, parseBackendDate, formatIST, formatISTDate, formatISTTime } from './date';
 import api from './api';
 import { buildWaMessage, type AutoWaContext } from './whatsapp-pdf';
@@ -214,6 +215,21 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   const doctorName = (settings.doctor_name || 'Dr. Sagar Joshi').trim();
   const doctorTitle = (settings.doctor_title || 'Consultant Urologist, Laparoscopic & Transplant Surgeon').trim();
   const signatureUrl = (settings.signature_url || '').trim();
+
+  // Per-document configurable header (logo + reorderable/editable lines).
+  const _hdrCfg = getDocHeaderCfg((settings as any).doc_headers, 'prescription');
+  const _hdrLogo = headerLogoSrc(_hdrCfg, LOGO_URL);
+  const _hdrInner = renderHeaderInner(_hdrCfg, {
+    clinic_name: clinicName, doctor_name: doctorName, doctor_title: doctorTitle,
+    doctor_degrees: degrees, clinic_address: clinicAddr, clinic_phone: clinicPhone,
+    doctor_reg_no: drReg,
+  }, {
+    esc: escapeHtml,
+    title: (t) => `<h1>${t}</h1>`,
+    degrees: (t) => `<div class="degrees">${t}</div>`,
+    reg: (t) => `<p style="font-size:9.5px;">Reg. No. ${t}</p>`,
+    line: (t) => `<p>${t}</p>`,
+  });
 
   // Letterhead — when enabled by primary_owner in the Branding panel,
   // the supplied banner image REPLACES the entire app-logo + clinic-
@@ -997,13 +1013,9 @@ export async function buildRxHtml(rx: RxDoc, settings: ClinicSettings = {}): Pro
   </div>` : `
   <div class="head">
     <div class="brand">
-      <img src="${LOGO_URL}"/>
+      <img src="${_hdrLogo}"/>
       <div class="info">
-        <h1>${escapeHtml(doctorName)}</h1>
-        <div class="degrees">${escapeHtml(degrees)}</div>
-        <p>${escapeHtml(doctorTitle)}</p>
-        <p>${escapeHtml(clinicName)} · ${escapeHtml(clinicPhone)}</p>
-        <p style="font-size:9.5px;">Reg. No. ${escapeHtml(drReg)}</p>
+        ${_hdrInner}
       </div>
     </div>
     <div class="meta">

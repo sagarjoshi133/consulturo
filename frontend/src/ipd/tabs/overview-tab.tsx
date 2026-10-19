@@ -48,6 +48,8 @@ export default function OverviewTab({
           letterhead_image_b64: cs.letterhead_image_b64,
           use_letterhead: cs.use_letterhead,
           signature_image_b64: cs.signature_image_b64,
+          doctor_title: cs.doctor_title,
+          doc_headers: cs.doc_headers,
         };
       } catch { /* non-fatal — template falls back to defaults */ }
       const html = buildDischargeSummaryHtml({ ...ds, clinic });

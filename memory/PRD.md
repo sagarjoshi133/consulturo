@@ -1054,3 +1054,13 @@ Mobile background/closed delivery still handled by FCM push (unchanged). NEEDS R
   headerTitle lineHeight:22 in ui-tokens — so "ConsultUro Clinic" no longer clips under the status
   bar / notch.
 NEEDS REDEPLOY for production.
+
+## Per-document editable PDF headers (2026-06)
+- New Branding → "Document Headers" category (src/doc-header-settings-panel.tsx).
+- Per document type (prescription, receipt, discharge, consent, medical_certificate, encounter):
+  upload/replace a left-side logo, choose which line is the big title (clinic vs doctor),
+  reorder / show-hide / edit each header line (clinic name, doctor name, title, degrees,
+  address, phone, reg no). Stored in clinic_settings.doc_headers (keyed by doc type).
+- Shared renderer: src/pdf-header.ts (getDocHeaderCfg, headerLogoSrc, renderHeaderInner).
+- Wired into all 6 PDF builders. Receipt now defaults to the Clinic name as the title.
+- Backend: added doc_headers to ClinicSettingsPatch + default {} in clinic_settings router.

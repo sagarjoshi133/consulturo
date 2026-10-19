@@ -25,6 +25,7 @@
  *   · WeasyPrint backend — POST /api/render/pdf returns a binary blob
  */
 import { DOC_THEME } from './doc-theme';
+import { getDocHeaderCfg, renderHeaderInner } from './pdf-header';
 
 type Kind = 'sick_leave' | 'fitness' | 'unfit_for_duty' | 'medical_summary';
 
@@ -68,6 +69,8 @@ type Clinic = {
   letterhead_image_b64?: string;
   use_letterhead?: boolean;
   signature_image_b64?: string;
+  doctor_title?: string;
+  doc_headers?: any;
 };
 
 function esc(s: string | undefined | null): string {
@@ -157,6 +160,22 @@ export function generateCertificatePdfHtml(c: Cert, clinic?: Clinic): string {
   const letterheadSrc = letterheadEnabled ? String(clinic?.letterhead_image_b64 || '').trim() : '';
   const sigImg = (clinic?.signature_image_b64 || '').trim();
 
+  const _hdrCfg = getDocHeaderCfg(clinic?.doc_headers, 'medical_certificate');
+  const _hdrLogoSrc = (_hdrCfg.logo_b64 || '').trim();
+  const _hdrInner = renderHeaderInner(_hdrCfg, {
+    clinic_name: clinic?.name || 'ConsultUro Clinic',
+    doctor_name: (c.doctor_name || clinic?.doctor_name || c.issued_by_name || ''),
+    doctor_title: clinic?.doctor_title || '', doctor_degrees: clinic?.doctor_degrees || '',
+    clinic_address: clinic?.address || '', clinic_phone: clinic?.phone || '',
+    doctor_reg_no: (c.doctor_reg_no || clinic?.doctor_reg_no || ''),
+  }, {
+    esc,
+    title: (t) => `<h1>${t}</h1>`,
+    degrees: (t) => `<div class="degrees">${t}</div>`,
+    reg: (t) => `<div class="reg">Reg. No. ${t}</div>`,
+    line: (t) => `<div class="clinicLine">${t}</div>`,
+  });
+
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <title>Medical Certificate &mdash; ${esc(c.patient_name)}</title>
@@ -179,6 +198,7 @@ export function generateCertificatePdfHtml(c: Cert, clinic?: Clinic): string {
    flex-shrink: 0;
  }
  .head .info { flex: 1; }
+ .head .logoImg { width: 60px; height: 60px; border-radius: 10px; object-fit: contain; flex-shrink: 0; background: #fff; }
  .head h1 { margin: 0; font-size: 20px; color: #0F172A; letter-spacing: 0.4px; font-weight: 800; }
  .head .degrees { font-size: 10.5px; color: ${accentDark}; margin-top: 2px; font-style: italic; font-weight: 600; }
  .head .clinicLine { font-size: 10.5px; color: #4B5563; margin-top: 3px; line-height: 1.5; }
@@ -293,12 +313,9 @@ export function generateCertificatePdfHtml(c: Cert, clinic?: Clinic): string {
    <img src="${esc(letterheadSrc)}" alt="Letterhead"/>
  </div>` : `
  <div class="head">
-   <div class="logo">CU</div>
+   ${_hdrLogoSrc ? `<img class="logoImg" src="${esc(_hdrLogoSrc)}" alt="logo"/>` : `<div class="logo">CU</div>`}
    <div class="info">
-     <h1>${doctorName || clinicName}</h1>
-     ${doctorDegrees ? `<div class="degrees">${doctorDegrees}</div>` : ''}
-     <div class="clinicLine">${clinicName}${clinicAddress ? ' &middot; ' + clinicAddress : ''}${clinicPhone ? ' &middot; ' + clinicPhone : ''}</div>
-     ${regNo ? `<div class="reg">Reg. No. ${regNo}</div>` : ''}
+     ${_hdrInner}
    </div>
  </div>`}
 

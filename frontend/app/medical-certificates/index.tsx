@@ -714,6 +714,8 @@ function CertificatePreview({ cert, onClose }: { cert: Certificate | null; onClo
         letterhead_image_b64: cs.letterhead_image_b64,
         use_letterhead: cs.use_letterhead,
         signature_image_b64: cs.signature_image_b64,
+        doctor_title: cs.doctor_title,
+        doc_headers: cs.doc_headers,
         // Phase 5.20 — for the WhatsApp follow-up prompt.
         country_code: cs.country_code || '+91',
         whatsapp_auto_prompt_enabled: cs.whatsapp_auto_prompt_enabled !== false,

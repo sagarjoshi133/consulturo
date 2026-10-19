@@ -26,6 +26,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform, Alert } from 'react-native';
 import { LOGO_URL } from './theme';
 import { loadClinicSettings, ClinicSettings } from './rx-pdf';
+import { getDocHeaderCfg, headerLogoSrc, renderHeaderInner } from './pdf-header';
 import api from './api';
 
 export type Lang = 'en' | 'hi' | 'gu';
@@ -308,7 +309,19 @@ export function buildConsentHtml(c: ConsentDoc, settings: ClinicSettings = {}): 
   const docName = ((settings as any)?.doctor_name || 'Dr Sagar Joshi').toString().trim();
   const degrees = (settings.doctor_degrees || 'MBBS · MS · DrNB (Urology)').trim();
   const drReg = (settings.doctor_reg_no || 'G-53149').trim();
-  const logoSrc = LOGO_URL;
+  const _hdrCfg = getDocHeaderCfg((settings as any).doc_headers, 'consent');
+  const logoSrc = headerLogoSrc(_hdrCfg, LOGO_URL);
+  const _hdrInner = renderHeaderInner(_hdrCfg, {
+    clinic_name: clinicName, doctor_name: docName,
+    doctor_title: (settings as any).doctor_title || '', doctor_degrees: degrees,
+    clinic_address: clinicAddr, clinic_phone: clinicPhone, doctor_reg_no: drReg,
+  }, {
+    esc: escapeHtml,
+    title: (t) => `<div class="clinic-doc">${t}</div>`,
+    degrees: (t) => `<div class="clinic-deg">${t}</div>`,
+    reg: (t) => `<div class="clinic-deg">Reg ${t}</div>`,
+    line: (t) => `<div class="clinic-name">${t}</div>`,
+  });
 
   const titleTriplet = SECTIONS.consentTitle;
   const titlePrimary = titleTriplet[(['en', 'hi', 'gu'] as Lang[]).indexOf(lang)];
@@ -843,10 +856,7 @@ export function buildConsentHtml(c: ConsentDoc, settings: ClinicSettings = {}): 
         </div>
       </div>
       <div class="clinic-block">
-        <div class="clinic-doc">${escapeHtml(docName)}</div>
-        <div class="clinic-deg">${escapeHtml(degrees)} · Reg ${escapeHtml(drReg)}</div>
-        <div class="clinic-name">${escapeHtml(clinicName)}</div>
-        <div class="clinic-addr">${escapeHtml(clinicAddr)} · ${escapeHtml(clinicPhone)}</div>
+        ${_hdrInner}
       </div>
     </div>
   </div>

@@ -504,6 +504,13 @@ class ClinicSettingsPatch(BaseModel):
     # the renderer falls back to the built-in defaults.
     patient_education_html: Optional[str] = None
     need_help_html: Optional[str] = None
+    # Per-document PDF header configuration. Keyed by document type
+    # (prescription|receipt|discharge|consent|medical_certificate|encounter).
+    # Each value: { logo_b64, title_source: 'clinic'|'doctor',
+    #   lines: [{ key, visible, text, order }] }. Lets the owner pick a
+    # left logo, choose which line is the big title, and reorder / show-
+    # hide / edit each header line independently per document.
+    doc_headers: Optional[Dict[str, Any]] = None
     doctor_name: Optional[str] = None        # e.g. "Dr Ajay Mehta"
     doctor_title: Optional[str] = None       # e.g. "Consultant Urologist"
     doctor_tagline: Optional[str] = None

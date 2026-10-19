@@ -29,11 +29,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, RADIUS } from './theme';
 import { HomepagePanel } from './homepage-panel';
 import BrandingPanel from './branding-panel-lazy';
+import DocHeaderSettingsPanel from './doc-header-settings-panel';
 import GoogleReviewSettingsPanel from './google-review-settings';
 import FeaturedReviewsAdminPanel from './featured-reviews-admin-panel';
 import { useResponsive } from './responsive';
 
-type Category = 'home' | 'branding' | 'rx' | 'reviews' | 'featured';
+type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'reviews' | 'featured';
 
 const CATEGORIES: {
   key: Category;
@@ -66,6 +67,14 @@ const CATEGORIES: {
     icon: 'document-text',
     color: '#7C3AED',
     desc: 'Letterhead, Patient Education and Need-Help blocks printed on every Rx.',
+  },
+  {
+    key: 'docheaders',
+    label: 'Document Headers',
+    short: 'Headers',
+    icon: 'documents',
+    color: '#0891B2',
+    desc: 'Per-document logo + reorderable, editable header lines for every PDF (Rx, receipt, discharge, consent, certificate, encounter).',
   },
   {
     key: 'reviews',
@@ -144,6 +153,7 @@ export default function BrandingSettingsPanel() {
         )}
         {cat === 'branding' && <BrandingPanel category="full" />}
         {cat === 'rx' && <BrandingPanel category="rx" />}
+        {cat === 'docheaders' && <DocHeaderSettingsPanel />}
         {cat === 'reviews' && <GoogleReviewSettingsPanel />}
         {cat === 'featured' && <FeaturedReviewsAdminPanel />}
       </View>

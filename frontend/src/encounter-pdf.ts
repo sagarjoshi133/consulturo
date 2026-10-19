@@ -12,6 +12,7 @@
 
 import QRCode from 'qrcode';
 import { LOGO_URL } from './theme';
+import { getDocHeaderCfg, headerLogoSrc, renderHeaderInner } from './pdf-header';
 import { parseBackendDate, formatISTDate, formatISTTime } from './date';
 import { loadClinicSettings, type ClinicSettings } from './rx-pdf';
 
@@ -89,6 +90,20 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
 
   const letterheadEnabled = !!(settings.use_letterhead && (settings.letterhead_image_b64 || '').trim());
   const letterheadSrc = letterheadEnabled ? String(settings.letterhead_image_b64 || '').trim() : '';
+
+  const _hdrCfg = getDocHeaderCfg((settings as any).doc_headers, 'encounter');
+  const _hdrLogo = headerLogoSrc(_hdrCfg, LOGO_URL);
+  const _hdrInner = renderHeaderInner(_hdrCfg, {
+    clinic_name: clinicName, doctor_name: doctorName, doctor_title: (settings.doctor_title || '').trim(),
+    doctor_degrees: degrees, clinic_address: clinicAddr, clinic_phone: clinicPhone,
+    doctor_reg_no: drReg,
+  }, {
+    esc: escapeHtml,
+    title: (t) => `<h1>${t}</h1>`,
+    degrees: (t) => `<div class="degrees">${t}</div>`,
+    reg: (t) => `<p style="font-size:9.5px;">Reg. No. ${t}</p>`,
+    line: (t) => `<p>${t}</p>`,
+  });
 
   const ageSex = [enc.patient_age || '', enc.patient_sex || ''].filter((x) => String(x).trim()).join(' / ');
 
@@ -246,12 +261,9 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
   </div>` : `
   <div class="head">
     <div class="brand">
-      <img src="${LOGO_URL}"/>
+      <img src="${_hdrLogo}"/>
       <div class="info">
-        <h1>${escapeHtml(doctorName)}</h1>
-        <div class="degrees">${escapeHtml(degrees)}</div>
-        <p>${escapeHtml(clinicName)} · ${escapeHtml(clinicPhone)}</p>
-        <p style="font-size:9.5px;">Reg. No. ${escapeHtml(drReg)}</p>
+        ${_hdrInner}
       </div>
     </div>
     <div class="meta">

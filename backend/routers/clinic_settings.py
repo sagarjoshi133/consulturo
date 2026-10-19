@@ -105,6 +105,7 @@ _DEFAULT_CLINIC_SETTINGS: Dict[str, Any] = {
     "rx_print_top_mm": 40,
     "patient_education_html": "",
     "need_help_html": "",
+    "doc_headers": {},
     "social_facebook": "",
     "social_instagram": "",
     "social_twitter": "",

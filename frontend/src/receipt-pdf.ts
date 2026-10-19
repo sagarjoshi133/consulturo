@@ -27,6 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
 import QRCode from 'qrcode';
 import { LOGO_URL } from './theme';
+import { getDocHeaderCfg, headerLogoSrc, renderHeaderInner } from './pdf-header';
 import { loadClinicSettings, ClinicSettings } from './rx-pdf';
 import api from './api';
 
@@ -175,6 +176,22 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
 
   const letterheadOn = !!(s.use_letterhead && (s.letterhead_image_b64 || '').trim());
   const letterheadSrc = letterheadOn ? String(s.letterhead_image_b64 || '').trim() : '';
+
+  // Per-document configurable header. Receipt defaults to the clinic
+  // name as the title; the owner can flip this under Branding.
+  const _hdrCfg = getDocHeaderCfg((s as any).doc_headers, 'receipt');
+  const _hdrLogo = headerLogoSrc(_hdrCfg, LOGO_URL);
+  const _hdrInner = renderHeaderInner(_hdrCfg, {
+    clinic_name: clinicName, doctor_name: doctorName, doctor_title: doctorTitle,
+    doctor_degrees: degrees, clinic_address: clinicAddr, clinic_phone: clinicPhone,
+    doctor_reg_no: drReg,
+  }, {
+    esc: escapeHtml,
+    title: (t) => `<h1>${t}</h1>`,
+    degrees: (t) => `<div class="degrees">${t}</div>`,
+    reg: (t) => `<p class="regno">Reg. No. ${t}</p>`,
+    line: (t) => `<p>${t}</p>`,
+  });
 
   const items = r.items || [];
   const itemRows = items.map((it, i) => {
@@ -674,13 +691,9 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   </div>` : `
   <div class="head">
     <div class="brand">
-      <img src="${LOGO_URL}" alt="logo"/>
+      <img src="${_hdrLogo}" alt="logo"/>
       <div class="info">
-        <h1>${escapeHtml(doctorName)}</h1>
-        <div class="degrees">${escapeHtml(degrees)}</div>
-        <p>${escapeHtml(doctorTitle)}</p>
-        <p>${escapeHtml(clinicName)} · ${escapeHtml(clinicPhone)}</p>
-        <p class="regno">Reg. No. ${escapeHtml(drReg)}</p>
+        ${_hdrInner}
       </div>
     </div>
     <div class="meta">
