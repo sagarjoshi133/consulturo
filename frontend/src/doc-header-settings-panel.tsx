@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS } from './theme';
 import api from './api';
-import { useToast } from './toast';
 import { invalidateClinicSettingsCache } from './rx-pdf';
 import { clearClinicSettingsCache } from './clinic-settings';
 import {
@@ -30,9 +29,9 @@ const LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export default function DocHeaderSettingsPanel() {
-  const toast = useToast();
   const [docType, setDocType] = useState<DocHeaderType>('prescription');
   const [all, setAll] = useState<any>({});
+  const [flags, setFlags] = useState<{ use_letterhead?: boolean; letterhead_image_b64?: string; rx_print_mode?: boolean }>({});
   const [cfg, setCfg] = useState<DocHeaderCfg>(() => getDocHeaderCfg({}, 'prescription'));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,6 +41,11 @@ export default function DocHeaderSettingsPanel() {
       try {
         const { data } = await api.get('/clinic-settings');
         setAll(data?.doc_headers || {});
+        setFlags({
+          use_letterhead: !!data?.use_letterhead,
+          letterhead_image_b64: data?.letterhead_image_b64 || '',
+          rx_print_mode: !!data?.rx_print_mode,
+        });
       } catch { /* defaults */ }
       finally { setLoading(false); }
     })();
@@ -131,6 +135,27 @@ export default function DocHeaderSettingsPanel() {
           })}
         </View>
       </ScrollView>
+
+      {/* Precedence notice — "Prescription Look" letterhead / print mode
+          overrides these per-document header settings. Keeps the two
+          Branding areas from silently colliding. */}
+      {(() => {
+        const bannerOverrides = ['prescription', 'receipt', 'encounter', 'discharge', 'medical_certificate'];
+        const letterheadActive = !!flags.use_letterhead && !!(flags.letterhead_image_b64 || '').trim();
+        const printActive = docType === 'prescription' && !!flags.rx_print_mode;
+        const bannerHits = letterheadActive && bannerOverrides.includes(docType);
+        if (!bannerHits && !printActive) return null;
+        return (
+          <View style={styles.noticeCard} testID="dh-override-notice">
+            <Ionicons name="information-circle" size={18} color="#B45309" />
+            <Text style={styles.noticeTxt}>
+              {printActive
+                ? 'Print Mode is ON under “Prescription Look”, so the prescription header & footer are suppressed. These header settings won’t appear until you turn Print Mode off.'
+                : 'A full-width letterhead banner is enabled under “Prescription Look”. It replaces this configurable header for this document. Turn the letterhead off there to use these settings.'}
+            </Text>
+          </View>
+        );
+      })()}
 
       {/* Logo */}
       <Text style={styles.sectionLabel}>Header logo (left side)</Text>
@@ -237,4 +262,6 @@ const styles = StyleSheet.create({
   eyeBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   lineInput: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: 10, paddingVertical: Platform.OS === 'ios' ? 10 : 7, fontSize: 13, color: COLORS.textPrimary, backgroundColor: '#FCFEFE' },
   hint: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11.5, marginTop: 10, lineHeight: 17 },
+  noticeCard: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1, borderRadius: RADIUS.md, padding: 10, marginBottom: 14 },
+  noticeTxt: { ...FONTS.body, color: '#92400E', fontSize: 12, lineHeight: 17, flex: 1 },
 });
