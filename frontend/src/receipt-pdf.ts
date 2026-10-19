@@ -188,6 +188,7 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   }, {
     esc: escapeHtml,
     title: (t) => `<h1>${t}</h1>`,
+    subtitle: (t) => `<div class="subname">${t}</div>`,
     degrees: (t) => `<div class="degrees">${t}</div>`,
     reg: (t) => `<p class="regno">Reg. No. ${t}</p>`,
     line: (t) => `<p>${t}</p>`,
@@ -313,6 +314,7 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   }
   .brand .info { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
   .brand h1 { margin: 0; color: #0E7C8B; font-size: 19px; letter-spacing: .3px; line-height: 1.15; }
+  .brand .subname { margin: 1px 0 0; color: #13343B; font-size: 14.5px; font-weight: 700; line-height: 1.2; }
   .brand .degrees { color: #1A2E35; font-size: 11px; font-weight: 600; margin-top: 3px; line-height: 1.3; }
   .brand p { margin: 2px 0 0; color: #5E7C81; font-size: 10.5px; line-height: 1.4; }
   .brand .regno { font-size: 9.5px; color: #5E7C81; }
@@ -641,6 +643,7 @@ async function buildHtml(r: Receipt, s: ClinicSettings, size: 'A4' | 'A5' = 'A4'
   .size-a5 .watermark { font-size: 80px; }
   .size-a5 .brand img { width: 52px; height: 52px; }
   .size-a5 .brand h1 { font-size: 15px; }
+  .size-a5 .brand .subname { font-size: 12px; }
   .size-a5 .brand .degrees { font-size: 9px; }
   .size-a5 .brand p { font-size: 8.5px; }
   .size-a5 .brand .regno { font-size: 8px; }

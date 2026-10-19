@@ -100,6 +100,7 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
   }, {
     esc: escapeHtml,
     title: (t) => `<h1>${t}</h1>`,
+    subtitle: (t) => `<div class="subname">${t}</div>`,
     degrees: (t) => `<div class="degrees">${t}</div>`,
     reg: (t) => `<p style="font-size:9.5px;">Reg. No. ${t}</p>`,
     line: (t) => `<p>${t}</p>`,
@@ -187,6 +188,7 @@ export async function buildEncounterHtml(enc: EncounterDoc, settings: ClinicSett
   .brand img{ width:72px; height:72px; border-radius:10px; object-fit:cover; flex-shrink:0; }
   .brand .info{ display:flex; flex-direction:column; flex:1 1 auto; min-width:0; }
   .brand h1{ margin:0; color:#0E7C8B; font-size:20px; letter-spacing:.3px; line-height:1.15; }
+  .brand .subname{ margin:1px 0 0; color:#13343B; font-size:15px; font-weight:700; line-height:1.2; }
   .brand .degrees{ color:#1A2E35; font-size:11px; font-weight:600; margin-top:3px; line-height:1.3; }
   .brand p{ margin:2px 0 0; color:#5E7C81; font-size:10.5px; line-height:1.4; }
   .meta{ text-align:right; font-size:10.5px; color:#5E7C81; align-self:flex-start; flex:0 0 auto; padding-top:2px; white-space:nowrap; }

@@ -318,6 +318,7 @@ export function buildConsentHtml(c: ConsentDoc, settings: ClinicSettings = {}): 
   }, {
     esc: escapeHtml,
     title: (t) => `<div class="clinic-doc">${t}</div>`,
+    subtitle: (t) => `<div class="clinic-sub">${t}</div>`,
     degrees: (t) => `<div class="clinic-deg">${t}</div>`,
     reg: (t) => `<div class="clinic-deg">Reg ${t}</div>`,
     line: (t) => `<div class="clinic-name">${t}</div>`,
@@ -418,6 +419,12 @@ export function buildConsentHtml(c: ConsentDoc, settings: ClinicSettings = {}): 
   }
   .clinic-name {
     font-size: 7.5pt;
+    color: #1A2E35;
+    margin-top: 1pt;
+  }
+  .clinic-sub {
+    font-size: 8.5pt;
+    font-weight: 700;
     color: #1A2E35;
     margin-top: 1pt;
   }

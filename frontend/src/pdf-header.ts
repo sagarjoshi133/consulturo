@@ -161,6 +161,7 @@ export function headerLogoSrc(cfg: DocHeaderCfg, fallback: string): string {
 
 type RenderTags = {
   title: (txt: string) => string;
+  subtitle: (txt: string) => string;
   degrees: (txt: string) => string;
   reg: (txt: string) => string;
   line: (txt: string) => string;
@@ -169,13 +170,16 @@ type RenderTags = {
 
 /** Render the ordered, visible header lines. `values` supplies the
  *  resolved clinic field values; a per-line `text` override wins when
- *  present. The title_source line is emitted via `tags.title`. */
+ *  present. The title_source line is emitted via `tags.title`; the OTHER
+ *  primary name (clinic/doctor) is emitted via `tags.subtitle` so it
+ *  stays prominent — one visual step below the main title. */
 export function renderHeaderInner(
   cfg: DocHeaderCfg,
   values: Partial<Record<HeaderLineKey, string>>,
   tags: RenderTags,
 ): string {
   const titleKey = TITLE_KEY[cfg.title_source];
+  const subtitleKey: HeaderLineKey = titleKey === 'clinic_name' ? 'doctor_name' : 'clinic_name';
   const parts: string[] = [];
   for (const ln of cfg.lines) {
     if (!ln.visible) continue;
@@ -183,6 +187,7 @@ export function renderHeaderInner(
     if (!raw) continue;
     const txt = tags.esc(raw);
     if (ln.key === titleKey) parts.push(tags.title(txt));
+    else if (ln.key === subtitleKey) parts.push(tags.subtitle(txt));
     else if (ln.key === 'doctor_degrees') parts.push(tags.degrees(txt));
     else if (ln.key === 'doctor_reg_no') parts.push(tags.reg(txt));
     else parts.push(tags.line(txt));

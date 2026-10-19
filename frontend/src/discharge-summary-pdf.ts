@@ -178,6 +178,7 @@ export function buildDischargeSummaryHtml(bundle: Bundle): string {
   }, {
     esc,
     title: (t) => `<h1>${t}</h1>`,
+    subtitle: (t) => `<div class="subname">${t}</div>`,
     degrees: (t) => `<div class="degrees">${t}</div>`,
     reg: (t) => `<div class="reg">Reg. No. ${t}</div>`,
     line: (t) => `<div class="clinicLine">${t}</div>`,
@@ -231,6 +232,7 @@ export function buildDischargeSummaryHtml(bundle: Bundle): string {
  .head .info { flex: 1; }
  .head .logoImg { width: 60px; height: 60px; border-radius: 10px; object-fit: contain; flex-shrink: 0; background: #fff; }
  .head h1 { margin: 0; font-size: 20px; color: #0F172A; letter-spacing: 0.4px; font-weight: 800; }
+ .head .subname { margin: 1px 0 0; font-size: 15px; color: ${accentDark}; font-weight: 700; line-height: 1.2; }
  .head .degrees { font-size: 10.5px; color: ${accentDark}; margin-top: 2px; font-style: italic; font-weight: 600; }
  .head .clinicLine { font-size: 10.5px; color: #4B5563; margin-top: 3px; line-height: 1.5; }
  .head .reg { font-size: 9.5px; color: #6B7280; margin-top: 2px; }
