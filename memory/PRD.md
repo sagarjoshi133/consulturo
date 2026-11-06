@@ -1088,3 +1088,10 @@ NEEDS REDEPLOY for production.
 - doctor.py: _centre_hours_from_availability() derives each centre's weekly hours from the
   availability doc's location-tagged in-person windows; About clinics show derived hours (fallback to
   manual loc.hours). Picks the availability doc that actually carries centre-tagged windows.
+
+## About polish + centre map thumbnail (2026-06)
+- About page Education now card-style (left accent bar + solid primary degree/year badge); Services
+  chips are rounded bordered pills (app/about.tsx styles).
+- src/map-thumbnail.tsx: keyless Google Maps embed preview (iframe on web, non-interactive WebView on
+  native) with "Open map" pill; tap opens map_url/search. Added to booking centre cards (collapsed
+  selected + expanded list) in app/(tabs)/book.tsx; cards restructured to column (centreCardCol/centreRow).

@@ -407,11 +407,11 @@ const styles = StyleSheet.create({
   bulletDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   bulletText: { ...FONTS.body, color: COLORS.textPrimary, flex: 1, lineHeight: 20 },
 
-  quaRow: { flexDirection: 'row', marginBottom: 14, gap: 10 },
-  quaDeg: { backgroundColor: COLORS.primary + '18', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, alignSelf: 'flex-start', minWidth: 70, alignItems: 'center' },
-  quaDegText: { ...FONTS.label, color: COLORS.primary, fontSize: 11 },
-  quaYear: { ...FONTS.body, color: COLORS.primary, fontSize: 10, marginTop: 2 },
-  quaInst: { ...FONTS.bodyMedium, color: COLORS.textPrimary },
+  quaRow: { flexDirection: 'row', marginBottom: 10, gap: 12, backgroundColor: COLORS.primary + '08', borderRadius: 12, borderLeftWidth: 3, borderLeftColor: COLORS.primary, padding: 12 },
+  quaDeg: { backgroundColor: COLORS.primary, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9, alignSelf: 'flex-start', minWidth: 74, alignItems: 'center' },
+  quaDegText: { ...FONTS.label, color: '#fff', fontSize: 11.5, fontWeight: '700' },
+  quaYear: { ...FONTS.body, color: '#E0F7FA', fontSize: 10, marginTop: 2 },
+  quaInst: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 13.5, lineHeight: 19 },
   quaNote: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 18 },
 
   expRow: { flexDirection: 'row', gap: 12, marginBottom: 12, alignItems: 'flex-start' },
@@ -438,8 +438,8 @@ const styles = StyleSheet.create({
   },
   catBadgeText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 10 },
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  serviceChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.bg, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 },
-  serviceText: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 12 },
+  serviceChip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.primary + '22', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20 },
+  serviceText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 12.5 },
 
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   memberText: { ...FONTS.body, color: COLORS.textPrimary, flex: 1 },
