@@ -61,6 +61,8 @@ type Booking = {
   booking_time?: string;
   status?: string;
   consultation_done?: boolean;
+  mode?: string;
+  location_name?: string;
 };
 
 type Analytics = {
@@ -332,6 +334,7 @@ export default function OwnerHome({
                   </Text>
                   <Text style={styles.bookingMeta} numberOfLines={1}>
                     {b.patient_phone || ''} {b.status ? `· ${b.status}` : ''}
+                    {b.mode !== 'online' && b.location_name ? ` · ${b.location_name}` : ''}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />

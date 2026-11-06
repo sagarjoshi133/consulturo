@@ -228,6 +228,7 @@ export default function StaffBookingsScreen() {
                         {b.registration_no ? `#${b.registration_no} · ` : ''}
                         {b.patient_phone || ''}
                         {b.mode ? ` · ${b.mode === 'online' || b.mode === 'video' ? 'video' : 'in-person'}` : ''}
+                        {b.mode !== 'online' && b.mode !== 'video' && (b as any).location_name ? ` · ${(b as any).location_name}` : ''}
                       </Text>
                     </View>
                     <View style={[styles.statusPill, statusStyle(b.status)]}>

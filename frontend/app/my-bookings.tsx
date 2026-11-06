@@ -408,6 +408,9 @@ function MyBookingsImpl() {
                   <View style={styles.cardFoot}>
                     <Ionicons name={(b.mode === 'online' || b.mode === 'video') ? 'logo-whatsapp' : 'medical'} size={14} color={COLORS.primary} />
                     <Text style={styles.cardMode}>{(b.mode === 'online' || b.mode === 'video') ? 'Online' : 'In-person'}</Text>
+                    {b.mode !== 'online' && b.mode !== 'video' && (b as any).location_name ? (
+                      <Text style={styles.cardMode} numberOfLines={1}>· {(b as any).location_name}</Text>
+                    ) : null}
                     <Text style={styles.cardId}>ID: {b.booking_id}</Text>
                   </View>
 

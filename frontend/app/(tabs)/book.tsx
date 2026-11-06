@@ -190,6 +190,25 @@ export default function Book() {
   const [requestOnly, setRequestOnly] = useState(false);
   const [centreExpanded, setCentreExpanded] = useState(false);
   const selectedCentre = centres.find((c) => c.id === centreId) || null;
+  // Weekly hours per centre (auto-derived from availability via /api/doctor),
+  // shown as a summary line under each centre so patients know the opening days/times.
+  const [centreHours, setCentreHours] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/doctor', { params: { lang: 'en' } });
+        const map: Record<string, string> = {};
+        (data?.clinics || []).forEach((c: any) => {
+          if (c?.id && c?.hours) map[c.id] = c.hours;
+        });
+        if (!cancelled) setCentreHours(map);
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -407,6 +426,12 @@ export default function Book() {
                       <Text style={styles.contactText}>{selectedCentre.address}</Text>
                     </View>
                   )}
+                  {!!centreHours[selectedCentre.id] && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="time-outline" size={15} color={themeColors.primary} />
+                      <Text style={styles.contactText}>{centreHours[selectedCentre.id]}</Text>
+                    </View>
+                  )}
                 </>
               ) : (
                 <>
@@ -419,13 +444,13 @@ export default function Book() {
                       <Text style={styles.contactText}>{clinicInfo.clinic_address}</Text>
                     </View>
                   )}
+                  {!!clinicInfo?.clinic_hours && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="time-outline" size={15} color={themeColors.primary} />
+                      <Text style={styles.contactText}>{clinicInfo.clinic_hours}</Text>
+                    </View>
+                  )}
                 </>
-              )}
-              {!!clinicInfo?.clinic_hours && (
-                <View style={styles.contactRow}>
-                  <Ionicons name="time-outline" size={15} color={themeColors.primary} />
-                  <Text style={styles.contactText}>{clinicInfo.clinic_hours}</Text>
-                </View>
               )}
 
               <View style={styles.contactCtas}>
@@ -787,7 +812,14 @@ export default function Book() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.centreName, { color: COLORS.primary }]}>{selectedCentre.name}</Text>
                     {!!selectedCentre.address && <Text style={styles.centreAddr} numberOfLines={2}>{selectedCentre.address}</Text>}
-                    {selectedCentre.request_only ? <Text style={styles.centreBadge}>By prior confirmation only</Text> : null}
+                    {selectedCentre.request_only ? (
+                      <Text style={styles.centreBadge}>By prior confirmation only</Text>
+                    ) : !!centreHours[selectedCentre.id] && (
+                      <View style={styles.centreHoursRow}>
+                        <Ionicons name="time-outline" size={12} color={COLORS.whatsapp} />
+                        <Text style={styles.centreHoursTxt}>{centreHours[selectedCentre.id]}</Text>
+                      </View>
+                    )}
                   </View>
                   {!!selectedCentre.map_url && (
                     <TouchableOpacity onPress={() => Linking.openURL(selectedCentre.map_url!)} style={styles.dirBtn} testID="booking-centre-dir-selected" hitSlop={8}>
@@ -818,7 +850,12 @@ export default function Book() {
                         {!!c.address && <Text style={styles.centreAddr} numberOfLines={2}>{c.address}</Text>}
                         {c.request_only ? (
                           <Text style={styles.centreBadge}>By prior confirmation only</Text>
-                        ) : null}
+                        ) : !!centreHours[c.id] && (
+                          <View style={styles.centreHoursRow}>
+                            <Ionicons name="time-outline" size={12} color={COLORS.whatsapp} />
+                            <Text style={styles.centreHoursTxt}>{centreHours[c.id]}</Text>
+                          </View>
+                        )}
                       </View>
                       {!!c.map_url && (
                         <TouchableOpacity
@@ -1249,6 +1286,8 @@ const styles = StyleSheet.create({
   centreName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14 },
   centreAddr: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 16 },
   centreBadge: { ...FONTS.bodyMedium, color: COLORS.warning, fontSize: 11, marginTop: 4 },
+  centreHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  centreHoursTxt: { ...FONTS.bodyMedium, color: COLORS.whatsapp, fontSize: 11.5 },
   requestCard: { marginTop: 18, padding: 18, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.primary + '33', backgroundColor: COLORS.primary + '0D', alignItems: 'center' },
   requestTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 15, marginTop: 8, textAlign: 'center' },
   requestBody: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 },

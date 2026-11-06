@@ -118,6 +118,22 @@ export function AvailabilityPanel() {
     setTimeout(() => setMsg(''), 4000);
   };
 
+  // Quick week presets — apply the selected day's hours to a common set
+  // of days in one tap and close the rest. Falls back to a 10–1 block
+  // when the selected day has no hours yet.
+  const applyPreset = (label: string, openKeys: DayKey[]) => {
+    let template = winsFor(activeDay).map((w) => ({ start: w.start, end: w.end }));
+    if (!template.length) template = [{ start: '10:00', end: '13:00' }];
+    DAYS.forEach((d) => setWins(d.key, openKeys.includes(d.key) ? template.map((w) => ({ ...w })) : []));
+    setMsg(`Preset applied: ${label} (${template.map((w) => `${display12h(w.start)}–${display12h(w.end)}`).join(', ')}). Tap Save to confirm.`);
+    setTimeout(() => setMsg(''), 4000);
+  };
+  const PRESETS: { label: string; keys: DayKey[] }[] = [
+    { label: 'Mon–Sat', keys: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] },
+    { label: 'Mon–Fri', keys: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    { label: 'All week', keys: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] },
+  ];
+
   const save = async () => {
     if (!data) return;
     setSaving(true);
@@ -213,6 +229,24 @@ export function AvailabilityPanel() {
 
       {(mode === 'on' || centres.length > 0) && (
         <>
+          {/* ── Quick week presets ───────────────────────────────────── */}
+          <View style={styles.presetWrap}>
+            <Text style={styles.presetLabel}>Quick set — uses {DAYS.find((d) => d.key === activeDay)?.full}'s hours:</Text>
+            <View style={styles.presetRow}>
+              {PRESETS.map((p) => (
+                <TouchableOpacity
+                  key={p.label}
+                  onPress={() => applyPreset(p.label, p.keys)}
+                  style={[styles.presetChip, { borderColor: accent }]}
+                  testID={`avail-preset-${p.label}`}
+                >
+                  <Ionicons name="flash" size={13} color={accent} />
+                  <Text style={[styles.presetChipTxt, { color: accent }]}>{p.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           {/* ── Week overview chips ──────────────────────────────────── */}
           <View style={styles.weekRow}>
             {DAYS.map((d) => {
@@ -335,6 +369,12 @@ const styles = StyleSheet.create({
   segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.pill },
   segTxt: { ...FONTS.bodyMedium, color: COLORS.textSecondary, fontSize: 13 },
   contextHint: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 12, lineHeight: 17 },
+
+  presetWrap: { marginTop: 16 },
+  presetLabel: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10, marginBottom: 8 },
+  presetRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  presetChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.pill, borderWidth: 1 },
+  presetChipTxt: { ...FONTS.bodyMedium, fontSize: 12.5 },
 
   noCentre: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: COLORS.accent + '12', padding: 12, borderRadius: RADIUS.md, marginTop: 14 },
   noCentreTxt: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 12.5, flex: 1, lineHeight: 18 },

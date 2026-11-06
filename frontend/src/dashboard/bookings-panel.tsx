@@ -845,6 +845,12 @@ export default function BookingsPanel({ onMessagePatient }: { onMessagePatient?:
                   <Text style={styles.bkMeta}>
                     {displayDateLong(b.booking_date)} · {display12h(b.booking_time)}
                   </Text>
+                  {(b as any).mode !== 'online' && (b as any).location_name ? (
+                    <View style={styles.bkCentreRow}>
+                      <Ionicons name="location" size={12} color={COLORS.primary} />
+                      <Text style={styles.bkCentreText} numberOfLines={1}>{(b as any).location_name}</Text>
+                    </View>
+                  ) : null}
                   {wasRescheduled && b.status !== 'requested' && (
                     <Text style={[styles.bkMeta, { color: COLORS.accent }]}>
                       (Rescheduled from {displayDate(b.original_date)} {display12h(b.original_time)})

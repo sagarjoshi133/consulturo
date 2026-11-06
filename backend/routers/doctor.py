@@ -245,6 +245,7 @@ async def get_doctor_info(lang: str = "en"):
         hours_map = await _centre_hours_from_availability(_db, [l.get("id") for l in locations if l.get("id")])
         base["clinics"] = [
             {
+                "id": loc.get("id"),
                 "name": loc.get("name", ""),
                 "address": loc.get("address", ""),
                 "map_url": loc.get("map_url", ""),

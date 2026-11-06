@@ -54,6 +54,8 @@ type Booking = {
   start_time?: string;
   booking_time?: string;
   status?: string;
+  mode?: string;
+  location_name?: string;
 };
 
 export default function StaffHome({
@@ -269,6 +271,7 @@ export default function StaffHome({
                   </Text>
                   <Text style={styles.bookingMeta} numberOfLines={1}>
                     {b.patient_phone || ''} {b.status ? `· ${b.status}` : ''}
+                    {b.mode !== 'online' && b.location_name ? ` · ${b.location_name}` : ''}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />

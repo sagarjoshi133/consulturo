@@ -471,6 +471,9 @@ export function BookingDetailPane({ idOverride, embedded }: { idOverride?: strin
             />
           ) : null}
           {rx.mode ? <Row label="Mode" value={rx.mode === 'online' || rx.mode === 'video' ? 'Video' : 'In-person'} /> : null}
+          {rx.mode !== 'online' && rx.mode !== 'video' && (rx as any).location_name ? (
+            <Row label="Centre" value={(rx as any).location_name} />
+          ) : null}
           {rx.registration_no ? <Row label="Reg. No." value={rx.registration_no} /> : null}
           {wasRescheduled && rx.status !== 'requested' ? (
             <Row label="Previously" value={`${displayDate(rx.original_date || '')} at ${display12h(rx.original_time || '')}`} valueColor={COLORS.accent} />

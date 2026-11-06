@@ -1120,3 +1120,17 @@ tag windows (09-13→loc-racecourse, 16-20→loc-shivansh).
 Also: fixed stale-closure in centres-settings-panel.tsx (request_only Switch persisted stale
 state via setTimeout(commit)); now persists the computed next array via centresRef.
 Verified: Race Course Mon → 9:00 AM; Shivansh → 4:00 PM; Bhayli → request-only card.
+
+## Centre everywhere + hours summary + availability presets (2026-06)
+- Booking page: centre weekly-hours summary line under each centre + on confirmation screen,
+  sourced from /api/doctor clinics (added `id` field to clinics in doctor.py). book.tsx fetches
+  /doctor and maps hours by centre id (centreHours).
+- Availability panel: Quick-set presets (Mon–Sat / Mon–Fri / All week) that apply the selected
+  day's hours to that set and close the rest (availability-panel.tsx applyPreset/PRESETS).
+- Centre (location_name) now shown across all booking surfaces: dashboard bookings-panel cards,
+  staff-bookings-screen rows, booking detail (app/bookings/[id].tsx Centre row), my-bookings,
+  owner-home & staff-home "next appointments".
+- Centre added to ALL booking notifications in routers/bookings.py: new-request Telegram + push,
+  confirmed/rejected/cancelled/rescheduled Telegram, patient-cancel Telegram, and the patient
+  confirm WhatsApp text (replaced hardcoded "Sterling Hospitals, Vadodara" with actual centre).
+- Verified: lifecycle create(in-person+centre)->confirm->cancel->delete all 200; location_name persists.

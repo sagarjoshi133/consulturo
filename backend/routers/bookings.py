@@ -473,7 +473,9 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         f"{' · ' + htmllib.escape(payload.patient_gender) if payload.patient_gender else ''}\n"
         f"📞 {htmllib.escape(payload.country_code or '+91')} {htmllib.escape(payload.patient_phone)}\n"
         f"📅 {payload.booking_date} · 🕘 {payload.booking_time} ({mode_label})\n"
-        f"📝 {htmllib.escape(payload.reason)[:400]}\n"
+        + (f"📍 {htmllib.escape(payload.location_name)}\n"
+           if (payload.mode == "in-person" and payload.location_name) else "")
+        + f"📝 {htmllib.escape(payload.reason)[:400]}\n"
         f"🆔 <code>{booking_id}</code>\n"
         f'<a href="{wa_link}">📲 Send WhatsApp to patient</a>\n'
         f"⚠️ Awaiting your confirmation in the app."
@@ -486,7 +488,11 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
     _note_snip = ""
     if _reason:
         _note_snip = " — " + (_reason[:80] + "…" if len(_reason) > 80 else _reason)
-    _push_body = f"{payload.patient_name} · {payload.booking_date} {payload.booking_time}{_note_snip}"
+    _centre_snip = (
+        f" · {payload.location_name}"
+        if (payload.mode == "in-person" and payload.location_name) else ""
+    )
+    _push_body = f"{payload.patient_name} · {payload.booking_date} {payload.booking_time}{_centre_snip}{_note_snip}"
     # Push to owner's devices too
     await push_to_owner(
         "New appointment request",
@@ -1033,13 +1039,18 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
     # confirmed booking would double-fire "Appointment confirmed".
     status_just_changed = ("status" in updates) and (updates.get("status") != existing.get("status"))
 
+    # Centre (physical consultation centre) for in-person bookings — surfaced
+    # in every patient/staff notification so everyone knows WHERE the visit is.
+    _centre = (existing.get("location_name") or "").strip() if (existing.get("mode") or "") == "in-person" else ""
+    _centre_tg = f"📍 {htmllib.escape(_centre)}\n" if _centre else ""
+
     if status_just_changed and status_label == "confirmed":
         note_line = f"\nNote: {body.note}" if (body.note and body.note.strip()) else ""
         wa_text = (
             f"Dear {existing['patient_name']}, your appointment with Dr. Sagar Joshi is "
             f"CONFIRMED on {final_date} at {final_time}"
             f"{' (rescheduled from ' + existing['original_date'] + ' ' + existing['original_time'] + ')' if rescheduled else ''}. "
-            f"Clinic: Sterling Hospitals, Vadodara. Ref: {booking_id}. — ConsultUro"
+            f"{('Centre: ' + _centre + '. ') if _centre else ''}Ref: {booking_id}. — ConsultUro"
         )
         phone_digits_local = re.sub(r"\D", "", existing["patient_phone"])
         cc_digits = re.sub(r"\D", "", existing.get("country_code") or "+91") or "91"
@@ -1053,11 +1064,13 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
             f"👤 {htmllib.escape(existing['patient_name'])} — {htmllib.escape(existing['patient_phone'])}\n"
             f"📅 {final_date} · 🕘 {final_time}"
             f"{' (rescheduled)' if rescheduled else ''}\n"
-            f"🆔 <code>{booking_id}</code>\n"
+            + _centre_tg
+            + f"🆔 <code>{booking_id}</code>\n"
             f'<a href="{wa_link}">📲 Send WhatsApp to patient</a>'
         )
         push_body = (
-            f"Your visit on {final_date} at {final_time} is confirmed by Dr. Sagar Joshi."
+            f"Your visit on {final_date} at {final_time}"
+            f"{(' at ' + _centre) if _centre else ''} is confirmed by Dr. Sagar Joshi."
             + note_line
         )
         await push_to_user(
@@ -1187,7 +1200,8 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
         await notify_telegram(
             f"❌ <b>Appointment REJECTED</b>\n"
             f"👤 {htmllib.escape(existing['patient_name'])} · {existing['patient_phone']}\n"
-            f"🆔 <code>{booking_id}</code>"
+            + _centre_tg
+            + f"🆔 <code>{booking_id}</code>"
             + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
         )
         await push_to_user(
@@ -1216,7 +1230,8 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
         await notify_telegram(
             f"🚫 <b>Appointment CANCELLED</b>\n"
             f"👤 {htmllib.escape(existing['patient_name'])}\n"
-            f"🆔 <code>{booking_id}</code>"
+            + _centre_tg
+            + f"🆔 <code>{booking_id}</code>"
             + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
         )
         await push_to_user(
@@ -1276,7 +1291,8 @@ async def update_booking(booking_id: str, body: BookingStatusBody, user=Depends(
             f"🔁 <b>Appointment rescheduled</b>\n"
             f"👤 {htmllib.escape(existing['patient_name'])} · {existing.get('patient_phone','')}\n"
             f"📅 {final_date} · 🕘 {final_time}\n"
-            f"🆔 <code>{booking_id}</code>"
+            + _centre_tg
+            + f"🆔 <code>{booking_id}</code>"
             + (f"\n📝 {htmllib.escape(reason_text)[:400]}" if reason_text else "")
         )
 
@@ -1372,11 +1388,13 @@ async def patient_cancel_booking(
     await db.bookings.update_one({"booking_id": booking_id}, {"$set": updates})
 
     # Inform staff via Telegram + in-app notification
+    _c = (existing.get("location_name") or "").strip() if (existing.get("mode") or "") == "in-person" else ""
     await notify_telegram(
         "🚫 <b>Patient cancelled appointment</b>\n"
         f"👤 {htmllib.escape(existing['patient_name'])} · {existing.get('patient_phone','')}\n"
         f"📅 {existing['booking_date']} · 🕘 {existing['booking_time']}\n"
-        f"🆔 <code>{booking_id}</code>\n"
+        + (f"📍 {htmllib.escape(_c)}\n" if _c else "")
+        + f"🆔 <code>{booking_id}</code>\n"
         f"📝 {htmllib.escape(reason)[:400]}"
     )
     approvers_cursor = db.users.find(

@@ -217,6 +217,8 @@ export const styles = StyleSheet.create({
   bkHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   bkName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 16 },
   bkMeta: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  bkCentreRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  bkCentreText: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 12.5, flex: 1 },
   statusPill: { backgroundColor: COLORS.success + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   statusText: { ...FONTS.label, color: COLORS.success, fontSize: 11, textTransform: 'uppercase' },
   bkReason: { ...FONTS.body, color: COLORS.textPrimary, marginTop: 6 },
