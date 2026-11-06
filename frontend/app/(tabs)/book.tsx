@@ -27,7 +27,6 @@ import { useAuth } from '../../src/auth';
 import { useI18n } from '../../src/i18n';
 import LanguageDropdown from '../../src/language-dropdown';
 import { haptics } from '../../src/haptics';
-import MapThumbnail from '../../src/map-thumbnail';
 import { addBookingToCalendar } from '../../src/calendar';
 import { scheduleBookingReminders, REMINDER_LEADS, ReminderLead, labelFor } from '../../src/booking-reminders';
 import { CountryCodePicker, DEFAULT_COUNTRY, Country } from '../../src/country-code-picker';
@@ -783,23 +782,18 @@ export default function Book() {
               </View>
 
               {!centreExpanded && selectedCentre ? (
-                <View style={[styles.centreCardCol, styles.centreCardActive, { marginTop: 8 }]} testID="booking-centre-selected">
-                  <View style={styles.centreRow}>
-                    <Ionicons name="location" size={18} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.centreName, { color: COLORS.primary }]}>{selectedCentre.name}</Text>
-                      {!!selectedCentre.address && <Text style={styles.centreAddr} numberOfLines={2}>{selectedCentre.address}</Text>}
-                      {selectedCentre.request_only ? <Text style={styles.centreBadge}>By prior confirmation only</Text> : null}
-                    </View>
-                    {!!selectedCentre.map_url && (
-                      <TouchableOpacity onPress={() => Linking.openURL(selectedCentre.map_url!)} style={styles.dirBtn} testID="booking-centre-dir-selected" hitSlop={8}>
-                        <Ionicons name="navigate" size={15} color={COLORS.primary} />
-                        <Text style={styles.dirBtnTxt}>Directions</Text>
-                      </TouchableOpacity>
-                    )}
+                <View style={[styles.centreCard, styles.centreCardActive, { marginTop: 8 }]} testID="booking-centre-selected">
+                  <Ionicons name="location" size={18} color={COLORS.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.centreName, { color: COLORS.primary }]}>{selectedCentre.name}</Text>
+                    {!!selectedCentre.address && <Text style={styles.centreAddr} numberOfLines={2}>{selectedCentre.address}</Text>}
+                    {selectedCentre.request_only ? <Text style={styles.centreBadge}>By prior confirmation only</Text> : null}
                   </View>
-                  {!!selectedCentre.address && (
-                    <MapThumbnail query={selectedCentre.address} openUrl={selectedCentre.map_url} height={120} />
+                  {!!selectedCentre.map_url && (
+                    <TouchableOpacity onPress={() => Linking.openURL(selectedCentre.map_url!)} style={styles.dirBtn} testID="booking-centre-dir-selected" hitSlop={8}>
+                      <Ionicons name="navigate" size={15} color={COLORS.primary} />
+                      <Text style={styles.dirBtnTxt}>Directions</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               ) : (
@@ -807,44 +801,37 @@ export default function Book() {
                 {centres.map((c) => {
                   const active = centreId === c.id;
                   return (
-                    <View
+                    <TouchableOpacity
                       key={c.id}
-                      style={[styles.centreCardCol, active && styles.centreCardActive, !active && d.surface]}
+                      onPress={() => { haptics.select(); setCentreId(c.id); setCentreExpanded(false); }}
+                      style={[styles.centreCard, active && styles.centreCardActive, !active && d.surface]}
+                      testID={`booking-centre-${c.id}`}
+                      activeOpacity={0.85}
                     >
-                      <TouchableOpacity
-                        onPress={() => { haptics.select(); setCentreId(c.id); setCentreExpanded(false); }}
-                        style={styles.centreRow}
-                        testID={`booking-centre-${c.id}`}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons
-                          name={active ? 'radio-button-on' : 'radio-button-off'}
-                          size={18}
-                          color={active ? COLORS.primary : COLORS.textSecondary}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.centreName, active && { color: COLORS.primary }]}>{c.name}</Text>
-                          {!!c.address && <Text style={styles.centreAddr} numberOfLines={2}>{c.address}</Text>}
-                          {c.request_only ? (
-                            <Text style={styles.centreBadge}>By prior confirmation only</Text>
-                          ) : null}
-                        </View>
-                        {!!c.map_url && (
-                          <TouchableOpacity
-                            onPress={() => Linking.openURL(c.map_url!)}
-                            style={styles.dirBtn}
-                            testID={`booking-centre-dir-${c.id}`}
-                            hitSlop={8}
-                          >
-                            <Ionicons name="navigate" size={15} color={COLORS.primary} />
-                            <Text style={styles.dirBtnTxt}>Directions</Text>
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
-                      {!!c.address && (
-                        <MapThumbnail query={c.address} openUrl={c.map_url} height={110} />
+                      <Ionicons
+                        name={active ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={active ? COLORS.primary : COLORS.textSecondary}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.centreName, active && { color: COLORS.primary }]}>{c.name}</Text>
+                        {!!c.address && <Text style={styles.centreAddr} numberOfLines={2}>{c.address}</Text>}
+                        {c.request_only ? (
+                          <Text style={styles.centreBadge}>By prior confirmation only</Text>
+                        ) : null}
+                      </View>
+                      {!!c.map_url && (
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL(c.map_url!)}
+                          style={styles.dirBtn}
+                          testID={`booking-centre-dir-${c.id}`}
+                          hitSlop={8}
+                        >
+                          <Ionicons name="navigate" size={15} color={COLORS.primary} />
+                          <Text style={styles.dirBtnTxt}>Directions</Text>
+                        </TouchableOpacity>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -1257,8 +1244,7 @@ const styles = StyleSheet.create({
   subtitle: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 4 },
   modeRow: { flexDirection: 'row', gap: 10, marginTop: 20 },
   centreCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
-  centreCardCol: { padding: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
-  centreRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  centreCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
   centreCardActive: { borderColor: COLORS.primary, borderWidth: 1.5, backgroundColor: COLORS.primary + '0D' },
   centreName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14 },
   centreAddr: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 16 },

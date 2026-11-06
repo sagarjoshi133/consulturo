@@ -9,6 +9,7 @@ import LanguageDropdown from '../src/language-dropdown';
 import { useI18n } from '../src/i18n';
 import { useResponsive } from '../src/responsive';
 import { useDarkOverrides } from '../src/dark-mode';
+import MapThumbnail from '../src/map-thumbnail';
 
 export default function About() {
   const router = useRouter();
@@ -192,15 +193,26 @@ export default function About() {
 
         <Section icon="location" title={t('about.clinics')}>
           {info.clinics?.map((c: any, i: number) => (
-            <View key={i} style={styles.clinicRow}>
-              <View style={styles.clinicDot}>
-                <Ionicons name="medkit" size={18} color={COLORS.primary} />
+            <View key={i} style={styles.clinicCard}>
+              <View style={styles.clinicRow}>
+                <View style={styles.clinicDot}>
+                  <Ionicons name="medkit" size={18} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clinicName}>{c.name}</Text>
+                  <Text style={styles.clinicAddr}>{c.address}</Text>
+                  <Text style={styles.clinicHours}>{c.hours}</Text>
+                </View>
+                {!!c.map_url && (
+                  <TouchableOpacity onPress={() => Linking.openURL(c.map_url)} style={styles.clinicDirBtn} hitSlop={8}>
+                    <Ionicons name="navigate" size={14} color={COLORS.primary} />
+                    <Text style={styles.clinicDirTxt}>Directions</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.clinicName}>{c.name}</Text>
-                <Text style={styles.clinicAddr}>{c.address}</Text>
-                <Text style={styles.clinicHours}>{c.hours}</Text>
-              </View>
+              {!!(c.address || c.map_url) && (
+                <MapThumbnail query={c.address || c.name} openUrl={c.map_url} height={120} />
+              )}
             </View>
           ))}
           <View style={styles.clinicsNote}>
@@ -444,7 +456,10 @@ const styles = StyleSheet.create({
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   memberText: { ...FONTS.body, color: COLORS.textPrimary, flex: 1 },
 
-  clinicRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  clinicCard: { marginBottom: 14, gap: 10 },
+  clinicRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  clinicDirBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10' },
+  clinicDirTxt: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 11 },
   clinicDot: { width: 36, height: 36, borderRadius: 12, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' },
   clinicName: { ...FONTS.bodyMedium, color: COLORS.textPrimary },
   clinicAddr: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
