@@ -379,6 +379,35 @@ def tenant_filter(
 
 
 # ── Public lookup ───────────────────────────────────────────────────────
+async def resolve_public_settings_id(clinic_id: Optional[str]) -> str:
+    """Resolve which `clinic_settings._id` a PUBLIC (unscoped) reader
+    should use.
+
+    The owner's edits land on their real clinic doc (`_id == clinic_id`),
+    but patient-app / main-app readers arrive WITHOUT an X-Clinic-Id
+    header, which historically fell back to the legacy `_id="default"`
+    doc — causing the owner's centre/about/availability edits to be
+    invisible on the public booking + About pages.
+
+    Resolution:
+      1. explicit clinic_id (from X-Clinic-Id / slug) → that doc.
+      2. no clinic context → the single real clinic doc that actually
+         carries config (locations/about_overrides), mirroring
+         /api/doctor. Falls back to "default" when none exists.
+    """
+    if clinic_id:
+        if await db.clinic_settings.find_one({"_id": clinic_id}, {"_id": 1}):
+            return clinic_id
+        return "default"
+    doc = await db.clinic_settings.find_one(
+        {"_id": {"$ne": "default"},
+         "$or": [{"locations": {"$exists": True, "$not": {"$size": 0}}},
+                 {"about_overrides": {"$nin": [None, {}]}}]},
+        {"_id": 1},
+    )
+    return doc["_id"] if doc else "default"
+
+
 async def get_clinic_by_slug(slug: str) -> Optional[Dict[str, Any]]:
     """Fetch by URL slug. Used by /api/clinics/by-slug/{slug} for the
     public clinic landing page (anonymous access)."""

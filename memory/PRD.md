@@ -1105,3 +1105,18 @@ NEEDS REDEPLOY for production.
   summary. Working/closed is driven by window presence; off_days is cleared ([]) on save.
 - Backend unchanged: /api/availability/slots already filters in-person by location_id and online by
   {day}_on windows, so booking slots stay in sync with these settings.
+
+## Centre slot sync + request-only fix (2026-06)
+ROOT CAUSE (desync): owner edits to clinic_settings PATCH to the real clinic doc
+(_id=clinic_a97b903f2fb2 via resolve_clinic_id), but public reads (GET /clinic-settings,
+/availability/slots locations) fell back to the stale _id="default" doc. So centre edits /
+request_only toggles / availability-derived data didn't reflect on booking.
+FIX: added services/tenancy.resolve_public_settings_id(clinic_id) — when no X-Clinic-Id,
+prefer the single real clinic doc carrying locations/about_overrides (mirrors /api/doctor).
+Used in GET /clinic-settings and the slots location lookup.
+Also: slots centre filter made strict — when a doc has ANY centre-tagged window, untagged
+windows no longer leak into every centre (availability.py). Migrated preview availability to
+tag windows (09-13→loc-racecourse, 16-20→loc-shivansh).
+Also: fixed stale-closure in centres-settings-panel.tsx (request_only Switch persisted stale
+state via setTimeout(commit)); now persists the computed next array via centresRef.
+Verified: Race Course Mon → 9:00 AM; Shivansh → 4:00 PM; Bhayli → request-only card.

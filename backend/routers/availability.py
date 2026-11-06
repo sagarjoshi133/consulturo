@@ -21,7 +21,7 @@ from db import db
 from auth_deps import get_current_user, require_can_manage_availability
 from models import DayAvailabilityBody, UnavailabilityBody
 from server import DAY_KEYS, MAX_BOOKINGS_PER_SLOT, PRESCRIBER_AVAILABILITY_ROLES, _default_availability, _notify_affected_bookings, _slot_to_minutes
-from services.tenancy import resolve_clinic_id, tenant_filter, MEMBERSHIPS_COLL
+from services.tenancy import resolve_clinic_id, tenant_filter, MEMBERSHIPS_COLL, resolve_public_settings_id
 
 router = APIRouter()
 
@@ -178,9 +178,8 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
     # ── Multi-centre resolution ──────────────────────────────────────
     location: Optional[Dict[str, Any]] = None
     if location_id:
-        cs = await db.clinic_settings.find_one({"_id": clinic_id or "default"}, {"_id": 0, "locations": 1})
-        if not cs and clinic_id:
-            cs = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "locations": 1})
+        settings_id = await resolve_public_settings_id(clinic_id)
+        cs = await db.clinic_settings.find_one({"_id": settings_id}, {"_id": 0, "locations": 1})
         for loc in ((cs or {}).get("locations") or []):
             if loc.get("id") == location_id:
                 location = loc
@@ -284,11 +283,20 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
         if day_key in (avail.get("off_days") or []):
             continue
         windows = avail.get(field) or []
+        # When a specific centre is requested we want ONLY that centre's
+        # windows. Untagged (legacy) windows are included ONLY as a
+        # fallback when this doc has no centre-tagged window at all for
+        # the field — otherwise untagged windows would leak into every
+        # centre (e.g. Shivansh's evening hours showing under Race Course).
+        has_tagged = any((w.get("location_id") or "") for w in windows) if location_id else False
         for w in windows:
-            # Centre filter: when a specific centre is requested, only
-            # that centre's windows (and untagged legacy windows) apply.
-            if location_id and (w.get("location_id") or "") not in ("", location_id):
-                continue
+            if location_id:
+                wloc = w.get("location_id") or ""
+                if has_tagged:
+                    if wloc != location_id:
+                        continue
+                elif wloc not in ("", location_id):
+                    continue
             s = _slot_to_minutes(w.get("start", ""))
             e = _slot_to_minutes(w.get("end", ""))
             if e <= s:

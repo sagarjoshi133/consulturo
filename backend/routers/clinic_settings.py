@@ -18,7 +18,7 @@ import httpx
 from db import db
 from auth_deps import require_owner
 from models import ClinicSettingsPatch
-from services.tenancy import resolve_clinic_id
+from services.tenancy import resolve_clinic_id, resolve_public_settings_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -212,7 +212,7 @@ async def get_clinic_settings(request: Request):
     SECURITY: never returns `external_youtube_api_key`; only the
     presence flag `external_youtube_api_key_set`."""
     raw = (request.headers.get("X-Clinic-Id") or request.query_params.get("clinic") or "").strip()
-    settings_id = raw or "default"
+    settings_id = await resolve_public_settings_id(raw or None)
     doc = await db.clinic_settings.find_one({"_id": settings_id}, {"_id": 0})
     if not doc and settings_id != "default":
         # New clinic — fall back to platform default until the owner

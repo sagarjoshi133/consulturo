@@ -7,7 +7,7 @@
  * clinic_settings.locations and consumed by the booking page (centre
  * picker + per-centre slots) and the public About page.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, Platform, Switch,
@@ -68,7 +68,11 @@ export default function CentresSettingsPanel() {
   const update = (id: string, patch: Partial<Centre>) =>
     setCentres((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
-  const commit = () => { void persist(centres); };
+  // Keep a ref in sync so deferred commits (onBlur / toggles) always
+  // persist the LATEST centres, never a stale render closure.
+  const centresRef = useRef(centres);
+  centresRef.current = centres;
+  const commit = () => { void persist(centresRef.current); };
 
   const remove = (id: string) => {
     Alert.alert('Remove centre?', 'This centre will no longer appear for booking.', [
@@ -127,7 +131,7 @@ export default function CentresSettingsPanel() {
             </View>
             <Switch
               value={!!c.request_only}
-              onValueChange={(v) => { update(c.id, { request_only: v }); setTimeout(commit, 0); }}
+              onValueChange={(v) => persist(centresRef.current.map((x) => (x.id === c.id ? { ...x, request_only: v } : x)))}
               trackColor={{ true: COLORS.primary }}
               testID={`centre-reqonly-${c.id}`}
             />
