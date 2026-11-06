@@ -28,7 +28,7 @@ async def get_doctor_info(lang: str = "en"):
         {"role": "Assistant Professor — General Surgery", "place": "Shantabaa Medical College & Civil Hospital"},
         {"role": "Urology Resident (DrNB)", "place": "Gleneagles Super-speciality Hospital & Transplant Centre, Parel, Mumbai"},
     ], lang)
-    return {
+    base = {
         "name": "Dr. Sagar Joshi",
         "title": loc["title"],
         "tagline": loc["tagline"],
@@ -159,3 +159,38 @@ async def get_doctor_info(lang: str = "en"):
         },
         "photo_url": "https://customer-assets.emergentagent.com/job_urology-pro/artifacts/6ng2cxnu_IMG_20260421_191126.jpg",
     }
+
+    # ── Owner overrides (editable About + multi-centre) ──────────────
+    # Merge the owner-editable content stored in clinic_settings over
+    # the defaults so the public About page reflects their edits.
+    try:
+        from db import db as _db
+        cs = await _db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "about_overrides": 1, "locations": 1}) or {}
+    except Exception:
+        cs = {}
+
+    locations = cs.get("locations") or []
+    if locations:
+        base["clinics"] = [
+            {
+                "name": loc.get("name", ""),
+                "address": loc.get("address", ""),
+                "map_url": loc.get("map_url", ""),
+                "hours": loc.get("hours", ""),
+                "request_only": bool(loc.get("request_only")),
+            }
+            for loc in locations
+            if loc.get("active", True) and (loc.get("name") or loc.get("address"))
+        ]
+
+    ov = cs.get("about_overrides") or {}
+    if isinstance(ov, dict):
+        for k, v in ov.items():
+            # Only override known keys that carry a real value; language
+            # specific bio overrides are handled by clinic-settings merge
+            # in the client, so we skip empty strings / None.
+            if v in (None, "", [], {}):
+                continue
+            base[k] = v
+
+    return base

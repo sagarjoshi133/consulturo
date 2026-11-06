@@ -31,6 +31,9 @@ class BookingCreate(BaseModel):
     # patient can join via /api/video. 'whatsapp' falls back to a manual
     # WhatsApp video call (no HMS room). Ignored when mode == 'in-person'.
     online_channel: Optional[str] = None
+    # Multi-centre: which physical centre the in-person visit is at.
+    location_id: Optional[str] = None
+    location_name: Optional[str] = None
     registration_no: Optional[str] = None
     # Pending payment workflow — when staff books on behalf of a patient
     # via phone call, the fee is collected later (cash/UPI at the desk
@@ -511,6 +514,15 @@ class ClinicSettingsPatch(BaseModel):
     # left logo, choose which line is the big title, and reorder / show-
     # hide / edit each header line independently per document.
     doc_headers: Optional[Dict[str, Any]] = None
+    # Multi-centre practice. List of { id, name, address, map_url,
+    # request_only, phone, whatsapp, order, active }. In-person booking
+    # slots are generated per centre; request_only centres show no slots
+    # (patient is asked to call / WhatsApp instead).
+    locations: Optional[List[Dict[str, Any]]] = None
+    # Free-form overrides for the public About page (bio, highlights,
+    # education, services, memberships, contact, …). Merged over the
+    # defaults in GET /api/doctor.
+    about_overrides: Optional[Dict[str, Any]] = None
     doctor_name: Optional[str] = None        # e.g. "Dr Ajay Mehta"
     doctor_title: Optional[str] = None       # e.g. "Consultant Urologist"
     doctor_tagline: Optional[str] = None

@@ -404,6 +404,9 @@ async def create_booking(request: Request, payload: BookingCreate, user=Depends(
         "original_date": payload.booking_date,
         "original_time": payload.booking_time,
         "mode": payload.mode,
+        # Multi-centre: which physical centre the in-person visit is at.
+        "location_id": payload.location_id,
+        "location_name": payload.location_name,
         # Channel for online bookings: "in_app" (default — triggers HMS
         # auto-provision so patient can join in-app) or "whatsapp" (no
         # HMS room; clinic places a WhatsApp video call).

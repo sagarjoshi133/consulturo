@@ -183,6 +183,12 @@ export default function Book() {
     doctor_name?: string;
   };
   const [clinicInfo, setClinicInfo] = useState<ClinicInfo | null>(null);
+  // Multi-centre: centres for In-Person booking.
+  type Centre = { id: string; name: string; address?: string; map_url?: string; request_only?: boolean; phone?: string; whatsapp?: string; active?: boolean };
+  const [centres, setCentres] = useState<Centre[]>([]);
+  const [centreId, setCentreId] = useState<string>('');
+  const [requestOnly, setRequestOnly] = useState(false);
+  const selectedCentre = centres.find((c) => c.id === centreId) || null;
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -191,6 +197,17 @@ export default function Book() {
         if (!cancelled) setClinicInfo(data || null);
       } catch {
         if (!cancelled) setClinicInfo(null);
+      }
+      try {
+        const { data } = await api.get('/clinic-settings');
+        const locs: Centre[] = Array.isArray(data?.locations) ? data.locations : [];
+        const active = locs.filter((l) => l.active !== false && l.name);
+        if (!cancelled) {
+          setCentres(active);
+          setCentreId((prev) => prev || (active.find((l) => !l.request_only)?.id ?? active[0]?.id ?? ''));
+        }
+      } catch {
+        if (!cancelled) setCentres([]);
       }
     })();
     return () => {
@@ -213,10 +230,19 @@ export default function Book() {
       setSlotsLoading(true);
       try {
         const iso = format(date, 'yyyy-MM-dd');
+        const useCentre = mode === 'in-person' && !!centreId;
         const { data } = await api.get('/availability/slots', {
-          params: { date: iso, mode },
+          params: { date: iso, mode, ...(useCentre ? { location_id: centreId } : {}) },
         });
         if (cancelled) return;
+        if (data?.request_only) {
+          setRequestOnly(true);
+          setAvailableSlots([]);
+          setBookedCounts({});
+          setUnavailReason(null);
+          return;
+        }
+        setRequestOnly(false);
         const next: string[] = (data && Array.isArray(data.slots) ? data.slots : []) as string[];
         setAvailableSlots(next);
         setBookedCounts(
@@ -242,7 +268,7 @@ export default function Book() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, mode]);
+  }, [date, mode, centreId]);
 
   // Debounced duplicate-patient check when user enters phone number
   useEffect(() => {
@@ -286,6 +312,8 @@ export default function Book() {
         booking_date: format(date, 'yyyy-MM-dd'),
         booking_time: slot,
         mode,
+        location_id: mode === 'in-person' ? (centreId || undefined) : undefined,
+        location_name: mode === 'in-person' ? (selectedCentre?.name || undefined) : undefined,
         online_channel: mode === 'online' ? onlineChannel : undefined,
         pending_offline: pendingOffline,
         ref_code: refCode || undefined,
@@ -715,6 +743,41 @@ export default function Book() {
             ))}
           </View>
 
+          {/* Centre picker — In-Person only, when the practice has
+              configured multiple centres. */}
+          {mode === 'in-person' && centres.length > 0 && (
+            <View style={{ marginTop: 18 }}>
+              <Text style={styles.channelLabel}>Choose a centre</Text>
+              <View style={{ gap: 8, marginTop: 8 }}>
+                {centres.map((c) => {
+                  const active = centreId === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => { haptics.select(); setCentreId(c.id); }}
+                      style={[styles.centreCard, active && styles.centreCardActive, !active && d.surface]}
+                      testID={`booking-centre-${c.id}`}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={active ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={active ? COLORS.primary : COLORS.textSecondary}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.centreName, active && { color: COLORS.primary }]}>{c.name}</Text>
+                        {!!c.address && <Text style={styles.centreAddr} numberOfLines={2}>{c.address}</Text>}
+                        {c.request_only ? (
+                          <Text style={styles.centreBadge}>By prior confirmation only</Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           {/* Online sub-channel picker — shows only when "Online" is
               selected. Lets the patient choose between the new in-app
               video flow (powered by 100ms) and a fallback WhatsApp
@@ -783,6 +846,40 @@ export default function Book() {
           )}
 
           {/* Date Picker Horizontal */}
+          {requestOnly ? (
+            <View style={styles.requestCard} testID="booking-request-only">
+              <Ionicons name="call-outline" size={22} color={COLORS.primary} />
+              <Text style={styles.requestTitle}>Appointments by prior confirmation</Text>
+              <Text style={styles.requestBody}>
+                {selectedCentre?.name || 'This centre'} doesn’t take online slots. Please call or WhatsApp us to fix a time.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity
+                  style={styles.requestBtn}
+                  testID="booking-request-call"
+                  onPress={() => {
+                    const num = (selectedCentre?.phone || clinicInfo?.clinic_phone || '').replace(/[^\d+]/g, '');
+                    if (num) Linking.openURL(`tel:${num}`);
+                  }}
+                >
+                  <Ionicons name="call" size={16} color="#fff" />
+                  <Text style={styles.requestBtnTxt}>Call</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.requestBtn, { backgroundColor: '#25D366' }]}
+                  testID="booking-request-whatsapp"
+                  onPress={() => {
+                    const wa = (selectedCentre?.whatsapp || selectedCentre?.phone || clinicInfo?.clinic_whatsapp || clinicInfo?.clinic_phone || '').replace(/[^\d]/g, '');
+                    if (wa) Linking.openURL(`https://wa.me/${wa}`);
+                  }}
+                >
+                  <Ionicons name="logo-whatsapp" size={16} color="#fff" />
+                  <Text style={styles.requestBtnTxt}>WhatsApp</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+          <>
           <Text style={styles.sectionLabel}>{t('book.selectDate')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 10 }}>
             {dates.map((d, idx) => {
@@ -934,6 +1031,8 @@ export default function Book() {
             icon={<Ionicons name="checkmark-circle" size={20} color="#fff" />}
             disabled={submitting || availableSlots.length === 0}
           />
+          </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1083,6 +1182,16 @@ const styles = StyleSheet.create({
   title: { ...FONTS.h2, color: COLORS.textPrimary, flex: 1 },
   subtitle: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 4 },
   modeRow: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  centreCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
+  centreCardActive: { borderColor: COLORS.primary, borderWidth: 1.5, backgroundColor: COLORS.primary + '0D' },
+  centreName: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14 },
+  centreAddr: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 16 },
+  centreBadge: { ...FONTS.bodyMedium, color: COLORS.warning, fontSize: 11, marginTop: 4 },
+  requestCard: { marginTop: 18, padding: 18, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.primary + '33', backgroundColor: COLORS.primary + '0D', alignItems: 'center' },
+  requestTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 15, marginTop: 8, textAlign: 'center' },
+  requestBody: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 },
+  requestBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 11, borderRadius: RADIUS.pill },
+  requestBtnTxt: { ...FONTS.bodyMedium, color: '#fff', fontSize: 14 },
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',

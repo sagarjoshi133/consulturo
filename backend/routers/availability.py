@@ -158,9 +158,14 @@ async def list_doctor_availability(request: Request):
     return out
 
 @router.get("/api/availability/slots")
-async def get_available_slots(request: Request, date: str, mode: str = "in-person", user_id: Optional[str] = None):
+async def get_available_slots(request: Request, date: str, mode: str = "in-person", user_id: Optional[str] = None, location_id: Optional[str] = None):
     """30-minute slots for ISO date + mode. PUBLIC. Reads X-Clinic-Id
-    so booking from /c/<slug> only shows that clinic's hours."""
+    so booking from /c/<slug> only shows that clinic's hours.
+
+    Multi-centre: when `location_id` is supplied, only windows tagged
+    for that centre (plus any untagged legacy windows) generate slots.
+    A centre flagged `request_only` returns no slots (the patient is
+    asked to call / WhatsApp instead)."""
     clinic_id = (request.headers.get("X-Clinic-Id") or "").strip() or None
     try:
         d = datetime.strptime(date, "%Y-%m-%d")
@@ -169,6 +174,23 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
 
     day_key = DAY_KEYS[d.weekday()]
     field = f"{day_key}_{'on' if mode == 'online' else 'in'}"
+
+    # ── Multi-centre resolution ──────────────────────────────────────
+    location: Optional[Dict[str, Any]] = None
+    if location_id:
+        cs = await db.clinic_settings.find_one({"_id": clinic_id or "default"}, {"_id": 0, "locations": 1})
+        if not cs and clinic_id:
+            cs = await db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "locations": 1})
+        for loc in ((cs or {}).get("locations") or []):
+            if loc.get("id") == location_id:
+                location = loc
+                break
+        if location and location.get("request_only"):
+            return {"date": date, "mode": mode, "day": day_key, "slots": [],
+                    "booked_counts": {}, "max_per_slot": MAX_BOOKINGS_PER_SLOT,
+                    "full_slots": [], "booked_slots": [], "past_slots": [],
+                    "unavailable_reason": None, "request_only": True,
+                    "location_id": location_id}
 
     doctors_q: Dict[str, Any] = {"$or": [
         {"role": {"$in": PRESCRIBER_AVAILABILITY_ROLES}},
@@ -263,6 +285,10 @@ async def get_available_slots(request: Request, date: str, mode: str = "in-perso
             continue
         windows = avail.get(field) or []
         for w in windows:
+            # Centre filter: when a specific centre is requested, only
+            # that centre's windows (and untagged legacy windows) apply.
+            if location_id and (w.get("location_id") or "") not in ("", location_id):
+                continue
             s = _slot_to_minutes(w.get("start", ""))
             e = _slot_to_minutes(w.get("end", ""))
             if e <= s:

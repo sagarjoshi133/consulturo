@@ -31,7 +31,7 @@ const DAYS = [
 
 type DayKey = (typeof DAYS)[number]['key'];
 
-type Slot = { start: string; end: string };
+type Slot = { start: string; end: string; location_id?: string };
 
 type Availability = {
   off_days: DayKey[];
@@ -39,8 +39,11 @@ type Availability = {
   [k: string]: any; // mon_in / mon_on etc.
 };
 
+type Centre = { id: string; name: string; request_only?: boolean; active?: boolean };
+
 export function AvailabilityPanel() {
   const [data, setData] = useState<Availability | null>(null);
+  const [centres, setCentres] = useState<Centre[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -55,6 +58,13 @@ export function AvailabilityPanel() {
       setData(null);
     } finally {
       setLoading(false);
+    }
+    try {
+      const { data: cs } = await api.get('/clinic-settings');
+      const locs: Centre[] = Array.isArray(cs?.locations) ? cs.locations : [];
+      setCentres(locs.filter((l) => l.active !== false && !l.request_only && l.name));
+    } catch {
+      setCentres([]);
     }
   }, []);
 
@@ -72,7 +82,7 @@ export function AvailabilityPanel() {
     setData({ ...data, off_days: Array.from(off) as DayKey[] });
   };
 
-  const updateSlot = (day: DayKey, kind: 'in' | 'on', idx: number, key: 'start' | 'end', value: string) => {
+  const updateSlot = (day: DayKey, kind: 'in' | 'on', idx: number, key: 'start' | 'end' | 'location_id', value: string) => {
     if (!data) return;
     const field = `${day}_${kind}`;
     const slots: Slot[] = [...(data[field] || [])];
@@ -83,7 +93,9 @@ export function AvailabilityPanel() {
   const addSlot = (day: DayKey, kind: 'in' | 'on') => {
     if (!data) return;
     const field = `${day}_${kind}`;
-    const slots: Slot[] = [...(data[field] || []), { start: '10:00', end: '13:00' }];
+    const base: Slot = { start: '10:00', end: '13:00' };
+    if (kind === 'in' && centres.length) base.location_id = centres[0].id;
+    const slots: Slot[] = [...(data[field] || []), base];
     setData({ ...data, [field]: slots });
   };
 
@@ -197,6 +209,7 @@ export function AvailabilityPanel() {
                   color={COLORS.primary}
                   icon="medical"
                   slots={inSlots}
+                  centres={centres}
                   onChange={(i, k, v) => updateSlot(activeDay, 'in', i, k, v)}
                   onAdd={() => addSlot(activeDay, 'in')}
                   onRemove={(i) => removeSlot(activeDay, 'in', i)}
@@ -253,6 +266,7 @@ function SlotGroup({
   color,
   icon,
   slots,
+  centres,
   onChange,
   onAdd,
   onRemove,
@@ -262,7 +276,8 @@ function SlotGroup({
   color: string;
   icon: any;
   slots: Slot[];
-  onChange: (i: number, k: 'start' | 'end', v: string) => void;
+  centres?: Centre[];
+  onChange: (i: number, k: 'start' | 'end' | 'location_id', v: string) => void;
   onAdd: () => void;
   onRemove: (i: number) => void;
   onApplyAll?: () => void;
@@ -288,21 +303,40 @@ function SlotGroup({
         <Text style={styles.emptySlot}>No time blocks. Tap + to add.</Text>
       ) : (
         slots.map((s, i) => (
-          <View key={i} style={styles.slotRow}>
-            <TimeInput
-              label="From"
-              value={s.start}
-              onChangeText={(v) => onChange(i, 'start', v)}
-            />
-            <Text style={styles.arrow}>→</Text>
-            <TimeInput
-              label="To"
-              value={s.end}
-              onChangeText={(v) => onChange(i, 'end', v)}
-            />
-            <TouchableOpacity onPress={() => onRemove(i)} style={styles.removeBtn}>
-              <Ionicons name="close" size={16} color={COLORS.accent} />
-            </TouchableOpacity>
+          <View key={i} style={styles.slotBlock}>
+            <View style={styles.slotRow}>
+              <TimeInput
+                label="From"
+                value={s.start}
+                onChangeText={(v) => onChange(i, 'start', v)}
+              />
+              <Text style={styles.arrow}>→</Text>
+              <TimeInput
+                label="To"
+                value={s.end}
+                onChangeText={(v) => onChange(i, 'end', v)}
+              />
+              <TouchableOpacity onPress={() => onRemove(i)} style={styles.removeBtn}>
+                <Ionicons name="close" size={16} color={COLORS.accent} />
+              </TouchableOpacity>
+            </View>
+            {centres && centres.length > 0 ? (
+              <View style={styles.centreChips}>
+                {centres.map((c) => {
+                  const on = (s.location_id || '') === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => onChange(i, 'location_id', c.id)}
+                      style={[styles.centreChip, on && { backgroundColor: color, borderColor: color }]}
+                      testID={`avail-centre-${c.id}`}
+                    >
+                      <Text style={[styles.centreChipTxt, on && { color: '#fff' }]}>{c.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
         ))
       )}
@@ -348,6 +382,10 @@ const styles = StyleSheet.create({
   slotCount: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11 },
   emptySlot: { ...FONTS.body, color: COLORS.textDisabled, fontSize: 12, marginTop: 6 },
   slotRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+  slotBlock: { marginTop: 4 },
+  centreChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginLeft: 2 },
+  centreChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
+  centreChipTxt: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11.5 },
   arrow: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 16, marginBottom: 10 },
   removeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: COLORS.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', marginBottom: 2 },
   timeLabel: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10 },

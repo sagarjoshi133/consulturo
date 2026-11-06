@@ -30,11 +30,12 @@ import { COLORS, FONTS, RADIUS } from './theme';
 import { HomepagePanel } from './homepage-panel';
 import BrandingPanel from './branding-panel-lazy';
 import DocHeaderSettingsPanel from './doc-header-settings-panel';
+import CentresSettingsPanel from './centres-settings-panel';
 import GoogleReviewSettingsPanel from './google-review-settings';
 import FeaturedReviewsAdminPanel from './featured-reviews-admin-panel';
 import { useResponsive } from './responsive';
 
-type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'reviews' | 'featured';
+type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'centres' | 'reviews' | 'featured';
 
 const CATEGORIES: {
   key: Category;
@@ -75,6 +76,14 @@ const CATEGORIES: {
     icon: 'documents',
     color: '#0891B2',
     desc: 'Per-document logo + reorderable, editable header lines for every PDF (Rx, receipt, discharge, consent, certificate, encounter).',
+  },
+  {
+    key: 'centres',
+    label: 'Centres',
+    short: 'Centres',
+    icon: 'location',
+    color: '#0D9488',
+    desc: 'Manage your consultation centres — name, address, map link and "by prior confirmation only". Patients pick a centre when booking In-Person.',
   },
   {
     key: 'reviews',
@@ -154,6 +163,7 @@ export default function BrandingSettingsPanel() {
         {cat === 'branding' && <BrandingPanel category="full" />}
         {cat === 'rx' && <BrandingPanel category="rx" />}
         {cat === 'docheaders' && <DocHeaderSettingsPanel />}
+        {cat === 'centres' && <CentresSettingsPanel />}
         {cat === 'reviews' && <GoogleReviewSettingsPanel />}
         {cat === 'featured' && <FeaturedReviewsAdminPanel />}
       </View>

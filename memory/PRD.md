@@ -1064,3 +1064,18 @@ NEEDS REDEPLOY for production.
 - Shared renderer: src/pdf-header.ts (getDocHeaderCfg, headerLogoSrc, renderHeaderInner).
 - Wired into all 6 PDF builders. Receipt now defaults to the Clinic name as the title.
 - Backend: added doc_headers to ClinicSettingsPatch + default {} in clinic_settings router.
+
+## Multi-centre booking + editable centres (2026-06)
+- clinic_settings.locations: [{id,name,address,map_url,phone,whatsapp,hours,request_only,active,order}].
+- Backend: BookingCreate +location_id/location_name; /availability/slots +location_id param
+  (filters windows by location_id; request_only centres return {slots:[],request_only:true}).
+  /api/doctor merges locations into `clinics` + merges about_overrides (editable About — backend ready).
+- Availability windows now carry per-window location_id (in-person). Editor: centre chips per slot
+  (src/availability-panel.tsx).
+- Booking page (app/(tabs)/book.tsx): In-Person centre picker; request-only → Call/WhatsApp card;
+  passes location_id to slots + booking POST.
+- Centres manager UI: Branding → Centres (src/centres-settings-panel.tsx).
+- Seeded 3 centres: Sterling Racecourse (Mon–Sat 9–13), Shivansh Urology Centre (Mon–Sat 16–20,
+  map https://share.google/ozae6TeWI3RWPcPsM), Sterling Bhayli (request_only).
+- DEFERRED: full About page edit UI (bio/highlights/education/services/memberships/contact) — backend
+  about_overrides plumbing done; rich editor is next. Receipt per-centre line also pending.
