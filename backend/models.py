@@ -277,6 +277,10 @@ class BlogReviewBody(BaseModel):
 class AvailabilitySlot(BaseModel):
     start: str  # HH:MM
     end: str  # HH:MM
+    # Centre this in-person window belongs to (clinic_settings location id).
+    # Preserved on save so slots stay scoped to the correct centre; None /
+    # omitted for online windows and legacy single-centre setups.
+    location_id: Optional[str] = None
 
 class DayAvailabilityBody(BaseModel):
     # Each day key: 'mon', 'tue', ..., 'sun'

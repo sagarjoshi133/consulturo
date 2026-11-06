@@ -80,16 +80,20 @@ export function AvailabilityPanel() {
   };
 
   const setWins = (day: DayKey, wins: Slot[]) => {
-    if (!data) return;
-    if (mode === 'on') {
-      setData({ ...data, [`${day}_on`]: wins.map((w) => ({ start: w.start, end: w.end })) });
-      return;
-    }
-    const field = `${day}_in`;
-    const others = (data[field] || []).filter((w: Slot) => (w.location_id || '') !== centreId);
-    setData({
-      ...data,
-      [field]: [...others, ...wins.map((w) => ({ start: w.start, end: w.end, location_id: centreId }))],
+    // Functional update so repeated calls in a loop (Apply-to-all /
+    // presets) accumulate across days instead of each spreading the same
+    // stale `data` (which previously kept only the last day written).
+    setData((prev) => {
+      if (!prev) return prev;
+      if (mode === 'on') {
+        return { ...prev, [`${day}_on`]: wins.map((w) => ({ start: w.start, end: w.end })) };
+      }
+      const field = `${day}_in`;
+      const others = (prev[field] || []).filter((w: Slot) => (w.location_id || '') !== centreId);
+      return {
+        ...prev,
+        [field]: [...others, ...wins.map((w) => ({ start: w.start, end: w.end, location_id: centreId }))],
+      };
     });
   };
 
@@ -146,9 +150,11 @@ export function AvailabilityPanel() {
       setTimeout(() => setMsg(''), 2500);
     } catch (e: any) {
       const err = e?.response?.data?.detail || 'Could not save';
-      Platform.OS === 'web'
-        ? typeof window !== 'undefined' && window.alert(err)
-        : Alert.alert('Error', err);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert(err);
+      } else {
+        Alert.alert('Error', err);
+      }
     } finally {
       setSaving(false);
     }
@@ -231,7 +237,7 @@ export function AvailabilityPanel() {
         <>
           {/* ── Quick week presets ───────────────────────────────────── */}
           <View style={styles.presetWrap}>
-            <Text style={styles.presetLabel}>Quick set — uses {DAYS.find((d) => d.key === activeDay)?.full}'s hours:</Text>
+            <Text style={styles.presetLabel}>Quick set — applies {DAYS.find((d) => d.key === activeDay)?.full} hours to:</Text>
             <View style={styles.presetRow}>
               {PRESETS.map((p) => (
                 <TouchableOpacity

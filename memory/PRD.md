@@ -1134,3 +1134,20 @@ Verified: Race Course Mon → 9:00 AM; Shivansh → 4:00 PM; Bhayli → request-
   confirmed/rejected/cancelled/rescheduled Telegram, patient-cancel Telegram, and the patient
   confirm WhatsApp text (replaced hardcoded "Sterling Hospitals, Vadodara" with actual centre).
 - Verified: lifecycle create(in-person+centre)->confirm->cancel->delete all 200; location_name persists.
+
+## Availability save bug fix (2026-06)
+BUG: Quick-set presets & "Apply to all days" only saved the LAST day (Sunday). Root cause:
+setWins used setData({...data,...}) with a plain object inside a forEach loop → each call spread
+the same stale `data`, so React kept only the last object written. This also made slots look
+out-of-sync (hours never persisted for Mon–Sat).
+FIX: setWins now uses a functional updater setData(prev => ...) so looped per-day writes accumulate.
+Verified: "All week" populates all 7 day-dots (Closed-count 0); Save persisted mon/sat/sun online
+windows (previously only sun). Restored online sun_on=[] to the user's Mon–Sat pattern.
+
+## Availability recurring desync — TRUE root cause fixed (2026-06)
+BIG BUG: every save through the availability panel STRIPPED location_id from in-person windows,
+because backend models.AvailabilitySlot only had {start,end}. So PUT /availability/me untagged all
+windows → they leaked into every centre → slots perpetually "out of sync". FIX: added
+location_id: Optional[str] to AvailabilitySlot (models.py). Verified PUT round-trip now preserves
+location_id; slots scoped correctly (Race Course morning only, Shivansh evening only).
+Plus the frontend setWins functional-updater fix (Apply-to-all/presets now affect all days).
