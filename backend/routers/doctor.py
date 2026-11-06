@@ -9,6 +9,66 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
+_DAYS = [("mon", "Mon"), ("tue", "Tue"), ("wed", "Wed"), ("thu", "Thu"), ("fri", "Fri"), ("sat", "Sat"), ("sun", "Sun")]
+
+
+def _fmt12(hhmm: str) -> str:
+    try:
+        h, m = hhmm.split(":")
+        h = int(h); m = int(m)
+        ap = "AM" if h < 12 else "PM"
+        hh = h % 12 or 12
+        return f"{hh}:{m:02d} {ap}"
+    except Exception:
+        return hhmm
+
+
+async def _centre_hours_from_availability(db, location_ids):
+    """Build a compact weekly-hours string per centre from the
+    availability doc whose in-person windows are tagged with these
+    centres. e.g. {'loc-x': 'Mon–Sat: 9:00 AM–1:00 PM'}."""
+    lid_set = set(location_ids)
+    av = None
+    try:
+        # Find the availability doc that actually carries centre-tagged
+        # windows (don't guess the user — pick the doc with the data).
+        async for doc in db.availability.find({}, {"_id": 0}):
+            for dk, _ in _DAYS:
+                if any((w.get("location_id") or "") in lid_set for w in (doc.get(f"{dk}_in") or [])):
+                    av = doc
+                    break
+            if av:
+                break
+    except Exception:
+        return {}
+    if not av:
+        return {}
+    out = {}
+    for lid in location_ids:
+        day_sigs = []
+        for dk, _ in _DAYS:
+            wins = [w for w in (av.get(f"{dk}_in") or []) if (w.get("location_id") or "") == lid]
+            sig = ", ".join(
+                f'{_fmt12(w["start"])}–{_fmt12(w["end"])}'
+                for w in wins if w.get("start") and w.get("end")
+            )
+            day_sigs.append(sig)
+        segments = []
+        i = 0
+        while i < 7:
+            if not day_sigs[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < 7 and day_sigs[j + 1] == day_sigs[i]:
+                j += 1
+            label = _DAYS[i][1] if i == j else f"{_DAYS[i][1]}–{_DAYS[j][1]}"
+            segments.append(f"{label}: {day_sigs[i]}")
+            i = j + 1
+        if segments:
+            out[lid] = "   •   ".join(segments)
+    return out
+
 
 @router.get("/api/doctor")
 async def get_doctor_info(lang: str = "en"):
@@ -182,12 +242,15 @@ async def get_doctor_info(lang: str = "en"):
 
     locations = cs.get("locations") or []
     if locations:
+        hours_map = await _centre_hours_from_availability(_db, [l.get("id") for l in locations if l.get("id")])
         base["clinics"] = [
             {
                 "name": loc.get("name", ""),
                 "address": loc.get("address", ""),
                 "map_url": loc.get("map_url", ""),
-                "hours": loc.get("hours", ""),
+                # Prefer hours auto-derived from the weekly availability
+                # schedule; fall back to any manually-entered string.
+                "hours": hours_map.get(loc.get("id"), "") or loc.get("hours", ""),
                 "request_only": bool(loc.get("request_only")),
             }
             for loc in locations

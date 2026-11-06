@@ -1079,3 +1079,12 @@ NEEDS REDEPLOY for production.
   map https://share.google/ozae6TeWI3RWPcPsM), Sterling Bhayli (request_only).
 - DEFERRED: full About page edit UI (bio/highlights/education/services/memberships/contact) — backend
   about_overrides plumbing done; rich editor is next. Receipt per-centre line also pending.
+
+## Centres UX + About photo/stats + auto hours (2026-06)
+- Booking centre picker now collapsible (collapsed by default); shows selected centre + Directions;
+  "Change" expands list; selecting collapses. Shivansh default (order 0, non-request-only).
+- About editor (src/about-editor-panel.tsx): added profile photo upload (about_overrides.photo_url)
+  and headline stats list (about_overrides.stats).
+- doctor.py: _centre_hours_from_availability() derives each centre's weekly hours from the
+  availability doc's location-tagged in-person windows; About clinics show derived hours (fallback to
+  manual loc.hours). Picks the availability doc that actually carries centre-tagged windows.

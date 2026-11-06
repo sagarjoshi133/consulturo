@@ -9,15 +9,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Alert, Platform,
+  ActivityIndicator, Alert, Platform, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS } from './theme';
 import api from './api';
 import { clearClinicSettingsCache } from './clinic-settings';
 
 type Qual = { degree?: string; institute?: string; year?: string; note?: string };
 type Exp = { role?: string; place?: string };
+type Stat = { label?: string; value?: string };
 type Contact = { phone?: string; whatsapp?: string; email?: string; website?: string };
 
 export default function AboutEditorPanel() {
@@ -26,6 +28,8 @@ export default function AboutEditorPanel() {
 
   const [title, setTitle] = useState('');
   const [tagline, setTagline] = useState('');
+  const [photo, setPhoto] = useState('');
+  const [stats, setStats] = useState<Stat[]>([]);
   const [bio, setBio] = useState('');
   const [statement, setStatement] = useState('');
   const [highlights, setHighlights] = useState<string[]>([]);
@@ -46,6 +50,8 @@ export default function AboutEditorPanel() {
         const m = { ...doc, ...ov };
         setTitle(m.title || '');
         setTagline(m.tagline || '');
+        setPhoto(m.photo_url || '');
+        setStats(Array.isArray(m.stats) ? m.stats : []);
         setBio(m.short_bio || '');
         setStatement(m.personal_statement || '');
         setHighlights(Array.isArray(m.highlights) ? m.highlights : []);
@@ -69,6 +75,8 @@ export default function AboutEditorPanel() {
     const overrides: any = {
       title: title.trim(),
       tagline: tagline.trim(),
+      photo_url: photo.trim(),
+      stats: stats.filter((s) => (s.label || s.value)),
       short_bio: bio.trim(),
       personal_statement: statement.trim(),
       highlights: highlights.filter((h) => h.trim()),
@@ -96,8 +104,52 @@ export default function AboutEditorPanel() {
 
   if (loading) return <View style={{ padding: 30 }}><ActivityIndicator color={COLORS.primary} /></View>;
 
+  const pickPhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to upload.'); return; }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    const uri = a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri;
+    if (uri.length > 2_500_000) { Alert.alert('Image too large', 'Please pick a smaller / more compressed photo.'); return; }
+    setPhoto(uri);
+  };
+
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }} showsVerticalScrollIndicator={false}>
+      <Group label="Profile photo">
+        <View style={styles.photoRow}>
+          <View style={styles.photoBox}>
+            {photo ? <Image source={{ uri: photo }} style={styles.photoImg} resizeMode="cover" /> : <Ionicons name="person" size={32} color={COLORS.textDisabled} />}
+          </View>
+          <View style={{ flex: 1, gap: 8 }}>
+            <TouchableOpacity onPress={pickPhoto} style={styles.photoBtn} testID="about-pick-photo">
+              <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+              <Text style={styles.photoBtnTxt}>{photo ? 'Replace photo' : 'Upload photo'}</Text>
+            </TouchableOpacity>
+            {photo ? (
+              <TouchableOpacity onPress={() => setPhoto('')} style={{ alignItems: 'center', paddingVertical: 6 }}>
+                <Text style={{ ...FONTS.body, color: COLORS.textSecondary, fontSize: 12 }}>Use default photo</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </Group>
+
+      <Group label="Headline numbers">
+        <ObjList
+          items={stats}
+          setItems={setStats}
+          addLabel="Add stat"
+          blank={{ label: '', value: '' }}
+          fields={[
+            { key: 'value', label: 'Value', ph: '3000+' },
+            { key: 'label', label: 'Label', ph: 'Surgeries performed' },
+          ]}
+          titleOf={(s) => s.value || s.label || 'Stat'}
+        />
+      </Group>
+
       <Group label="Headline">
         <Field label="Title / Specialty" value={title} onChangeText={setTitle} placeholder="Consultant Urologist & Transplant Surgeon" />
         <Field label="Tagline" value={tagline} onChangeText={setTagline} placeholder="Short line under your name" />
@@ -267,6 +319,11 @@ const styles = StyleSheet.create({
   objTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   objTitle: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 13, flex: 1 },
   note: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11, marginTop: 4 },
+  photoRow: { flexDirection: 'row', gap: 12, alignItems: 'center', marginTop: 4 },
+  photoBox: { width: 72, height: 72, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#F7F9FA', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  photoImg: { width: '100%', height: '100%' },
+  photoBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, paddingVertical: 10, borderRadius: RADIUS.sm },
+  photoBtnTxt: { ...FONTS.bodyMedium, color: '#fff', fontSize: 13 },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: RADIUS.md, marginTop: 6 },
   saveTxt: { ...FONTS.bodyMedium, color: '#fff', fontSize: 15 },
 });

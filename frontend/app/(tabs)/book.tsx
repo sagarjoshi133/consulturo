@@ -188,6 +188,7 @@ export default function Book() {
   const [centres, setCentres] = useState<Centre[]>([]);
   const [centreId, setCentreId] = useState<string>('');
   const [requestOnly, setRequestOnly] = useState(false);
+  const [centreExpanded, setCentreExpanded] = useState(false);
   const selectedCentre = centres.find((c) => c.id === centreId) || null;
   useEffect(() => {
     let cancelled = false;
@@ -761,17 +762,48 @@ export default function Book() {
           </View>
 
           {/* Centre picker — In-Person only, when the practice has
-              configured multiple centres. */}
+              configured multiple centres. Collapsed by default: shows
+              the current selection + directions; tap "Change" to pick. */}
           {mode === 'in-person' && centres.length > 0 && (
             <View style={{ marginTop: 18 }}>
-              <Text style={styles.channelLabel}>Choose a centre</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.channelLabel}>Centre</Text>
+                {centres.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() => { haptics.select(); setCentreExpanded((v) => !v); }}
+                    style={styles.changeBtn}
+                    testID="booking-centre-toggle"
+                    hitSlop={8}
+                  >
+                    <Text style={styles.changeBtnTxt}>{centreExpanded ? 'Done' : 'Change'}</Text>
+                    <Ionicons name={centreExpanded ? 'chevron-up' : 'chevron-down'} size={15} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {!centreExpanded && selectedCentre ? (
+                <View style={[styles.centreCard, styles.centreCardActive, { marginTop: 8 }]} testID="booking-centre-selected">
+                  <Ionicons name="location" size={18} color={COLORS.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.centreName, { color: COLORS.primary }]}>{selectedCentre.name}</Text>
+                    {!!selectedCentre.address && <Text style={styles.centreAddr} numberOfLines={2}>{selectedCentre.address}</Text>}
+                    {selectedCentre.request_only ? <Text style={styles.centreBadge}>By prior confirmation only</Text> : null}
+                  </View>
+                  {!!selectedCentre.map_url && (
+                    <TouchableOpacity onPress={() => Linking.openURL(selectedCentre.map_url!)} style={styles.dirBtn} testID="booking-centre-dir-selected" hitSlop={8}>
+                      <Ionicons name="navigate" size={15} color={COLORS.primary} />
+                      <Text style={styles.dirBtnTxt}>Directions</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
               <View style={{ gap: 8, marginTop: 8 }}>
                 {centres.map((c) => {
                   const active = centreId === c.id;
                   return (
                     <TouchableOpacity
                       key={c.id}
-                      onPress={() => { haptics.select(); setCentreId(c.id); }}
+                      onPress={() => { haptics.select(); setCentreId(c.id); setCentreExpanded(false); }}
                       style={[styles.centreCard, active && styles.centreCardActive, !active && d.surface]}
                       testID={`booking-centre-${c.id}`}
                       activeOpacity={0.85}
@@ -803,6 +835,7 @@ export default function Book() {
                   );
                 })}
               </View>
+              )}
             </View>
           )}
 
@@ -1222,6 +1255,8 @@ const styles = StyleSheet.create({
   requestBtnTxt: { ...FONTS.bodyMedium, color: '#fff', fontSize: 14 },
   dirBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.primary, alignSelf: 'center' },
   dirBtnTxt: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 12 },
+  changeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  changeBtnTxt: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 13 },
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
