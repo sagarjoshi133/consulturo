@@ -165,7 +165,18 @@ async def get_doctor_info(lang: str = "en"):
     # the defaults so the public About page reflects their edits.
     try:
         from db import db as _db
-        cs = await _db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "about_overrides": 1, "locations": 1}) or {}
+        # Prefer a real clinic's settings (where the owner's edits land)
+        # over the legacy "default" doc. Single-practice deployments keep
+        # their About + centres on their own clinic_settings document.
+        cs = await _db.clinic_settings.find_one(
+            {"_id": {"$ne": "default"},
+             "$or": [{"locations": {"$exists": True, "$not": {"$size": 0}}},
+                     {"about_overrides": {"$nin": [None, {}]}}]},
+            {"_id": 0, "about_overrides": 1, "locations": 1},
+        )
+        if not cs:
+            cs = await _db.clinic_settings.find_one({"_id": "default"}, {"_id": 0, "about_overrides": 1, "locations": 1})
+        cs = cs or {}
     except Exception:
         cs = {}
 

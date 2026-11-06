@@ -397,15 +397,28 @@ export default function Book() {
                   : (t('book.nextBodyInPerson') || 'Our team will confirm your slot shortly. Please reach the clinic 10 minutes before your appointment.')}
               </Text>
 
-              {!!clinicInfo?.clinic_name && (
-                <Text style={styles.clinicHeader}>{clinicInfo.clinic_name}</Text>
-              )}
-
-              {!!clinicInfo?.clinic_address && (
-                <View style={styles.contactRow}>
-                  <Ionicons name="location" size={15} color={themeColors.primary} />
-                  <Text style={styles.contactText}>{clinicInfo.clinic_address}</Text>
-                </View>
+              {confirmed.mode !== 'online' && selectedCentre ? (
+                <>
+                  <Text style={styles.clinicHeader}>{selectedCentre.name}</Text>
+                  {!!selectedCentre.address && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="location" size={15} color={themeColors.primary} />
+                      <Text style={styles.contactText}>{selectedCentre.address}</Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  {!!clinicInfo?.clinic_name && (
+                    <Text style={styles.clinicHeader}>{clinicInfo.clinic_name}</Text>
+                  )}
+                  {!!clinicInfo?.clinic_address && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="location" size={15} color={themeColors.primary} />
+                      <Text style={styles.contactText}>{clinicInfo.clinic_address}</Text>
+                    </View>
+                  )}
+                </>
               )}
               {!!clinicInfo?.clinic_hours && (
                 <View style={styles.contactRow}>
@@ -437,17 +450,21 @@ export default function Book() {
                     <Text style={styles.contactBtnText}>WhatsApp</Text>
                   </TouchableOpacity>
                 )}
-                {!!clinicInfo?.clinic_map_url && confirmed.mode !== 'online' && (
+                {(() => {
+                  const mapUrl = (confirmed.mode !== 'online' && selectedCentre?.map_url) || clinicInfo?.clinic_map_url;
+                  return !!mapUrl && confirmed.mode !== 'online' ? (
                   <TouchableOpacity
-                    onPress={() => Linking.openURL(clinicInfo.clinic_map_url!)}
+                    onPress={() => Linking.openURL(mapUrl!)}
                     style={[styles.contactBtnGhost, { borderColor: themeColors.primary }]}
+                    testID="booking-confirm-directions"
                   >
                     <Ionicons name="navigate" size={14} color={themeColors.primary} />
                     <Text style={[styles.contactBtnGhostText, { color: themeColors.primary }]}>
-                      {t('book.directions') || 'Directions'}
+                      {t('book.directions') || 'Get directions'}
                     </Text>
                   </TouchableOpacity>
-                )}
+                  ) : null;
+                })()}
               </View>
 
               {!!clinicInfo?.emergency_note && (
@@ -771,6 +788,17 @@ export default function Book() {
                           <Text style={styles.centreBadge}>By prior confirmation only</Text>
                         ) : null}
                       </View>
+                      {!!c.map_url && (
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL(c.map_url!)}
+                          style={styles.dirBtn}
+                          testID={`booking-centre-dir-${c.id}`}
+                          hitSlop={8}
+                        >
+                          <Ionicons name="navigate" size={15} color={COLORS.primary} />
+                          <Text style={styles.dirBtnTxt}>Directions</Text>
+                        </TouchableOpacity>
+                      )}
                     </TouchableOpacity>
                   );
                 })}
@@ -1192,6 +1220,8 @@ const styles = StyleSheet.create({
   requestBody: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   requestBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 11, borderRadius: RADIUS.pill },
   requestBtnTxt: { ...FONTS.bodyMedium, color: '#fff', fontSize: 14 },
+  dirBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: COLORS.primary, alignSelf: 'center' },
+  dirBtnTxt: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 12 },
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',

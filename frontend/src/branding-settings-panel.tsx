@@ -31,11 +31,12 @@ import { HomepagePanel } from './homepage-panel';
 import BrandingPanel from './branding-panel-lazy';
 import DocHeaderSettingsPanel from './doc-header-settings-panel';
 import CentresSettingsPanel from './centres-settings-panel';
+import AboutEditorPanel from './about-editor-panel';
 import GoogleReviewSettingsPanel from './google-review-settings';
 import FeaturedReviewsAdminPanel from './featured-reviews-admin-panel';
 import { useResponsive } from './responsive';
 
-type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'centres' | 'reviews' | 'featured';
+type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'centres' | 'about' | 'reviews' | 'featured';
 
 const CATEGORIES: {
   key: Category;
@@ -84,6 +85,14 @@ const CATEGORIES: {
     icon: 'location',
     color: '#0D9488',
     desc: 'Manage your consultation centres — name, address, map link and "by prior confirmation only". Patients pick a centre when booking In-Person.',
+  },
+  {
+    key: 'about',
+    label: 'About Page',
+    short: 'About',
+    icon: 'person-circle',
+    color: '#7C3AED',
+    desc: 'Edit your public About page — bio, highlights, education, experience, services, memberships and contact.',
   },
   {
     key: 'reviews',
@@ -164,6 +173,7 @@ export default function BrandingSettingsPanel() {
         {cat === 'rx' && <BrandingPanel category="rx" />}
         {cat === 'docheaders' && <DocHeaderSettingsPanel />}
         {cat === 'centres' && <CentresSettingsPanel />}
+        {cat === 'about' && <AboutEditorPanel />}
         {cat === 'reviews' && <GoogleReviewSettingsPanel />}
         {cat === 'featured' && <FeaturedReviewsAdminPanel />}
       </View>
