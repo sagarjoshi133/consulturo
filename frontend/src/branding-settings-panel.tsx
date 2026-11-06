@@ -32,11 +32,12 @@ import BrandingPanel from './branding-panel-lazy';
 import DocHeaderSettingsPanel from './doc-header-settings-panel';
 import CentresSettingsPanel from './centres-settings-panel';
 import AboutEditorPanel from './about-editor-panel';
+import { AvailabilityPanel } from './availability-panel';
 import GoogleReviewSettingsPanel from './google-review-settings';
 import FeaturedReviewsAdminPanel from './featured-reviews-admin-panel';
 import { useResponsive } from './responsive';
 
-type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'centres' | 'about' | 'reviews' | 'featured';
+type Category = 'home' | 'branding' | 'rx' | 'docheaders' | 'centres' | 'availability' | 'about' | 'reviews' | 'featured';
 
 const CATEGORIES: {
   key: Category;
@@ -85,6 +86,14 @@ const CATEGORIES: {
     icon: 'location',
     color: '#0D9488',
     desc: 'Manage your consultation centres — name, address, map link and "by prior confirmation only". Patients pick a centre when booking In-Person.',
+  },
+  {
+    key: 'availability',
+    label: 'Availability',
+    short: 'Hours',
+    icon: 'time',
+    color: '#0E7C8B',
+    desc: 'Set your consultation hours — centre-wise for In-person, overall for Online. Patients see exactly these slots when booking.',
   },
   {
     key: 'about',
@@ -173,6 +182,14 @@ export default function BrandingSettingsPanel() {
         {cat === 'rx' && <BrandingPanel category="rx" />}
         {cat === 'docheaders' && <DocHeaderSettingsPanel />}
         {cat === 'centres' && <CentresSettingsPanel />}
+        {cat === 'availability' && (
+          <ScrollView
+            contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <AvailabilityPanel />
+          </ScrollView>
+        )}
         {cat === 'about' && <AboutEditorPanel />}
         {cat === 'reviews' && <GoogleReviewSettingsPanel />}
         {cat === 'featured' && <FeaturedReviewsAdminPanel />}

@@ -1095,3 +1095,13 @@ NEEDS REDEPLOY for production.
 - src/map-thumbnail.tsx: keyless Google Maps embed preview (iframe on web, non-interactive WebView on
   native) with "Open map" pill; tap opens map_url/search. Added to booking centre cards (collapsed
   selected + expanded list) in app/(tabs)/book.tsx; cards restructured to column (centreCardCol/centreRow).
+
+## Availability settings revamp (2026-06)
+- Availability now lives under Administration → Branding & Settings → "Availability" chip
+  (branding-settings-panel.tsx). Removed the standalone 'availability' dashboard tab.
+- src/availability-panel.tsx fully rewritten: In-person/Online segmented control; In-person uses a
+  CENTRE DROPDOWN (centre-wise windows, each tagged location_id); Online is overall (no centre).
+  Per-day card with time blocks, "Apply to all days", weekday chips with working dots, and a weekly
+  summary. Working/closed is driven by window presence; off_days is cleared ([]) on save.
+- Backend unchanged: /api/availability/slots already filters in-person by location_id and online by
+  {day}_on windows, so booking slots stay in sync with these settings.

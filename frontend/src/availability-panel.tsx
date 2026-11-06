@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -17,28 +16,22 @@ import { COLORS, FONTS, RADIUS } from './theme';
 import { PrimaryButton } from './components';
 import { TimeField } from './date-picker';
 import { UnavailabilitySection } from './unavailability-section';
-import { useResponsive } from './responsive';
+import { display12h } from './date';
 
 const DAYS = [
-  { key: 'mon', label: 'Mon' },
-  { key: 'tue', label: 'Tue' },
-  { key: 'wed', label: 'Wed' },
-  { key: 'thu', label: 'Thu' },
-  { key: 'fri', label: 'Fri' },
-  { key: 'sat', label: 'Sat' },
-  { key: 'sun', label: 'Sun' },
+  { key: 'mon', label: 'Mon', full: 'Monday' },
+  { key: 'tue', label: 'Tue', full: 'Tuesday' },
+  { key: 'wed', label: 'Wed', full: 'Wednesday' },
+  { key: 'thu', label: 'Thu', full: 'Thursday' },
+  { key: 'fri', label: 'Fri', full: 'Friday' },
+  { key: 'sat', label: 'Sat', full: 'Saturday' },
+  { key: 'sun', label: 'Sun', full: 'Sunday' },
 ] as const;
 
 type DayKey = (typeof DAYS)[number]['key'];
-
+type Mode = 'in' | 'on';
 type Slot = { start: string; end: string; location_id?: string };
-
-type Availability = {
-  off_days: DayKey[];
-  note?: string;
-  [k: string]: any; // mon_in / mon_on etc.
-};
-
+type Availability = { off_days: DayKey[]; note?: string; [k: string]: any };
 type Centre = { id: string; name: string; request_only?: boolean; active?: boolean };
 
 export function AvailabilityPanel() {
@@ -47,8 +40,11 @@ export function AvailabilityPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  const [mode, setMode] = useState<Mode>('in');
+  const [centreId, setCentreId] = useState('');
+  const [centreOpen, setCentreOpen] = useState(false);
   const [activeDay, setActiveDay] = useState<DayKey>('mon');
-  const { isWebDesktop } = useResponsive();
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +58,9 @@ export function AvailabilityPanel() {
     try {
       const { data: cs } = await api.get('/clinic-settings');
       const locs: Centre[] = Array.isArray(cs?.locations) ? cs.locations : [];
-      setCentres(locs.filter((l) => l.active !== false && !l.request_only && l.name));
+      const active = locs.filter((l) => l.active !== false && !l.request_only && l.name);
+      setCentres(active);
+      setCentreId((prev) => prev || active[0]?.id || '');
     } catch {
       setCentres([]);
     }
@@ -74,68 +72,50 @@ export function AvailabilityPanel() {
     }, [load])
   );
 
-  const toggleOff = (day: DayKey) => {
-    if (!data) return;
-    const off = new Set(data.off_days || []);
-    if (off.has(day)) off.delete(day);
-    else off.add(day);
-    setData({ ...data, off_days: Array.from(off) as DayKey[] });
+  // ── window helpers scoped to current (mode, centre) ──────────────
+  const winsFor = (day: DayKey): Slot[] => {
+    if (!data) return [];
+    if (mode === 'on') return data[`${day}_on`] || [];
+    return (data[`${day}_in`] || []).filter((w: Slot) => (w.location_id || '') === centreId);
   };
 
-  const updateSlot = (day: DayKey, kind: 'in' | 'on', idx: number, key: 'start' | 'end' | 'location_id', value: string) => {
+  const setWins = (day: DayKey, wins: Slot[]) => {
     if (!data) return;
-    const field = `${day}_${kind}`;
-    const slots: Slot[] = [...(data[field] || [])];
-    slots[idx] = { ...slots[idx], [key]: value };
-    setData({ ...data, [field]: slots });
-  };
-
-  const addSlot = (day: DayKey, kind: 'in' | 'on') => {
-    if (!data) return;
-    const field = `${day}_${kind}`;
-    const base: Slot = { start: '10:00', end: '13:00' };
-    if (kind === 'in' && centres.length) base.location_id = centres[0].id;
-    const slots: Slot[] = [...(data[field] || []), base];
-    setData({ ...data, [field]: slots });
-  };
-
-  const removeSlot = (day: DayKey, kind: 'in' | 'on', idx: number) => {
-    if (!data) return;
-    const field = `${day}_${kind}`;
-    const slots: Slot[] = (data[field] || []).filter((_: Slot, i: number) => i !== idx);
-    setData({ ...data, [field]: slots });
-  };
-
-  const applyToAll = (day: DayKey, kind: 'in' | 'on') => {
-    if (!data) return;
-    const source: Slot[] = data[`${day}_${kind}`] || [];
-    // Deep-copy slots so subsequent edits on one day don't mutate all others
-    const snapshot = source.map((s) => ({ start: s.start, end: s.end }));
-    const next: any = { ...data };
-    let appliedCount = 0;
-    DAYS.forEach((d) => {
-      // Skip days marked as fully off to honour the user's off-day preference
-      if ((data.off_days || []).includes(d.key)) return;
-      next[`${d.key}_${kind}`] = snapshot.map((s) => ({ ...s }));
-      appliedCount += 1;
-    });
-    setData(next);
-    const modeLabel = kind === 'in' ? 'In-person' : 'Online';
-    const inlineMsg = `${modeLabel} schedule copied to ${appliedCount} working day${appliedCount === 1 ? '' : 's'}. Tap "Save" to confirm.`;
-    setMsg(inlineMsg);
-    setTimeout(() => setMsg(''), 3500);
-    // Also raise an explicit confirmation popup — the inline banner
-    // alone was easy to miss on long pages where the button sits at
-    // the bottom of the day card. The user complained the action
-    // gave no clear acknowledgment.
-    const popupTitle = 'Applied to all working days';
-    const popupBody = `${modeLabel} timing from ${day.toUpperCase()} has been copied to every other working day (${appliedCount} day${appliedCount === 1 ? '' : 's'}). Don\u2019t forget to tap Save.`;
-    if (Platform.OS === 'web') {
-      // Avoid the blocking window.alert on web — render a richer
-      // inline banner instead (already set via setMsg above).
-    } else {
-      Alert.alert(popupTitle, popupBody);
+    if (mode === 'on') {
+      setData({ ...data, [`${day}_on`]: wins.map((w) => ({ start: w.start, end: w.end })) });
+      return;
     }
+    const field = `${day}_in`;
+    const others = (data[field] || []).filter((w: Slot) => (w.location_id || '') !== centreId);
+    setData({
+      ...data,
+      [field]: [...others, ...wins.map((w) => ({ start: w.start, end: w.end, location_id: centreId }))],
+    });
+  };
+
+  const isWorking = (day: DayKey) => winsFor(day).length > 0;
+
+  const toggleWorking = (day: DayKey) => {
+    if (isWorking(day)) setWins(day, []);
+    else setWins(day, [{ start: '10:00', end: '13:00' }]);
+  };
+
+  const updateBlock = (day: DayKey, idx: number, key: 'start' | 'end', value: string) => {
+    const wins = [...winsFor(day)];
+    wins[idx] = { ...wins[idx], [key]: value };
+    setWins(day, wins);
+  };
+  const addBlock = (day: DayKey) => setWins(day, [...winsFor(day), { start: '10:00', end: '13:00' }]);
+  const removeBlock = (day: DayKey, idx: number) =>
+    setWins(day, winsFor(day).filter((_, i) => i !== idx));
+
+  const applyToAll = () => {
+    const template = winsFor(activeDay).map((w) => ({ start: w.start, end: w.end }));
+    if (!template.length) return;
+    DAYS.forEach((d) => setWins(d.key, template.map((w) => ({ ...w }))));
+    const where = mode === 'in' ? (centres.find((c) => c.id === centreId)?.name || 'this centre') : 'online';
+    setMsg(`Applied ${DAYS.find((d) => d.key === activeDay)?.full}'s hours to all 7 days for ${where}. Tap Save to confirm.`);
+    setTimeout(() => setMsg(''), 4000);
   };
 
   const save = async () => {
@@ -143,8 +123,10 @@ export function AvailabilityPanel() {
     setSaving(true);
     setMsg('');
     try {
-      await api.put('/availability/me', data);
-      setMsg('Saved! Patients will see updated slots immediately.');
+      // Working days are now driven purely by window presence; clear any
+      // stale global off_days so they don't block a day that has slots.
+      await api.put('/availability/me', { ...data, off_days: [] });
+      setMsg('Saved! Patients see the updated slots immediately.');
       setTimeout(() => setMsg(''), 2500);
     } catch (e: any) {
       const err = e?.response?.data?.detail || 'Could not save';
@@ -159,79 +141,167 @@ export function AvailabilityPanel() {
   if (loading) return <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />;
   if (!data) return <Text style={{ ...FONTS.body, color: COLORS.textSecondary }}>Could not load availability</Text>;
 
-  const isOff = (data.off_days || []).includes(activeDay);
-  const inSlots: Slot[] = data[`${activeDay}_in`] || [];
-  const onSlots: Slot[] = data[`${activeDay}_on`] || [];
+  const accent = mode === 'in' ? COLORS.primary : COLORS.whatsapp;
+  const dayWins = winsFor(activeDay);
+  const working = dayWins.length > 0;
+  const selectedCentre = centres.find((c) => c.id === centreId);
 
   return (
     <>
-      <Text style={styles.hint}>Pick days you work (green), tap to mark off (red). Clinic working hours are 08:00–21:00.</Text>
+      {/* ── Mode segmented control ─────────────────────────────────── */}
+      <View style={styles.segment}>
+        <TouchableOpacity
+          onPress={() => { setMode('in'); setCentreOpen(false); }}
+          style={[styles.segBtn, mode === 'in' && { backgroundColor: COLORS.primary }]}
+          testID="avail-mode-in"
+        >
+          <Ionicons name="medical" size={15} color={mode === 'in' ? '#fff' : COLORS.textSecondary} />
+          <Text style={[styles.segTxt, mode === 'in' && { color: '#fff' }]}>In-person</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { setMode('on'); setCentreOpen(false); }}
+          style={[styles.segBtn, mode === 'on' && { backgroundColor: COLORS.whatsapp }]}
+          testID="avail-mode-on"
+        >
+          <Ionicons name="logo-whatsapp" size={15} color={mode === 'on' ? '#fff' : COLORS.textSecondary} />
+          <Text style={[styles.segTxt, mode === 'on' && { color: '#fff' }]}>Online</Text>
+        </TouchableOpacity>
+      </View>
 
-      <View style={styles.daysRow}>
-        {DAYS.map((d) => {
-          const off = (data.off_days || []).includes(d.key);
-          const selected = activeDay === d.key;
-          return (
-            <TouchableOpacity
-              key={d.key}
-              onPress={() => setActiveDay(d.key)}
-              onLongPress={() => toggleOff(d.key)}
-              delayLongPress={300}
-              style={[
-                styles.dayChip,
-                off ? styles.dayOff : styles.dayOn,
-                selected && styles.daySelected,
-              ]}
-              testID={`avail-day-${d.key}`}
-            >
-              <Text style={[styles.dayText, off && { color: '#fff' }, selected && { color: '#fff' }]}>{d.label}</Text>
+      <Text style={styles.contextHint}>
+        {mode === 'in'
+          ? 'Set the hours you consult in person at each centre. Patients booking that centre see exactly these slots.'
+          : 'Online consultation hours apply across all your centres.'}
+      </Text>
+
+      {/* ── Centre dropdown (in-person only) ───────────────────────── */}
+      {mode === 'in' && (
+        centres.length === 0 ? (
+          <View style={styles.noCentre}>
+            <Ionicons name="information-circle" size={16} color={COLORS.accent} />
+            <Text style={styles.noCentreTxt}>Add a consultation centre first under Settings → Centres, then set its hours here.</Text>
+          </View>
+        ) : (
+          <View style={{ zIndex: 10 }}>
+            <Text style={styles.fieldLabel}>Centre</Text>
+            <TouchableOpacity style={styles.dropdown} onPress={() => setCentreOpen((o) => !o)} testID="avail-centre-dropdown">
+              <Ionicons name="location" size={16} color={COLORS.primary} />
+              <Text style={styles.dropdownTxt} numberOfLines={1}>{selectedCentre?.name || 'Select centre'}</Text>
+              <Ionicons name={centreOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
-          );
-        })}
-      </View>
-      <Text style={styles.longPressHint}>Long-press a day to toggle full-day off (red) ↔ working (green).</Text>
-
-      <View style={styles.dayCard}>
-        <View style={styles.dayHeader}>
-          <Text style={styles.dayTitle}>{DAYS.find((d) => d.key === activeDay)?.label}day schedule</Text>
-          <TouchableOpacity onPress={() => toggleOff(activeDay)} style={[styles.toggleBtn, isOff ? styles.offBtn : styles.onBtn]}>
-            <Ionicons name={isOff ? 'close-circle' : 'checkmark-circle'} size={16} color="#fff" />
-            <Text style={styles.toggleText}>{isOff ? 'Off day' : 'Working'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {!isOff && (
-          <>
-            <View style={isWebDesktop ? { flexDirection: 'row', gap: 16 } : undefined}>
-              <View style={isWebDesktop ? { flex: 1 } : undefined}>
-                <SlotGroup
-                  title="In-person (Clinic)"
-                  color={COLORS.primary}
-                  icon="medical"
-                  slots={inSlots}
-                  centres={centres}
-                  onChange={(i, k, v) => updateSlot(activeDay, 'in', i, k, v)}
-                  onAdd={() => addSlot(activeDay, 'in')}
-                  onRemove={(i) => removeSlot(activeDay, 'in', i)}
-                  onApplyAll={() => applyToAll(activeDay, 'in')}
-                />
+            {centreOpen && (
+              <View style={styles.dropdownList}>
+                {centres.map((c) => {
+                  const on = c.id === centreId;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.dropdownItem, on && { backgroundColor: COLORS.primary + '12' }]}
+                      onPress={() => { setCentreId(c.id); setCentreOpen(false); }}
+                      testID={`avail-centre-opt-${c.id}`}
+                    >
+                      <Text style={[styles.dropdownItemTxt, on && { color: COLORS.primary, fontFamily: 'DMSans_600SemiBold' }]} numberOfLines={1}>{c.name}</Text>
+                      {on && <Ionicons name="checkmark" size={16} color={COLORS.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <View style={isWebDesktop ? { flex: 1 } : undefined}>
-                <SlotGroup
-                  title="Online (WhatsApp)"
-                  color={COLORS.whatsapp}
-                  icon="logo-whatsapp"
-                  slots={onSlots}
-                  onChange={(i, k, v) => updateSlot(activeDay, 'on', i, k, v)}
-                  onAdd={() => addSlot(activeDay, 'on')}
-                  onRemove={(i) => removeSlot(activeDay, 'on', i)}
-                  onApplyAll={() => applyToAll(activeDay, 'on')}
-                />
-              </View>
+            )}
+          </View>
+        )
+      )}
+
+      {(mode === 'on' || centres.length > 0) && (
+        <>
+          {/* ── Week overview chips ──────────────────────────────────── */}
+          <View style={styles.weekRow}>
+            {DAYS.map((d) => {
+              const work = winsFor(d.key).length > 0;
+              const sel = activeDay === d.key;
+              return (
+                <TouchableOpacity
+                  key={d.key}
+                  onPress={() => setActiveDay(d.key)}
+                  style={[styles.dayChip, sel && { borderColor: accent, borderWidth: 2 }]}
+                  testID={`avail-day-${d.key}`}
+                >
+                  <Text style={[styles.dayChipTxt, sel && { color: accent }]}>{d.label}</Text>
+                  <View style={[styles.dayDot, { backgroundColor: work ? COLORS.success : COLORS.border }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* ── Selected day card ────────────────────────────────────── */}
+          <View style={styles.dayCard}>
+            <View style={styles.dayHeader}>
+              <Text style={styles.dayTitle}>{DAYS.find((d) => d.key === activeDay)?.full}</Text>
+              <TouchableOpacity
+                onPress={() => toggleWorking(activeDay)}
+                style={[styles.toggleBtn, { backgroundColor: working ? COLORS.success : COLORS.textDisabled }]}
+                testID="avail-day-toggle"
+              >
+                <Ionicons name={working ? 'checkmark-circle' : 'remove-circle'} size={15} color="#fff" />
+                <Text style={styles.toggleTxt}>{working ? 'Open' : 'Closed'}</Text>
+              </TouchableOpacity>
             </View>
-          </>
-        )}
-      </View>
+
+            {!working ? (
+              <Text style={styles.closedHint}>Closed on {DAYS.find((d) => d.key === activeDay)?.full}. Tap “Closed” above to add hours.</Text>
+            ) : (
+              <>
+                {dayWins.map((s, i) => (
+                  <View key={i} style={styles.blockRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timeLbl}>From</Text>
+                      <TimeField value={s.start} onChange={(v) => updateBlock(activeDay, i, 'start', v)} placeholder="HH:MM" style={{ marginTop: 0 }} />
+                    </View>
+                    <Text style={styles.arrow}>→</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timeLbl}>To</Text>
+                      <TimeField value={s.end} onChange={(v) => updateBlock(activeDay, i, 'end', v)} placeholder="HH:MM" style={{ marginTop: 0 }} />
+                    </View>
+                    {dayWins.length > 1 && (
+                      <TouchableOpacity onPress={() => removeBlock(activeDay, i)} style={styles.removeBtn}>
+                        <Ionicons name="close" size={16} color={COLORS.accent} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity onPress={() => addBlock(activeDay)} style={[styles.ghostBtn, { borderColor: accent }]}>
+                    <Ionicons name="add" size={14} color={accent} />
+                    <Text style={[styles.ghostTxt, { color: accent }]}>Add block</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={applyToAll} style={[styles.ghostBtn, { borderColor: accent }]} testID="avail-apply-all">
+                    <Ionicons name="copy-outline" size={14} color={accent} />
+                    <Text style={[styles.ghostTxt, { color: accent }]}>Apply to all days</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* ── Weekly summary ───────────────────────────────────────── */}
+          <View style={styles.summary}>
+            <Text style={styles.summaryHead}>{mode === 'in' ? (selectedCentre?.name || 'Centre') : 'Online'} · weekly hours</Text>
+            {DAYS.map((d) => {
+              const wins = winsFor(d.key);
+              return (
+                <View key={d.key} style={styles.summaryRow}>
+                  <Text style={styles.summaryDay}>{d.full}</Text>
+                  <Text style={[styles.summaryVal, !wins.length && { color: COLORS.textDisabled }]}>
+                    {wins.length
+                      ? wins.map((w) => `${display12h(w.start)} – ${display12h(w.end)}`).join(', ')
+                      : 'Closed'}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
 
       <Text style={styles.fieldLabel}>Note for patients (optional)</Text>
       <TextInput
@@ -254,147 +324,55 @@ export function AvailabilityPanel() {
         testID="avail-save"
       />
 
-      {/* ── Unavailability (per-date / recurring overrides) ─────────── */}
       <View style={{ height: 1, backgroundColor: COLORS.border, marginTop: 28 }} />
       <UnavailabilitySection />
     </>
   );
 }
 
-function SlotGroup({
-  title,
-  color,
-  icon,
-  slots,
-  centres,
-  onChange,
-  onAdd,
-  onRemove,
-  onApplyAll,
-}: {
-  title: string;
-  color: string;
-  icon: any;
-  slots: Slot[];
-  centres?: Centre[];
-  onChange: (i: number, k: 'start' | 'end' | 'location_id', v: string) => void;
-  onAdd: () => void;
-  onRemove: (i: number) => void;
-  onApplyAll?: () => void;
-}) {
-  return (
-    <View style={{ marginTop: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Ionicons name={icon} size={14} color={color} />
-        <Text style={[styles.groupTitle, { color }]}>{title}</Text>
-        <Text style={styles.slotCount}>· {slots.length} slot{slots.length === 1 ? '' : 's'}</Text>
-        {onApplyAll && slots.length > 0 && (
-          <TouchableOpacity
-            onPress={onApplyAll}
-            style={[styles.applyAllBtn, { borderColor: color }]}
-            testID={`avail-apply-all-${title.includes('Online') ? 'on' : 'in'}`}
-          >
-            <Ionicons name="copy-outline" size={12} color={color} />
-            <Text style={[styles.applyAllText, { color }]}>Apply to all days</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      {slots.length === 0 ? (
-        <Text style={styles.emptySlot}>No time blocks. Tap + to add.</Text>
-      ) : (
-        slots.map((s, i) => (
-          <View key={i} style={styles.slotBlock}>
-            <View style={styles.slotRow}>
-              <TimeInput
-                label="From"
-                value={s.start}
-                onChangeText={(v) => onChange(i, 'start', v)}
-              />
-              <Text style={styles.arrow}>→</Text>
-              <TimeInput
-                label="To"
-                value={s.end}
-                onChangeText={(v) => onChange(i, 'end', v)}
-              />
-              <TouchableOpacity onPress={() => onRemove(i)} style={styles.removeBtn}>
-                <Ionicons name="close" size={16} color={COLORS.accent} />
-              </TouchableOpacity>
-            </View>
-            {centres && centres.length > 0 ? (
-              <View style={styles.centreChips}>
-                {centres.map((c) => {
-                  const on = (s.location_id || '') === c.id;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      onPress={() => onChange(i, 'location_id', c.id)}
-                      style={[styles.centreChip, on && { backgroundColor: color, borderColor: color }]}
-                      testID={`avail-centre-${c.id}`}
-                    >
-                      <Text style={[styles.centreChipTxt, on && { color: '#fff' }]}>{c.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : null}
-          </View>
-        ))
-      )}
-      <TouchableOpacity onPress={onAdd} style={[styles.addSlot, { borderColor: color }]}>
-        <Ionicons name="add" size={14} color={color} />
-        <Text style={[styles.addSlotText, { color }]}>Add time block</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function TimeInput({ label, value, onChangeText }: { label: string; value: string; onChangeText: (v: string) => void }) {
-  return (
-    <View style={{ flex: 1 }}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <TimeField
-        value={value}
-        onChange={onChangeText}
-        placeholder="HH:MM"
-        style={{ marginTop: 0 }}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  hint: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginBottom: 12 },
-  daysRow: { flexDirection: 'row', gap: 6, justifyContent: 'space-between' },
-  dayChip: { flex: 1, paddingVertical: 10, borderRadius: RADIUS.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
-  dayOn: { backgroundColor: COLORS.success + '18', borderColor: COLORS.success + '66' },
-  dayOff: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  daySelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  dayText: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 12 },
-  longPressHint: { ...FONTS.body, color: COLORS.textDisabled, fontSize: 11, marginTop: 6, textAlign: 'center' },
-  dayCard: { marginTop: 14, backgroundColor: '#fff', padding: 14, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border },
+  segment: { flexDirection: 'row', backgroundColor: COLORS.bg, borderRadius: RADIUS.pill, padding: 4, gap: 4 },
+  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.pill },
+  segTxt: { ...FONTS.bodyMedium, color: COLORS.textSecondary, fontSize: 13 },
+  contextHint: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12, marginTop: 12, lineHeight: 17 },
+
+  noCentre: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: COLORS.accent + '12', padding: 12, borderRadius: RADIUS.md, marginTop: 14 },
+  noCentreTxt: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 12.5, flex: 1, lineHeight: 18 },
+
+  fieldLabel: { ...FONTS.label, color: COLORS.textSecondary, marginTop: 18, marginBottom: 6 },
+  dropdown: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 12, paddingVertical: 12 },
+  dropdownTxt: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 14, flex: 1 },
+  dropdownList: { backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, marginTop: 6, overflow: 'hidden' },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  dropdownItemTxt: { ...FONTS.body, color: COLORS.textPrimary, fontSize: 13.5, flex: 1 },
+
+  weekRow: { flexDirection: 'row', gap: 6, marginTop: 16, justifyContent: 'space-between' },
+  dayChip: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
+  dayChipTxt: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 12 },
+  dayDot: { width: 6, height: 6, borderRadius: 3 },
+
+  dayCard: { marginTop: 14, backgroundColor: '#fff', padding: 16, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dayTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 15 },
-  toggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.pill },
-  onBtn: { backgroundColor: COLORS.success },
-  offBtn: { backgroundColor: COLORS.accent },
-  toggleText: { color: '#fff', ...FONTS.label, fontSize: 10 },
-  groupTitle: { ...FONTS.bodyMedium, fontSize: 13 },
-  slotCount: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11 },
-  emptySlot: { ...FONTS.body, color: COLORS.textDisabled, fontSize: 12, marginTop: 6 },
-  slotRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
-  slotBlock: { marginTop: 4 },
-  centreChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginLeft: 2 },
-  centreChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
-  centreChipTxt: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 11.5 },
+  dayTitle: { ...FONTS.h4, color: COLORS.textPrimary, fontSize: 16 },
+  toggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.pill },
+  toggleTxt: { color: '#fff', ...FONTS.bodyMedium, fontSize: 12 },
+  closedHint: { ...FONTS.body, color: COLORS.textDisabled, fontSize: 12.5, marginTop: 12 },
+
+  blockRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 14 },
+  timeLbl: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10, marginBottom: 4 },
   arrow: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 16, marginBottom: 10 },
-  removeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: COLORS.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', marginBottom: 2 },
-  timeLabel: { ...FONTS.label, color: COLORS.textSecondary, fontSize: 10 },
-  timeInput: { marginTop: 4, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, padding: 8, backgroundColor: COLORS.bg, ...FONTS.body, color: COLORS.textPrimary, textAlign: 'center' },
-  addSlot: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.pill, borderWidth: 1, borderStyle: 'dashed' },
-  addSlotText: { ...FONTS.bodyMedium, fontSize: 12 },
-  fieldLabel: { ...FONTS.label, color: COLORS.textSecondary, marginTop: 20 },
-  input: { marginTop: 6, backgroundColor: '#fff', padding: 12, borderRadius: RADIUS.md, ...FONTS.body, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border, minHeight: 60, textAlignVertical: 'top' },
+  removeBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: COLORS.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', marginBottom: 2 },
+
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' },
+  ghostBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.pill, borderWidth: 1, borderStyle: 'dashed' },
+  ghostTxt: { ...FONTS.bodyMedium, fontSize: 12 },
+
+  summary: { marginTop: 18, backgroundColor: COLORS.bg, borderRadius: RADIUS.md, padding: 14 },
+  summaryHead: { ...FONTS.bodyMedium, color: COLORS.textPrimary, fontSize: 13, marginBottom: 8 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
+  summaryDay: { ...FONTS.body, color: COLORS.textSecondary, fontSize: 12.5, width: 90 },
+  summaryVal: { ...FONTS.bodyMedium, color: COLORS.primary, fontSize: 12.5, flex: 1, textAlign: 'right' },
+
+  input: { marginTop: 0, backgroundColor: '#fff', padding: 12, borderRadius: RADIUS.md, ...FONTS.body, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border, minHeight: 60, textAlignVertical: 'top' },
   successMsg: { ...FONTS.bodyMedium, color: COLORS.success, textAlign: 'center', marginTop: 14, fontSize: 13 },
-  applyAllBtn: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.pill, borderWidth: 1 },
-  applyAllText: { ...FONTS.bodyMedium, fontSize: 10 },
 });

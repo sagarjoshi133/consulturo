@@ -316,7 +316,9 @@ function DashboardImpl() {
         { id: 'bookings', label: 'Bookings', icon: 'calendar', badge: pendingCount, canSee: true },
         { id: 'consultations', label: 'Consults', icon: 'medkit', canSee: true },
         { id: 'prescriptions', label: 'Rx', icon: 'document-text', canSee: canPrescribe || allowTab('rx') },
-        { id: 'availability', label: 'Availability', icon: 'time', canSee: canPrescribe || allowTab('availability') },
+        // 'availability' tab removed from dashboard — now lives under
+        // Administration → Branding & Settings → Availability (2026-06),
+        // avoids duplication and keeps the bar focused on daily work.
         { id: 'analytics', label: 'Analytics', icon: 'analytics', canSee: canViewAnalytics },
         { id: 'surgeries', label: 'Surgeries', icon: 'medkit', canSee: canManageSurgery },
         { id: 'ipd', label: 'IPD', icon: 'bed', canSee: canManageIpd },
